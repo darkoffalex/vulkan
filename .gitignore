@@ -1,0 +1,14 @@
+Bin/
+log.txt
+.vs/
+*.opendb
+*.db
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.tlog
+*.log
+*.idb
+*.iobj
+*.ipdb
