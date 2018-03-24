@@ -2,6 +2,7 @@
 #include <Windows.h>
 
 #include "Toolkit.h"
+#include "VkRenderer.h"
 
 // Объявление оконной процедуры основного окна
 // Оконная процедура обрабатывает сообщения системы посылаемые окну (клики, нажатия, закрытие и тд)
@@ -9,6 +10,9 @@ LRESULT CALLBACK MainWindowProcedure(HWND, UINT, WPARAM, LPARAM);
 
 // Хендл основного окна
 HWND hMainWindow = nullptr;
+
+// Указатель на рендерер
+VkRenderer * vkRenderer = nullptr;
 
 // Точка входа
 int main(int argc, char* argv[]) 
@@ -65,6 +69,21 @@ int main(int argc, char* argv[])
 		// Показ окна
 		ShowWindow(hMainWindow, SW_SHOWNORMAL);
 
+		// Инициализация рендерера
+		vkRenderer = new VkRenderer(hInstance, hMainWindow, 100);
+
+		// Тестовая геометрия (индексированный куб)
+		vkRenderer->AddPrimitive({
+			{ { -0.2f, -0.2f,  0.2f },{ 1.0f, 0.0f, 0.0f } },
+			{ { 0.2f, -0.2f,  0.2f },{ 0.0f, 1.0f, 0.0f } },
+			{ { 0.2f,  0.2f,  0.2f },{ 0.0f, 0.0f, 1.0f } },
+			{ { -0.2f,  0.2f,  0.2f },{ 0.0f, 0.0f, 0.0f } },
+			{ { -0.2f, -0.2f, -0.2f },{ 1.0f, 0.0f, 0.0f } },
+			{ { 0.2f, -0.2f, -0.2f },{ 0.0f, 1.0f, 0.0f } },
+			{ { 0.2f,  0.2f, -0.2f },{ 0.0f, 0.0f, 1.0f } },
+			{ { -0.2f,  0.2f, -0.2f },{ 0.0f, 0.0f, 0.0f } },
+		}, { 0,1,2, 2,3,0, 1,5,6, 6,2,1, 7,6,5, 5,4,7, 4,0,3, 3,7,4, 4,5,1, 1,0,4, 3,2,6, 6,7,3, }, { 0.0f,0.0f,0.0f }, { 45.0f,45.0f,0.0f });
+
 		// Основной цикл приложения
 		// В нем происходит:
 		// - Взаимодействие с пользователем (посредством обработки оконных сообщений)
@@ -89,15 +108,18 @@ int main(int argc, char* argv[])
 
 				// Если хендл окна не пуст (он может стать пустым при закрытии окна)
 				if (hMainWindow) {
-					//TODO: взаимодействие с рендерером
+					vkRenderer->Update();
+					vkRenderer->Draw();
 				}
 			}
 		}
 
-		//TODO: уничтожение рендерера
+		// Уничтожить рендерер
+		delete vkRenderer;
 	}
 	catch (const std::exception &ex) {
 		toolkit::LogError(ex.what());
+		system("pause");
 	}
 
 	// Выход с кодом 0
@@ -118,6 +140,9 @@ LRESULT CALLBACK MainWindowProcedure(HWND hWnd, UINT message, WPARAM wParam, LPA
 		break;
 	case WM_EXITSIZEMOVE:
 		// При изменении размеров окна (после смены размеров и отжатия кнопки мыши)
+		if (vkRenderer != nullptr) {
+			vkRenderer->VideoSettingsChanged();
+		}
 		break;
 	case WM_KEYDOWN:
 		// При нажатии каких-либо клавиш на клавиатуре

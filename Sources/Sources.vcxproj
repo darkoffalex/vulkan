@@ -172,9 +172,17 @@
   <ItemGroup>
     <ClCompile Include="Program.cpp" />
     <ClCompile Include="Toolkit.cpp" />
+    <ClCompile Include="VkRenderer.cpp" />
+    <ClCompile Include="VkToolkit.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Toolkit.h" />
+    <ClInclude Include="VkRenderer.h" />
+    <ClInclude Include="VkToolkit.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Shaders\base.frag" />
+    <None Include="..\Shaders\base.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
