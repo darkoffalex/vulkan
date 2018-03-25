@@ -302,6 +302,54 @@ namespace vktoolkit
 		glm::vec3 scale = {};
 	};
 
+	/**
+	* Стурктура описывает параметры камеры
+	* Содержит параметры используемые для подготовки матриц проекции и вида
+	*
+	* Матрица проекции используется для проецирования 3-мерных точек на двумерную
+	* плоскость. Для ее построения используются такие параметры как:
+	* - Угол обзора
+	* - Пропорции
+	* - Ближняя граница отсечения (ближе которой ничего не будет отображаться)
+	* - Дальняя граница отсечения (дальше которой все будет отбрасываться)
+	*
+	* Матрица вида отвечает за положение и поворот камеры в пространстве. Матрица
+	* вида по своей сути - матрица перехода из одной системы коородинат в другую. То есть
+	* веришины начинают проецироваться так, будто бы они сместились относительно некоего 
+	* глобального центра, с учетом положения локальной системы координат (камеры) относительного 
+	* глобальной, что и дает эффект перемещения наблюдателя
+	*/
+	struct CameraSettings
+	{
+		// Положение и поворот камеры
+		glm::vec3 position = glm::vec3(0.0f, 0.0f, -1.0f);
+		glm::vec3 roation = glm::vec3(0.0f, 0.0f, 0.0f);
+
+		// Угол обзора, пропорции, ближняя и дальняя грань отсечения
+		float fFOV = 60.0f;
+		float aspectRatio = 1.0f;
+		float fNear = 0.1f;
+		float fFar = 256.0f;
+
+		// Подготовить матрицу проекии
+		glm::mat4 MakeProjectionMatrix() const {
+			glm::mat4 result = glm::perspective(glm::radians(this->fFOV), aspectRatio, fNear, fFar);
+			result[1][1] *= -1; // Хотфикс glm для вулканом (glm разработан для opengl, а там ось Y инвертирована)
+			return result;
+		};
+
+		// Подготовить матрицу вида
+		glm::mat4 MakeViewMatrix() const {
+			glm::mat4 rotationMatrix = glm::rotate(glm::mat4(), glm::radians(this->roation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+			rotationMatrix = glm::rotate(rotationMatrix, glm::radians(this->roation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+			rotationMatrix = glm::rotate(rotationMatrix, glm::radians(this->roation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+
+			glm::mat4 translationMatrix = glm::translate(glm::mat4(), this->position);
+
+			return rotationMatrix * translationMatrix;
+		};
+	};
+
 	/* В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы */
 
 	/**

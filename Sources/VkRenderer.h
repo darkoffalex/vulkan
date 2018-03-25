@@ -9,6 +9,11 @@
 // Даем понять что работаем с Windows
 #define VK_USE_PLATFORM_WIN32_KHR
 
+// Параметры камеры по умолчанию (угол обзора, границы отсечения)
+#define DEFAULT_FOV 60.0f
+#define DEFAULT_NEAR 0.1f
+#define DEFAULT_FAR 256.0f
+
 // Подключаем vulkan
 #include <vulkan\vulkan.h>
 
@@ -55,6 +60,8 @@ private:
 
 	unsigned int primitivesMaxCount_;                     // Максимальное кол-во примитивов (необходимо для аллокации динамического UBO буфера)
 	std::vector<vktoolkit::Primitive> primitives_;        // Набор геометр. примитивов для отображения
+
+	vktoolkit::CameraSettings camera_;                    // Параметры камеры
 
 
 	/* I N S T A N C E */
@@ -437,6 +444,30 @@ public:
 	* учитываются положения камеры, отдельных примитивов и сцены в целом
 	*/
 	void Update();
+
+	/**
+	* Настройка параметров перспективы камеры (угол обзора, грани отсечения)
+	* @param float fFOV - угол обзора
+	* @param float fNear - ближняя грань отсечения
+	* @param float fFar - дальняя гран отсечения
+	*/
+	void SetCameraPerspectiveSettings(float fFOV, float fNear, float fFar);
+
+	/**
+	* Настройка положения камеры
+	* @param float x - положение по оси X
+	* @param float y - положение по оси Y
+	* @param float z - положение по оси Z
+	*/
+	void SetCameraPosition(float x, float y, float z);
+
+	/**
+	* Настройка поворота камеры
+	* @param float x - поворот вокруг оси X
+	* @param float y - поворот вокруг оси Y
+	* @param float z - поворот вокруг оси Z
+	*/
+	void SetCameraRotation(float x, float y, float z);
 
 	/**
 	* Добавление нового примитива

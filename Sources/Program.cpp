@@ -1,8 +1,14 @@
 ﻿#include <iostream>
 #include <Windows.h>
+#include <iomanip>
+#include <math.h>
+#include <glm\glm.hpp>
 
 #include "Toolkit.h"
 #include "VkRenderer.h"
+
+using std::chrono::time_point;
+using std::chrono::high_resolution_clock;
 
 // Объявление оконной процедуры основного окна
 // Оконная процедура обрабатывает сообщения системы посылаемые окну (клики, нажатия, закрытие и тд)
@@ -13,6 +19,58 @@ HWND hMainWindow = nullptr;
 
 // Указатель на рендерер
 VkRenderer * vkRenderer = nullptr;
+
+// Время последнего кадра (точнее последней итерации)
+time_point<high_resolution_clock> lastFrameTime;
+
+// Структура описывающая модель камеры
+struct{
+	// Положение на сцеене и поворот камеры
+	glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+
+	// Множитель движения (значения от -1 до 1)
+	glm::i8vec3 movement = glm::i8vec3(0, 0, 0);
+
+	// Скорость перемещения и чувствительность мыши
+	float movementSpeed = 1.0f;
+	float mouseSensitivity = 0.5f;
+
+	// Движется ли камера
+	bool IsMoving() const {
+		return this->movement.x != 0 || this->movement.y != 0 || this->movement.z != 0;
+	}
+
+	// Обновление положения
+	// float deltaMs - время одного кадра (итерации цикла) за которое будет выполнено перемещение
+	void UpdatePositions(float deltaMs) {
+		if (this->IsMoving()) {
+
+			// Локальный вектор движения (после нажатия на кнопки управления)
+			glm::vec3 movementVectorLocal = glm::vec3(
+				(float)this->movement.x * ((this->movementSpeed / 1000.0f) * deltaMs),
+				(float)this->movement.y * ((this->movementSpeed / 1000.0f) * deltaMs),
+				(float)this->movement.z * ((this->movementSpeed / 1000.0f) * deltaMs)
+			);
+
+			// Глобальный вектор движения (с учетом поворота камеры)
+			glm::vec3 movementVectorGlobal = glm::vec3(
+				(cos(glm::radians(this->rotation.y)) * movementVectorLocal.x) - (sin(glm::radians(this->rotation.y)) * movementVectorLocal.z),
+				(cos(glm::radians(this->rotation.x)) * movementVectorLocal.y) + (sin(glm::radians(this->rotation.x)) * movementVectorLocal.z),
+				(sin(glm::radians(this->rotation.y)) * movementVectorLocal.x) + (cos(glm::radians(this->rotation.y)) * movementVectorLocal.z)
+			);
+
+			// Приращение позиции
+			this->position += movementVectorGlobal;
+		}
+	}
+} camera;
+
+// Положение курсора мыши в системе координат окна
+struct {
+	int32_t x = 0;
+	int32_t y = 0;
+} mousePos;
 
 // Точка входа
 int main(int argc, char* argv[]) 
@@ -82,7 +140,13 @@ int main(int argc, char* argv[])
 			{ { 0.2f, -0.2f, -0.2f },{ 0.0f, 1.0f, 0.0f } },
 			{ { 0.2f,  0.2f, -0.2f },{ 0.0f, 0.0f, 1.0f } },
 			{ { -0.2f,  0.2f, -0.2f },{ 0.0f, 0.0f, 0.0f } },
-		}, { 0,1,2, 2,3,0, 1,5,6, 6,2,1, 7,6,5, 5,4,7, 4,0,3, 3,7,4, 4,5,1, 1,0,4, 3,2,6, 6,7,3, }, { 0.0f,0.0f,0.0f }, { 45.0f,45.0f,0.0f });
+		}, { 0,1,2, 2,3,0, 1,5,6, 6,2,1, 7,6,5, 5,4,7, 4,0,3, 3,7,4, 4,5,1, 1,0,4, 3,2,6, 6,7,3, }, { 0.0f,0.0f,-1.0f }, { 0.0f,0.0f,0.0f });
+
+		// Конфигурация перспективы
+		vkRenderer->SetCameraPerspectiveSettings(60.0f, 0.1f, 256.0f);
+
+		// Время последнего кадра - время начала цикла
+		lastFrameTime = high_resolution_clock::now();
 
 		// Основной цикл приложения
 		// В нем происходит:
@@ -105,12 +169,32 @@ int main(int argc, char* argv[])
 				if (msg.message == WM_QUIT) {
 					break;
 				}
+			}
 
-				// Если хендл окна не пуст (он может стать пустым при закрытии окна)
-				if (hMainWindow) {
-					vkRenderer->Update();
-					vkRenderer->Draw();
-				}
+			// Если хендл окна не пуст (он может стать пустым при закрытии окна)
+			if (hMainWindow) {
+
+				// Время текущего кадра (текущей итерации)
+				time_point<high_resolution_clock> currentFrameTime = high_resolution_clock::now();
+
+				// Сколько микросекунд прошло с последней итерации
+				// 1 миллисекунда = 1000 микросекунд = 1000000 наносекунд
+				int64_t delta = std::chrono::duration_cast<std::chrono::microseconds>(currentFrameTime - lastFrameTime).count();
+				
+				// Перевести в миллисекунды
+				float deltaMs = (float)delta / 1000;
+
+				// Обновить время последней итерации
+				lastFrameTime = currentFrameTime;
+
+				// Обновление перемещений камеры с учетом времени кадра
+				camera.UpdatePositions(deltaMs);
+
+				// Обновить рендерер и отрисовать кадр
+				vkRenderer->SetCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+				vkRenderer->SetCameraRotation(camera.rotation.x, camera.rotation.y, camera.rotation.z);
+				vkRenderer->Update();
+				vkRenderer->Draw();
 			}
 		}
 
@@ -145,13 +229,59 @@ LRESULT CALLBACK MainWindowProcedure(HWND hWnd, UINT message, WPARAM wParam, LPA
 		}
 		break;
 	case WM_KEYDOWN:
-		// При нажатии каких-либо клавиш на клавиатуре
+		// При нажатии кнопок (WASD)
+		switch (wParam)
+		{
+		case 0x57:
+			camera.movement.z = 1;
+			break;
+		case 0x41:
+			camera.movement.x = 1;
+			break;
+		case 0x53:
+			camera.movement.z = -1;
+			break;
+		case 0x44:
+			camera.movement.x = -1;
+			break;
+		}
 		break;
+	case WM_KEYUP:
+		// При отжатии кнопок (WASD)
+		switch (wParam)
+		{
+		case 0x57:
+			camera.movement.z = 0;
+			break;
+		case 0x41:
+			camera.movement.x = 0;
+			break;
+		case 0x53:
+			camera.movement.z = 0;
+			break;
+		case 0x44:
+			camera.movement.x = 0;
+			break;
+		}
+		break;
+	case WM_RBUTTONDOWN:
+	case WM_LBUTTONDOWN:
 	case WM_MBUTTONDOWN:
-		// При нажатии кнопки мыши
+		// При нажатии любой кнопки мыши
+		mousePos.x = (int32_t)LOWORD(lParam);
+		mousePos.y = (int32_t)HIWORD(lParam);
 		break;
 	case WM_MOUSEMOVE:
 		// При движении мыши
+		// Если зажата левая кнопка мыши
+		if (wParam & MK_LBUTTON){
+			int32_t posx = (int32_t)LOWORD(lParam);
+			int32_t posy = (int32_t)HIWORD(lParam);
+			camera.rotation.x -= (mousePos.y - (float)posy) * camera.mouseSensitivity;
+			camera.rotation.y -= (mousePos.x - (float)posx) * camera.mouseSensitivity;
+			mousePos.x = posx;
+			mousePos.y = posy;
+		}
 		break;
 	default:
 		//В случае остальных сообщений - перенаправлять их в функцию DefWindowProc (функция обработки по умолчанию)

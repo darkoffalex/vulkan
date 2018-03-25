@@ -118,7 +118,7 @@ std::wstring toolkit::StrToWide(const std::string& str, UINT codePage, DWORD dwF
 {
 	std::wstring result;
 	wchar_t* newString = new wchar_t[str.length() + 1];
-	MultiByteToWideChar(codePage, dwFlags, str.c_str(), str.length() + 1, newString, str.length() + 1);
+	MultiByteToWideChar(codePage, dwFlags, str.c_str(), (int)str.length() + 1, newString, (int)str.length() + 1);
 	result.append(newString);
 	delete[] newString;
 	return result;
@@ -136,7 +136,7 @@ std::string toolkit::WideToStr(const std::wstring& wstr, UINT codePage, DWORD dw
 {
 	std::string result;
 	char* newString = new char[wstr.length() + 1];
-	WideCharToMultiByte(codePage, dwFlags, wstr.c_str(), wstr.length() + 1, newString, wstr.length() + 1, NULL, FALSE);
+	WideCharToMultiByte(codePage, dwFlags, wstr.c_str(), (int)wstr.length() + 1, newString, (int)wstr.length() + 1, NULL, FALSE);
 	result.append(newString);
 	delete[] newString;
 	return result;

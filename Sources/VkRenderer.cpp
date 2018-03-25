@@ -24,6 +24,11 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	primitivesMaxCount_(primitivesMaxCount),
 	uboModels_(nullptr)
 {
+	// Присвоить параметры камеры по умолчанию
+	this->camera_.fFar = DEFAULT_FOV;
+	this->camera_.fFar = DEFAULT_FAR;
+	this->camera_.fNear = DEFAULT_NEAR;
+
 	// Списки расширений и слоев запрашиваемых по умолчанию
 	std::vector<const char*> instanceExtensionsRequired = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME };
 	std::vector<const char*> deviceExtensionsRequired = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -54,7 +59,7 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	this->commandPoolDraw_ = this->InitCommandPool(this->device_, this->device_.queueFamilies.graphics);
 
 	// Аллокация командных буферов (получение хендлов)
-	this->commandBuffersDraw_ = this->InitCommandBuffers(this->device_, this->commandPoolDraw_, this->swapchain_.framebuffers.size());
+	this->commandBuffersDraw_ = this->InitCommandBuffers(this->device_, this->commandPoolDraw_, (unsigned int)(this->swapchain_.framebuffers.size()));
 
 	// Аллокация глобального uniform-буфера
 	this->uniformBufferWorld_ = this->InitUnformBufferWorld(this->device_);
@@ -211,7 +216,7 @@ VkInstance VkRenderer::InitInstance(
 
 		// Указать запрашиваемые расширения и их кол-во
 		instanceCreateInfo.ppEnabledExtensionNames = extensionsRequired.data();
-		instanceCreateInfo.enabledExtensionCount = extensionsRequired.size();
+		instanceCreateInfo.enabledExtensionCount = (uint32_t)extensionsRequired.size();
 
 		// Запрашивается расширение для обработки ошибок (по умолчанию нет)
 		bool debugReportExtensionQueried = false;
@@ -235,7 +240,7 @@ VkInstance VkRenderer::InitInstance(
 			}
 
 			// Указать слои валидации и их кол-во
-			instanceCreateInfo.enabledLayerCount = validationLayersRequired.size();
+			instanceCreateInfo.enabledLayerCount = (uint32_t)validationLayersRequired.size();
 			instanceCreateInfo.ppEnabledLayerNames = validationLayersRequired.data();
 
 			// Валидация запрашивается (поскольку есть и расширение и необходимые слои)
@@ -460,7 +465,7 @@ vktoolkit::Device VkRenderer::InitDevice(
 			throw std::runtime_error("Vulkan: Not all required device extensions supported. Can't initialize renderer");
 		}
 
-		deviceCreateInfo.enabledExtensionCount = extensionsRequired.size();
+		deviceCreateInfo.enabledExtensionCount = (uint32_t)extensionsRequired.size();
 		deviceCreateInfo.ppEnabledExtensionNames = extensionsRequired.data();
 	}
 
@@ -470,7 +475,7 @@ vktoolkit::Device VkRenderer::InitDevice(
 			throw std::runtime_error("Vulkan: Not all required validation layers supported. Can't initialize renderer");
 		}
 
-		deviceCreateInfo.enabledLayerCount = validationLayersRequired.size();
+		deviceCreateInfo.enabledLayerCount = (uint32_t)validationLayersRequired.size();
 		deviceCreateInfo.ppEnabledLayerNames = validationLayersRequired.data();
 	}
 
@@ -563,14 +568,14 @@ VkRenderPass VkRenderer::InitRenderPass(const vktoolkit::Device &device, VkSurfa
 	// Описание единственного под-прохода
 	VkSubpassDescription subpassDescription = {};
 	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpassDescription.colorAttachmentCount = colorAttachmentReferences.size();     // Кол-во цветовых вложений
-	subpassDescription.pColorAttachments = colorAttachmentReferences.data();        // Цветовые вложения (вложения для записи)
-	subpassDescription.pDepthStencilAttachment = nullptr;                           // Глубина-трафарет (не используется)
-	subpassDescription.inputAttachmentCount = 0;                                    // Кол-во входных вложений (не используются)
-	subpassDescription.pInputAttachments = nullptr;                                 // Входные вложения (вложения для чтения, напр. того что было записано в пред-щем под-проходе)
-	subpassDescription.preserveAttachmentCount = 0;                                 // Кол-во хранимых вложений (не используется)
-	subpassDescription.pPreserveAttachments = nullptr;                              // Хранимые вложения могут быть использованы для много-кратного использования в разных под-проходах
-	subpassDescription.pResolveAttachments = nullptr;                               // Resolve-вложения (полезны при работе с мульти-семплингом, не используется)
+	subpassDescription.colorAttachmentCount = (uint32_t)colorAttachmentReferences.size();  // Кол-во цветовых вложений
+	subpassDescription.pColorAttachments = colorAttachmentReferences.data();               // Цветовые вложения (вложения для записи)
+	subpassDescription.pDepthStencilAttachment = nullptr;                                  // Глубина-трафарет (не используется)
+	subpassDescription.inputAttachmentCount = 0;                                           // Кол-во входных вложений (не используются)
+	subpassDescription.pInputAttachments = nullptr;                                        // Входные вложения (вложения для чтения, напр. того что было записано в пред-щем под-проходе)
+	subpassDescription.preserveAttachmentCount = 0;                                        // Кол-во хранимых вложений (не используется)
+	subpassDescription.pPreserveAttachments = nullptr;                                     // Хранимые вложения могут быть использованы для много-кратного использования в разных под-проходах
+	subpassDescription.pResolveAttachments = nullptr;                                      // Resolve-вложения (полезны при работе с мульти-семплингом, не используется)
 
 	// Настройка зависимостей под-проходов
 	// Они добавят неявный шаблон перехода вложений
@@ -728,7 +733,7 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 	// должен быть распараллелен (следует использовать VK_SHARING_MODE_CONCURRENT, указав при этом кол-во семейств и их индексы)
 	if (device.queueFamilies.graphics != device.queueFamilies.present) {
 		swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-		swapchainCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+		swapchainCreateInfo.queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size();
 		swapchainCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
 	}
 	// В противном случае подходящим будет VK_SHARING_MODE_EXCLUSIVE (с ресурсом работают команды одного семейства)
@@ -1108,7 +1113,7 @@ VkDescriptorPool VkRenderer::InitDescriptorPool(const vktoolkit::Device &device)
 	// Конфигурация пула
 	VkDescriptorPoolCreateInfo poolInfo = {};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = descriptorPoolSizes.size();
+	poolInfo.poolSizeCount = (uint32_t)descriptorPoolSizes.size();
 	poolInfo.pPoolSizes = descriptorPoolSizes.data();
 	poolInfo.maxSets = 1;
 
@@ -1174,7 +1179,7 @@ VkDescriptorSetLayout VkRenderer::InitDescriptorSetLayout(const vktoolkit::Devic
 	VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {};
 	descriptorLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	descriptorLayoutInfo.pNext = nullptr;
-	descriptorLayoutInfo.bindingCount = bindings.size();
+	descriptorLayoutInfo.bindingCount = (uint32_t)bindings.size();
 	descriptorLayoutInfo.pBindings = bindings.data();
 
 	if (vkCreateDescriptorSetLayout(device.logicalDevice, &descriptorLayoutInfo, nullptr, &layoutResult) != VK_SUCCESS) {
@@ -1262,7 +1267,7 @@ VkDescriptorSet VkRenderer::InitDescriptorSet(
 	};
 
 	// Обновить наборы дескрипторов
-	vkUpdateDescriptorSets(device.logicalDevice, writes.size(), writes.data(), 0, nullptr);
+	vkUpdateDescriptorSets(device.logicalDevice, (uint32_t)writes.size(), writes.data(), 0, nullptr);
 
 	toolkit::LogMessage("Vulkan: Descriptor set successfully initialized");
 
@@ -1397,9 +1402,9 @@ VkPipeline VkRenderer::InitGraphicsPipeline(
 	// Конфигурация стадии ввода вершинных данных
 	VkPipelineVertexInputStateCreateInfo vertexInputStage = {};
 	vertexInputStage.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputStage.vertexBindingDescriptionCount = bindingDescription.size();
+	vertexInputStage.vertexBindingDescriptionCount = (uint32_t)bindingDescription.size();
 	vertexInputStage.pVertexBindingDescriptions = bindingDescription.data();
-	vertexInputStage.vertexAttributeDescriptionCount = attributeDescriptions.size();
+	vertexInputStage.vertexAttributeDescriptionCount = (uint32_t)attributeDescriptions.size();
 	vertexInputStage.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 	// Описание этапа "сборки" входных данных
@@ -1505,7 +1510,7 @@ VkPipeline VkRenderer::InitGraphicsPipeline(
 	// Информация инициализации графического конвейера
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.stageCount = shaderStages.size();              // Кол-во шейдерных этапов
+	pipelineInfo.stageCount = (uint32_t)shaderStages.size();    // Кол-во шейдерных этапов
 	pipelineInfo.pStages = shaderStages.data();                 // Шейдерные этапы (их конфигураци)
 	pipelineInfo.pVertexInputState = &vertexInputStage;         // Настройки этапа ввода вершинных данных
 	pipelineInfo.pInputAssemblyState = &inputAssemblyStage;     // Настройки этапа сборки примитивов из полученных вершин
@@ -1648,7 +1653,7 @@ void VkRenderer::PrepareDrawCommands(
 	renderPassBeginInfo.renderArea.offset.y = 0;
 	renderPassBeginInfo.renderArea.extent.width = swapchain.imageExtent.width;
 	renderPassBeginInfo.renderArea.extent.height = swapchain.imageExtent.height;
-	renderPassBeginInfo.clearValueCount = clearValues.size();
+	renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
 
@@ -1678,7 +1683,15 @@ void VkRenderer::PrepareDrawCommands(
 					primitiveIndex * static_cast<uint32_t>(this->device_.GetDynamicAlignment<glm::mat4>())
 				};
 
-				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, dynamicOffsets.size(), dynamicOffsets.data());
+				vkCmdBindDescriptorSets(
+					commandBuffers[i], 
+					VK_PIPELINE_BIND_POINT_GRAPHICS, 
+					pipelineLayout, 
+					0, 
+					1, 
+					&descriptorSet, 
+					(uint32_t)dynamicOffsets.size(), 
+					dynamicOffsets.data());
 
 				// Если нужно рисовать индексированную геометрию
 				if (primitives[primitiveIndex].drawIndexed && primitives[primitiveIndex].indexBuffer.count > 0) {
@@ -1807,7 +1820,7 @@ void VkRenderer::VideoSettingsChanged()
 	this->pipeline_ = this->InitGraphicsPipeline(this->device_, this->pipelineLayout_, this->swapchain_, this->renderPass_);
 
 	// Аллокация командных буферов (получение хендлов)
-	this->commandBuffersDraw_ = this->InitCommandBuffers(this->device_, this->commandPoolDraw_, this->swapchain_.framebuffers.size());
+	this->commandBuffersDraw_ = this->InitCommandBuffers(this->device_, this->commandPoolDraw_, (unsigned int)this->swapchain_.framebuffers.size());
 
 	// Подготовка базовых комманд
 	this->PrepareDrawCommands(
@@ -1867,12 +1880,12 @@ void VkRenderer::Draw()
 	// Информация об отправке команд в буфер
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = waitSemaphores.size();                 // Кол-во семафоров ожидания
+	submitInfo.waitSemaphoreCount = (uint32_t)waitSemaphores.size();       // Кол-во семафоров ожидания
 	submitInfo.pWaitSemaphores = waitSemaphores.data();                    // Семафоры велючение которых будет ожидаться
 	submitInfo.pWaitDstStageMask = waitStages;                             // Стадии на которых конвейер "приостановиться" до включения семафоров
 	submitInfo.commandBufferCount = 1;                                     // Число командных буферов за одну отправку
 	submitInfo.pCommandBuffers = &(this->commandBuffersDraw_[imageIndex]); // Командный буфер (для текущего изображения в swap-chain)
-	submitInfo.signalSemaphoreCount = signalSemaphores.size();             // Кол-во семафоров сигнала (завершения стадии)
+	submitInfo.signalSemaphoreCount = (uint32_t)signalSemaphores.size();   // Кол-во семафоров сигнала (завершения стадии)
 	submitInfo.pSignalSemaphores = signalSemaphores.data();                // Семафоры которые включатся при завершении
 
 	// Инициировать отправку команд в очередь (на рендеринг)
@@ -1884,7 +1897,7 @@ void VkRenderer::Draw()
 	// Настройка представления (отображение того что отдал конвейер)
 	VkPresentInfoKHR presentInfo = {};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.waitSemaphoreCount = signalSemaphores.size();              // Кол-во ожидаемых семафоров
+	presentInfo.waitSemaphoreCount = (uint32_t)signalSemaphores.size();    // Кол-во ожидаемых семафоров
 	presentInfo.pWaitSemaphores = signalSemaphores.data();                 // Cемафоры "включение" которых ожидается перед показом
 	presentInfo.swapchainCount = 1;                                        // Кол-во swap-chain'ов
 	presentInfo.pSwapchains = &(this->swapchain_.vkSwapchain);             // Указание текущего swap-chain
@@ -1907,30 +1920,20 @@ void VkRenderer::Draw()
 void VkRenderer::Update()
 {
 	// Соотношение сторон (используем размеры поверхности определенные при создании swap-chain)
-	float aspect = (float)(this->swapchain_.imageExtent.width) / (float)(this->swapchain_.imageExtent.height);
+	this->camera_.aspectRatio = (float)(this->swapchain_.imageExtent.width) / (float)(this->swapchain_.imageExtent.height);
 
 	// Настройка матрицы проекции
 	// При помощи данной матрицы происходит проекция 3-мерных точек на плоскость
 	// Считается что наблюдатель (камера) в центре системы координат
-	this->uboWorld_.projectionMatrix = glm::perspective(
-		glm::radians(60.0f),                    //Угол обзора в радианах 
-		aspect,                                 //Соотношение сторон
-		0.1f,                                   //Ближайшая граница отсечения
-		256.0f);                                //Дальняя граница отсечения
+	this->uboWorld_.projectionMatrix = this->camera_.MakeProjectionMatrix();
 
 	// Настройка матрицы вида
-	// Приводит систему координат мира к системе координат камеры
-	this->uboWorld_.viewMatrix = glm::translate(glm::mat4(), glm::vec3(0.0f,0.0f,-1.0f));
-	this->uboWorld_.viewMatrix = glm::rotate(this->uboWorld_.viewMatrix, glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-	this->uboWorld_.viewMatrix = glm::rotate(this->uboWorld_.viewMatrix, glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	this->uboWorld_.viewMatrix = glm::rotate(this->uboWorld_.viewMatrix, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	// Отвечает за положение и поворот камеры (по сути приводит систему координат мира к системе координат наблюдателя)
+	this->uboWorld_.viewMatrix = this->camera_.MakeViewMatrix();
 
 	// Матрица модели мира
-	// Позволяет осуществлять глобальные преобразования всей сцены
+	// Позволяет осуществлять глобальные преобразования всей сцены (пока что не используется)
 	this->uboWorld_.worldMatrix = glm::mat4();
-
-	// Хотфикс использования glm с вулканом (glm разработан для opengl, там ось y инвертирована)
-	this->uboWorld_.projectionMatrix[1][1] *= -1;
 
 	// Копировать данные в uniform-буфер
 	memcpy(this->uniformBufferWorld_.pMapped, &(this->uboWorld_), (size_t)(this->uniformBufferWorld_.size));
@@ -1964,6 +1967,41 @@ void VkRenderer::Update()
 		memoryRange.size = this->uniformBufferModels_.size;
 		vkFlushMappedMemoryRanges(this->device_.logicalDevice, 1, &memoryRange);
 	}
+}
+
+/**
+* Настройка параметров перспективы камеры (угол обзора, грани отсечения)
+* @param float fFOV - угол обзора
+* @param float fNear - ближняя грань отсечения
+* @param float fFar - дальняя гран отсечения
+*/
+void VkRenderer::SetCameraPerspectiveSettings(float fFOV, float fNear, float fFar)
+{
+	this->camera_.fFOV = fFOV;
+	this->camera_.fNear = fNear;
+	this->camera_.fFar = fFar;
+}
+
+/**
+* Настройка положения камеры
+* @param float x - положение по оси X
+* @param float y - положение по оси Y
+* @param float z - положение по оси Z
+*/
+void VkRenderer::SetCameraPosition(float x, float y, float z)
+{
+	this->camera_.position = glm::vec3(x, y, z);
+}
+
+/**
+* Настройка поворота камеры
+* @param float x - поворот вокруг оси X
+* @param float y - поворот вокруг оси Y
+* @param float z - поворот вокруг оси Z
+*/
+void VkRenderer::SetCameraRotation(float x, float y, float z)
+{
+	this->camera_.roation = glm::vec3(x, y, z);
 }
 
 /**
