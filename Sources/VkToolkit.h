@@ -165,6 +165,20 @@ namespace vktoolkit
 
 			return dynamicAlignment;
 		}
+
+		// Проверить поддерживает ли устройство вложения глубины-трафарета для конкретного формата
+		bool IsDepthFormatSupported(VkFormat format) const{
+
+			VkFormatProperties formatProps;
+			vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProps);
+
+			// Формат должен поддерживать вложения глубины-трафарета
+			if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT){
+				return true;
+			}
+
+			return false;
+		}
 	};
 
 	/**
@@ -179,10 +193,17 @@ namespace vktoolkit
 	*/
 	struct Swapchain {
 		VkSwapchainKHR vkSwapchain = VK_NULL_HANDLE;
+
 		std::vector<VkImage> images;
 		std::vector<VkImageView> imageViews;
 		std::vector<VkFramebuffer> framebuffers;
 		VkFormat imageFormat = {};
+
+		VkImage depthStencilImage = VK_NULL_HANDLE;
+		VkDeviceMemory depthStencilImageMemory = VK_NULL_HANDLE;
+		VkImageView depthStencilImageView = VK_NULL_HANDLE;
+		VkFormat depthStencilFormat = {};
+
 		VkExtent2D imageExtent = {};
 	};
 

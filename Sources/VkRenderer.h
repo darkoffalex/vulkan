@@ -14,6 +14,11 @@
 #define DEFAULT_NEAR 0.1f
 #define DEFAULT_FAR 256.0f
 
+// Интервал значений глубины в OpenGL от -1 до 1. В Vulkan - от 0 до 1 (как в DirectX)
+// Данный символ "сообщит" GLM что нужно использовать интервал от 0 до 1, что скажется
+// на построении матриц проекции, которые используются в шейдере
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 // Подключаем vulkan
 #include <vulkan\vulkan.h>
 
@@ -135,13 +140,14 @@ private:
 	* @param const vktoolkit::Device &device - устройство
 	* @param VkSurfaceKHR surface - хендо поверхности, передается лишь для проверки поддержки запрашиваемого формата
 	* @param VkFormat colorAttachmentFormat - формат цветовых вложений/изображений, должен поддерживаться поверхностью
+	* @param VkFormat depthStencilFormat - формат вложений глубины (должен поддерживаться устройством)
 	* @return VkRenderPass - хендл прохода рендеринга
 	*
 	* @note - Проход рендеринга можно понимать как некую стадию на которой выполняются все команды рендерига и происходит цикл конвейера
 	* Проход состоит из под-проходов, и у каждого под-прохода может быть своя конфигурация конвейера. Конфигурация же прохода
 	* определяет в каком состоянии (размещении памяти) будет вложение (цветовое, глубины и тд)
 	*/
-	VkRenderPass InitRenderPass(const vktoolkit::Device &device, VkSurfaceKHR surface, VkFormat colorAttachmentFormat);
+	VkRenderPass InitRenderPass(const vktoolkit::Device &device, VkSurfaceKHR surface, VkFormat colorAttachmentFormat, VkFormat depthStencilFormat);
 
 	/**
 	* Деинициализация прохода рендеринга
@@ -157,6 +163,7 @@ private:
 	* @param const vktoolkit::Device &device - устройство, необходимо для создания
 	* @param VkSurfaceKHR surface - хкндл поверхоности, необходимо для создания объекта swap-chain и для проверки поддержки формата
 	* @param VkSurfaceFormatKHR surfaceFormat - формат изображений и цветовое пространство (должен поддерживаться поверхностью)
+	* @param VkFormat depthStencilFormat - формат вложений глубины (должен поддерживаться устройством)
 	* @param VkRenderPass renderPass - хендл прохода рендеринга, нужен для создания фрейм-буферов swap-chain
 	* @param unsigned int bufferCount - кол-во буферов кадра (напр. для тройной буферизации - 3)
 	* @param vktoolkit::Swapchain * oldSwapchain - передыдуший swap-chain (полезно в случае пересоздания свап-чейна, например, сменив размеро поверхности)
@@ -167,6 +174,7 @@ private:
 		const vktoolkit::Device &device,
 		VkSurfaceKHR surface,
 		VkSurfaceFormatKHR surfaceFormat,
+		VkFormat depthStencilFormat,
 		VkRenderPass renderPass,
 		unsigned int bufferCount,
 		vktoolkit::Swapchain * oldSwapchain = nullptr);

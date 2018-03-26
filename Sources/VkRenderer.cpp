@@ -50,10 +50,10 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	this->device_ = this->InitDevice(this->instance_, this->surface_, deviceExtensionsRequired, validationLayersRequired, false);
 
 	// Инициализация прохода рендеринга
-	this->renderPass_ = this->InitRenderPass(this->device_, this->surface_, VK_FORMAT_B8G8R8A8_UNORM);
+	this->renderPass_ = this->InitRenderPass(this->device_, this->surface_, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_D32_SFLOAT_S8_UINT);
 
 	// Инициализация swap-chain
-	this->swapchain_ = this->InitSwapChain(this->device_, this->surface_, { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }, this->renderPass_, 3, nullptr);
+	this->swapchain_ = this->InitSwapChain(this->device_, this->surface_, { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR }, VK_FORMAT_D32_SFLOAT_S8_UINT, this->renderPass_, 3, nullptr);
 
 	// Инициализация командного пула
 	this->commandPoolDraw_ = this->InitCommandPool(this->device_, this->device_.queueFamilies.graphics);
@@ -524,13 +524,14 @@ void VkRenderer::DeinitDevice(vktoolkit::Device * device)
 * @param const vktoolkit::Device &device - устройство
 * @param VkSurfaceKHR surface - хендо поверхности, передается лишь для проверки поддержки запрашиваемого формата
 * @param VkFormat colorAttachmentFormat - формат цветовых вложений/изображений, должен поддерживаться поверхностью
+* @param VkFormat depthStencilFormat - формат вложений глубины, должен поддерживаться устройством
 * @return VkRenderPass - хендл прохода рендеринга
 *
 * @note - Проход рендеринга можно понимать как некую стадию на которой выполняются все команды рендерига и происходит цикл конвейера
 * Проход состоит из под-проходов, и у каждого под-прохода может быть своя конфигурация конвейера. Конфигурация же прохода
 * определяет в каком состоянии (размещении памяти) будет вложение (цветовое, глубины и тд)
 */
-VkRenderPass VkRenderer::InitRenderPass(const vktoolkit::Device &device, VkSurfaceKHR surface, VkFormat colorAttachmentFormat)
+VkRenderPass VkRenderer::InitRenderPass(const vktoolkit::Device &device, VkSurfaceKHR surface, VkFormat colorAttachmentFormat, VkFormat depthStencilFormat)
 {
 	// Проверка доступности формата вложений (изображений)
 	vktoolkit::SurfaceInfo si = vktoolkit::GetSurfaceInfo(device.physicalDevice, surface);
@@ -538,31 +539,54 @@ VkRenderPass VkRenderer::InitRenderPass(const vktoolkit::Device &device, VkSurfa
 		throw std::runtime_error("Vulkan: Required surface format is not supported. Can't initialize render-pass");
 	}
 
+	// Проверка доступности формата глубины
+	if (!device.IsDepthFormatSupported(depthStencilFormat)) {
+		throw std::runtime_error("Vulkan: Required depth-stencil format is not supported. Can't initialize render-pass");
+	}
 
 	// Массив описаний вложений
 	// Пояснение: изображения в которые происходит рендеринг либо которые поступают на вход прохода называются вложениями.
 	// Это может быть цветовое вложение (по сути обычное изображение) либо вложение глубины, трафарета и т.д.
 	std::vector<VkAttachmentDescription> attachments;
 
-	// Используем пока-что одно вложение (цветовое)
+	// Описаниие цветового вложения (изображение)
 	VkAttachmentDescription colorAttachment = {};
-	colorAttachment.format = colorAttachmentFormat;                       // Формат цвета должен соответствовать тому что будет использован при создании своп-чейна
-	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;                      // Не использовать мультисемплинг (один семпл на пиксел)
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;                 // На этапе начала прохода - очищать вложение
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;               // На этапе конца прохода - хранить вложение (для дальнешей презентации)
-	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;      // Подресурс трафарета (начало прохода) - не используется
-	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;    // Подресурс трафарета (конце прохода) - не исрользуется
-	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;            // Размещение памяти в начале (не имеет значения, любое)
-	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;        // Размещение памяти к которому вложение будет приведено после окончания прохода (для представления)
+	colorAttachment.format = colorAttachmentFormat;                                       // Формат цвета должен соответствовать тому что будет использован при создании своп-чейна
+	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;                                      // Не использовать мультисемплинг (один семпл на пиксел)
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;                                 // На этапе начала прохода - очищать вложение
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;                               // На этапе конца прохода - хранить вложение (для дальнешей презентации)
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;                      // Подресурс трафарета (начало прохода) - не используется
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;                    // Подресурс трафарета (конце прохода) - не исрользуется
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;                            // Размещение памяти в начале (не имеет значения, любое)
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;                        // Размещение памяти к которому вложение будет приведено после окончания прохода (для представления)
 	attachments.push_back(colorAttachment);
+
+	// Описание вложения глубины трафарета (z-буфер)
+	VkAttachmentDescription depthStencilAttachment = {};
+	depthStencilAttachment.format = depthStencilFormat;
+	depthStencilAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthStencilAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;                           // На этапе начала прохода - очищать вложение
+	depthStencilAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;                     // На этапе конца прохода - не имеет значение (память не используется для презентации, можно не хранить)
+	depthStencilAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;                // Подресурс трафарета (начало прохода) - не используется
+	depthStencilAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;              // Подресурс трафарета (конце прохода) - не исрользуется
+	depthStencilAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;                      // Размещение памяти в начале (не имеет значения, любое)
+	depthStencilAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // Размещение памяти к которому вложение будет приведено после окончания прохода (глубина-трафарет)
+	attachments.push_back(depthStencilAttachment);
+
 
 	// Массив ссылок на цветовые вложения
 	// Для каждой ссылки указывается индекс цветового вложения в массиве вложений и ожидаемое размещение
 	std::vector<VkAttachmentReference> colorAttachmentReferences = {
 		{
-			0,                                                           // Первый элемент массива вложений 
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL                     // Ожидается что размещение будет VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+			0,                                                       // Первый элемент массива вложений 
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL                 // Ожидается что размещение будет VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 		}
+	};
+
+	// Ссылка на вложение глубины-трафарета
+	VkAttachmentReference depthStencilAttachemntReference = {
+		1,                                                           // Второй элемент массива вложений 
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL             // Ожидается что размещение будет VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 	};
 
 	// Описание единственного под-прохода
@@ -570,7 +594,7 @@ VkRenderPass VkRenderer::InitRenderPass(const vktoolkit::Device &device, VkSurfa
 	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpassDescription.colorAttachmentCount = (uint32_t)colorAttachmentReferences.size();  // Кол-во цветовых вложений
 	subpassDescription.pColorAttachments = colorAttachmentReferences.data();               // Цветовые вложения (вложения для записи)
-	subpassDescription.pDepthStencilAttachment = nullptr;                                  // Глубина-трафарет (не используется)
+	subpassDescription.pDepthStencilAttachment = &depthStencilAttachemntReference;         // Глубина-трафарет (не используется)
 	subpassDescription.inputAttachmentCount = 0;                                           // Кол-во входных вложений (не используются)
 	subpassDescription.pInputAttachments = nullptr;                                        // Входные вложения (вложения для чтения, напр. того что было записано в пред-щем под-проходе)
 	subpassDescription.preserveAttachmentCount = 0;                                        // Кол-во хранимых вложений (не используется)
@@ -649,15 +673,18 @@ void VkRenderer::DeinitRenderPass(const vktoolkit::Device &device, VkRenderPass 
 * @param const vktoolkit::Device &device - устройство, необходимо для создания
 * @param VkSurfaceKHR surface - хкндл поверхоности, необходимо для создания объекта swap-chain и для проверки поддержки формата
 * @param VkSurfaceFormatKHR surfaceFormat - формат изображений и цветовое пространство (должен поддерживаться поверхностью)
+* @param VkFormat depthStencilFormat - формат вложений глубины (должен поддерживаться устройством)
 * @param VkRenderPass renderPass - хендл прохода рендеринга, нужен для создания фрейм-буферов swap-chain
 * @param unsigned int bufferCount - кол-во буферов кадра (напр. для тройной буферизации - 3)
-* @param vktoolkit::Swapchain * oldSwapchain - хендл предыдущего свопчена, (полезно в случае пересоздания свап-чейна, например, сменив размеро поверхности)
+* @param vktoolkit::Swapchain * oldSwapchain - передыдуший swap-chain (полезно в случае пересоздания свап-чейна, например, сменив размеро поверхности)
+* @return vktoolkit::Swapchain структура описывающая swap-chain cодержащая необходимые хендлы
 * @note - в одно изображение может происходить запись (рендеринг) в то время как другое будет показываться (презентация)
 */
 vktoolkit::Swapchain VkRenderer::InitSwapChain(
 	const vktoolkit::Device &device,
 	VkSurfaceKHR surface,
 	VkSurfaceFormatKHR surfaceFormat,
+	VkFormat depthStencilFormat,
 	VkRenderPass renderPass,
 	unsigned int bufferCount,
 	vktoolkit::Swapchain * oldSwapchain)
@@ -672,6 +699,11 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 	// Проверка доступности формата и цветового пространства изображений
 	if (!si.IsSurfaceFormatSupported(surfaceFormat)) {
 		throw std::runtime_error("Vulkan: Required surface format is not supported. Can't initialize swap-chain");
+	}
+
+	// Проверка доступности формата глубины
+	if (!device.IsDepthFormatSupported(depthStencilFormat)) {
+		throw std::runtime_error("Vulkan: Required depth-stencil format is not supported. Can't initialize render-pass");
 	}
 
 	// Если кол-во буферов задано
@@ -716,11 +748,13 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 	// Добавить информацию о формате и расширении в результирующий объект swap-chain'а (он будет отдан функцией)
 	resultSwapchain.imageFormat = swapchainCreateInfo.imageFormat;
 	resultSwapchain.imageExtent = swapchainCreateInfo.imageExtent;
+	resultSwapchain.depthStencilFormat = depthStencilFormat;
 
 	// Если старый swap-chain был передан - очистить его информацию о формате и расширении
 	if (oldSwapchain != nullptr) {
 		oldSwapchain->imageExtent = {};
 		oldSwapchain->imageFormat = {};
+		oldSwapchain->depthStencilFormat = {};
 	}
 
 	// Индексы семейств
@@ -807,7 +841,82 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 		}
 	}
 
-	// Теперь необходимо создать фрейм-буферы привязанные к image-views объектам изображений
+
+	// Буфер глубины (Z-буфер)
+	// Буфер может быть один для всех фрейм-буферов, даже при двойной/тройной буферизации (в отличии от изображений swap-chain)
+	// поскольку он не учавствует в презентации (память из него непосредственно не отображается на экране).
+
+	// Если это пересоздание swap-chain (передан старый) следует очистить компоненты прежнего буфера глубины
+	if (oldSwapchain != nullptr) {
+		if (!oldSwapchain->depthStencilImageView != VK_NULL_HANDLE) {
+			vkDestroyImageView(device.logicalDevice, oldSwapchain->depthStencilImageView, nullptr);
+			oldSwapchain->depthStencilImageView = VK_NULL_HANDLE;
+		}
+
+		if (!oldSwapchain->depthStencilImage != VK_NULL_HANDLE) {
+			vkDestroyImage(device.logicalDevice, oldSwapchain->depthStencilImage, nullptr);
+			oldSwapchain->depthStencilImage = VK_NULL_HANDLE;
+		}
+
+		if (!oldSwapchain->depthStencilImageMemory != VK_NULL_HANDLE) {
+			vkFreeMemory(device.logicalDevice, oldSwapchain->depthStencilImageMemory, nullptr);
+			oldSwapchain->depthStencilImageMemory = VK_NULL_HANDLE;
+		}
+	}
+
+	// Инициализация основных компонентов буфера глубины 
+	// Создать изображение глубины
+	VkImageCreateInfo depthImageInfo = {};
+	depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
+	depthImageInfo.format = depthStencilFormat;
+	depthImageInfo.extent = { si.capabilities.currentExtent.width, si.capabilities.currentExtent.height, 1 };
+	depthImageInfo.mipLevels = 1;
+	depthImageInfo.arrayLayers = 1;
+	depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	
+	if (vkCreateImage(device.logicalDevice, &depthImageInfo, nullptr, &(resultSwapchain.depthStencilImage)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while creating image for depth-stencil buffer");
+	}
+
+	// Ааллоцировать память на стороне устройства и привязать ее к изображению
+	VkMemoryAllocateInfo depthMemAllocinfo = {};
+	depthMemAllocinfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	VkMemoryRequirements depthMemReqs = {};
+	vkGetImageMemoryRequirements(device.logicalDevice, resultSwapchain.depthStencilImage, &depthMemReqs);
+	depthMemAllocinfo.allocationSize = depthMemReqs.size;
+	depthMemAllocinfo.memoryTypeIndex = vktoolkit::GetMemoryTypeIndex(device.physicalDevice, depthMemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	if (vkAllocateMemory(device.logicalDevice, &depthMemAllocinfo, nullptr, &(resultSwapchain.depthStencilImageMemory)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while allocating memory for depth-stencil image");
+	}
+
+	if (vkBindImageMemory(device.logicalDevice, resultSwapchain.depthStencilImage, resultSwapchain.depthStencilImageMemory, 0) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while binding memory to depth-stencil image");
+	}
+
+	// Создать view объект для изображения-буфера глубины
+	VkImageViewCreateInfo depthStencilView = {};
+	depthStencilView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	depthStencilView.format = depthStencilFormat;
+	depthStencilView.subresourceRange = {};
+	depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	depthStencilView.subresourceRange.baseMipLevel = 0;
+	depthStencilView.subresourceRange.levelCount = 1;
+	depthStencilView.subresourceRange.baseArrayLayer = 0;
+	depthStencilView.subresourceRange.layerCount = 1;
+	depthStencilView.image = resultSwapchain.depthStencilImage;
+
+	if (vkCreateImageView(device.logicalDevice, &depthStencilView, nullptr, &(resultSwapchain.depthStencilImageView)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while creating depth-stencil image view");
+	}
+
+
+	// Теперь необходимо создать фрейм-буферы привязанные к image-views объектам изображений и буфера глубины (изображения глубины)
 	// Перед этим стоит очистить буферы старого swap-сhain (если он был передан)
 	if (oldSwapchain != nullptr) {
 		if (!oldSwapchain->framebuffers.empty()) {
@@ -824,12 +933,16 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 		// Хендл нового фреймбуфера
 		VkFramebuffer framebuffer;
 
+		std::vector<VkImageView> attachments(2);
+		attachments[0] = resultSwapchain.imageViews[i];                             // Цветовое вложение (на каждый фрейм-буфер свое)		
+		attachments[1] = resultSwapchain.depthStencilImageView;                     // Буфер глубины (один на все фрейм-буферы)
+
 		// Описание нового фреймбуфера
 		VkFramebufferCreateInfo framebufferInfo = {};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = renderPass;                          // Указание прохода рендера
-		framebufferInfo.attachmentCount = 1;                              // Кол-во вложений
-		framebufferInfo.pAttachments = &(resultSwapchain.imageViews[i]);  // Связь с image-views объектом изображения swap-chain'а
+		framebufferInfo.attachmentCount = (uint32_t)attachments.size();   // Кол-во вложений
+		framebufferInfo.pAttachments = attachments.data();                // Связь с image-views объектом изображения swap-chain'а
 		framebufferInfo.width = resultSwapchain.imageExtent.width;        // Разрешение (ширина)
 		framebufferInfo.height = resultSwapchain.imageExtent.height;      // Разрешение (высота)
 		framebufferInfo.layers = 1;                                       // Один слой
@@ -869,6 +982,22 @@ void VkRenderer::DeinitSwapchain(const vktoolkit::Device &device, vktoolkit::Swa
 			vkDestroyImageView(device.logicalDevice, imageView, nullptr);
 		}
 		swapchain->imageViews.clear();
+	}
+
+	// Очиска компонентов Z-буфера
+	if (!swapchain->depthStencilImageView != VK_NULL_HANDLE) {
+		vkDestroyImageView(device.logicalDevice, swapchain->depthStencilImageView, nullptr);
+		swapchain->depthStencilImageView = VK_NULL_HANDLE;
+	}
+
+	if (!swapchain->depthStencilImage != VK_NULL_HANDLE) {
+		vkDestroyImage(device.logicalDevice, swapchain->depthStencilImage, nullptr);
+		swapchain->depthStencilImage = VK_NULL_HANDLE;
+	}
+
+	if (!swapchain->depthStencilImageMemory != VK_NULL_HANDLE) {
+		vkFreeMemory(device.logicalDevice, swapchain->depthStencilImageMemory, nullptr);
+		swapchain->depthStencilImageMemory = VK_NULL_HANDLE;
 	}
 
 	// Очистить swap-chain
@@ -1474,6 +1603,20 @@ VkPipeline VkRenderer::InitGraphicsPipeline(
 	rasterizationStage.depthBiasClamp = 0.0f;
 	rasterizationStage.depthBiasSlopeFactor = 0.0f;
 
+	// Описываем этап z-теста (теста глубины)
+	// Активировать тест глубины, использовать сравнение "меньше или равно"
+	VkPipelineDepthStencilStateCreateInfo depthStencilStage = {};
+	depthStencilStage.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStage.depthTestEnable = VK_TRUE;
+	depthStencilStage.depthWriteEnable = VK_TRUE;
+	depthStencilStage.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStage.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStage.back.failOp = VK_STENCIL_OP_KEEP;
+	depthStencilStage.back.passOp = VK_STENCIL_OP_KEEP;
+	depthStencilStage.back.compareOp = VK_COMPARE_OP_ALWAYS;
+	depthStencilStage.stencilTestEnable = VK_FALSE;
+	depthStencilStage.front = depthStencilStage.back;
+
 	// Описываем этап мультисемплинга (сглаживание пиксельных лесенок)
 	// Мултисемплинг - добавляет дополнительные ключевые точки в пиксел (семплы), для более точного вычисления его цвета
 	// за счет чего возникает эффект более сглаженных линий (в данном примере не используется мульти-семплинг)
@@ -1516,6 +1659,7 @@ VkPipeline VkRenderer::InitGraphicsPipeline(
 	pipelineInfo.pInputAssemblyState = &inputAssemblyStage;     // Настройки этапа сборки примитивов из полученных вершин
 	pipelineInfo.pViewportState = &viewportState;               // Настройки области видимости
 	pipelineInfo.pRasterizationState = &rasterizationStage;     // Настройки этапа растеризации
+	pipelineInfo.pDepthStencilState = &depthStencilStage;       // Настройка этапа z-теста
 	pipelineInfo.pMultisampleState = &multisamplingStage;       // Настройки этапа мультисемплинга
 	pipelineInfo.pColorBlendState = &colorBlendState;           // Настройки этапа смешивания цветов
 	pipelineInfo.layout = pipelineLayout;                       // Размещение конвейера
@@ -1633,16 +1777,14 @@ void VkRenderer::PrepareDrawCommands(
 	cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 	cmdBufInfo.pNext = nullptr;
 
-	// Для единственного цветового вложения, описанного в конфигурации render pass (прохода рендеринга) - будет использоваться
-	// первая конфигурация очистки цветов из этого массива. Вложение с опцией loadOp равное VK_ATTACHMENT_LOAD_OP_CLEAR будет очищенно
-	// данным цветом
-	std::vector<VkClearValue> clearValues =
-	{
-		{
-			{ 0.0f, 0.0f, 0.2f, 1.0f },    // Цвет             
-			{}                             // Глубина (пока-что не используется)
-		}
-	};
+	// Параметры очистки вложений в начале прохода
+	std::vector<VkClearValue> clearValues(2);
+	// Очистка первого вложения (цветового)
+	clearValues[0].color = { 0.0f, 0.0f, 0.2f, 1.0f };
+	clearValues[0].depthStencil = {};
+	// Очиска второго вложения (вложения глубины-трфарета)
+	clearValues[1].depthStencil.depth = 1.0f;
+	clearValues[1].depthStencil.stencil = 0;
 
 	// Информация о начале прохода
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -1800,7 +1942,7 @@ void VkRenderer::VideoSettingsChanged()
 	// Render pass не зависит от swap-chain, но поскольку поверхность могла сменить свои свойства - следует пересоздать
 	// по новой, проверив формат цветового вложения
 	this->DeinitRenderPass(this->device_, &(this->renderPass_));
-	this->renderPass_ = this->InitRenderPass(this->device_, this->surface_, VK_FORMAT_B8G8R8A8_UNORM);
+	this->renderPass_ = this->InitRenderPass(this->device_, this->surface_, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_D32_SFLOAT_S8_UINT);
 
 	// Ре-инициализация swap-cahin. 
 	// В начале получаем старый swap-chain
@@ -1810,6 +1952,7 @@ void VkRenderer::VideoSettingsChanged()
 		this->device_,
 		this->surface_,
 		{ VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+		VK_FORMAT_D32_SFLOAT_S8_UINT,
 		this->renderPass_,
 		3,
 		&oldSwapChain);
