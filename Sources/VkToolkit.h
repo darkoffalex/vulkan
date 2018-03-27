@@ -182,6 +182,43 @@ namespace vktoolkit
 	};
 
 	/**
+	* Структура описывающая ресурс изображения состоит из 3-ех составляющих:
+	* - Хендл изображения (объект самого ресурса изображения)
+	* - Хендл памяти (для использования изображения, как и в случае с буфером, нужно аллоцировать и привязывать память)
+	* - Хендл view объекта (используется для доступа к самом ресурсу либо подресурсам)
+	*/
+	struct Image
+	{
+		VkImage vkImage = VK_NULL_HANDLE;
+		VkDeviceMemory vkDeviceMemory = VK_NULL_HANDLE;
+		VkImageView vkImageView = VK_NULL_HANDLE;
+		VkFormat format = {};
+		VkExtent3D extent = {};
+
+		// Деинициализация (очистка памяти)
+		void Deinit(VkDevice logicalDevice) {
+
+			this->format = {};
+			this->extent = {};
+
+			if (this->vkImageView != VK_NULL_HANDLE) {
+				vkDestroyImageView(logicalDevice, this->vkImageView, nullptr);
+				this->vkImageView = VK_NULL_HANDLE;
+			}
+
+			if (this->vkImage != VK_NULL_HANDLE) {
+				vkDestroyImage(logicalDevice, this->vkImage, nullptr);
+				this->vkImage = VK_NULL_HANDLE;
+			}
+
+			if (this->vkDeviceMemory != VK_NULL_HANDLE) {
+				vkFreeMemory(logicalDevice, this->vkDeviceMemory, nullptr);
+				this->vkDeviceMemory = VK_NULL_HANDLE;
+			}
+		}
+	};
+
+	/**
 	* Структура описывающая своп-чейн (список показа). Список показа представляет из себя набор сменяемых изображений.
 	* В одно изображение может производится запись (рендеринг), в то время как другое будет показываться (презентация).
 	* Как правило изображений в списке от 1 до 3. Если изображение одно - рендеринг будет происходить в показанное изображение
@@ -192,19 +229,24 @@ namespace vktoolkit
 	* - Массив буферов кадров
 	*/
 	struct Swapchain {
+		// Хендл swap-chain
 		VkSwapchainKHR vkSwapchain = VK_NULL_HANDLE;
 
+		// Хендлы изображений и видов для цветовых вложений фрейм-буферов
+		// а так же формат и расширение
 		std::vector<VkImage> images;
 		std::vector<VkImageView> imageViews;
-		std::vector<VkFramebuffer> framebuffers;
 		VkFormat imageFormat = {};
-
-		VkImage depthStencilImage = VK_NULL_HANDLE;
-		VkDeviceMemory depthStencilImageMemory = VK_NULL_HANDLE;
-		VkImageView depthStencilImageView = VK_NULL_HANDLE;
-		VkFormat depthStencilFormat = {};
-
 		VkExtent2D imageExtent = {};
+
+		// Изображение буфера глубины-трафорета (Z-буфер)
+		// К данным изображениям следует создавать так же и память, в отличии
+		// от изображений swap-chain, которые аллоцируются. Структура vktoolkit::Image
+		// содержит все необходимое
+		vktoolkit::Image depthStencil = {};
+
+		// Хендлы фреймбуферов
+		std::vector<VkFramebuffer> framebuffers;
 	};
 
 	/**
@@ -448,6 +490,18 @@ namespace vktoolkit
 	* @return vktoolkit::Buffer - структура содержающая хендл буфера, хендл памяти а так же размер буфера
 	*/
 	Buffer CreateBuffer(const vktoolkit::Device &device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE);
+
+	/**
+	* Создание простого однослойного изображения
+	* @param vktoolkit::Device &device - устройство в памяти которого, либо с доступном для которого, будет создаваться изображение
+	* @param VkImageType imageType - тип изображения (1D, 2D. 3D текстура)
+	* @param VkFormat format - формат изображения
+	* @param VkExtent3D extent - расширение (разрешение) изображения
+	* @param VkImageUsageFlags usage - использование изображения (в качестве чего, назначение)
+	* @param VkImageAspectFlags subresourceRangeAspect - использование области подресурса (???)
+	* @param VkSharingMode sharingMode - настройка доступа к памяти изображения для очередей (VK_SHARING_MODE_EXCLUSIVE - с буфером работает одна очередь)
+	*/
+	Image CreateImageSingle(const vktoolkit::Device &device, VkImageType imageType, VkFormat format, VkExtent3D extent, VkImageUsageFlags usage, VkImageAspectFlags subresourceRangeAspect, VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE);
 
 	/**
 	* Получить описание привязок вершинных данных к конвейеру

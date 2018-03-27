@@ -326,6 +326,92 @@ vktoolkit::Buffer vktoolkit::CreateBuffer(const vktoolkit::Device &device, VkDev
 }
 
 /**
+* Создание простого однослойного изображения
+* @param vktoolkit::Device &device - устройство в памяти которого, либо с доступном для которого, будет создаваться изображение
+* @param VkImageType imageType - тип изображения (1D, 2D. 3D текстура)
+* @param VkFormat format - формат изображения
+* @param VkExtent3D extent - расширение (разрешение) изображения
+* @param VkImageUsageFlags usage - использование изображения (в качестве чего, назначение)
+* @param VkImageAspectFlags subresourceRangeAspect - использование области подресурса (???)
+* @param VkSharingMode sharingMode - настройка доступа к памяти изображения для очередей (VK_SHARING_MODE_EXCLUSIVE - с буфером работает одна очередь)
+*/
+vktoolkit::Image vktoolkit::CreateImageSingle(const vktoolkit::Device &device, VkImageType imageType, VkFormat format, VkExtent3D extent, VkImageUsageFlags usage, VkImageAspectFlags subresourceRangeAspect, VkSharingMode sharingMode)
+{
+	// Результирующий объект изображения
+	vktoolkit::Image resultImage;
+	resultImage.extent = extent;
+	resultImage.format = format;
+
+	// Конфигурация изображения
+	VkImageCreateInfo imageInfo = {};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = imageType;
+	imageInfo.format = format;
+	imageInfo.extent = extent;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.sharingMode = sharingMode;
+	imageInfo.usage = usage;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	// Создание изображения
+	if (vkCreateImage(device.logicalDevice, &imageInfo, nullptr, &(resultImage.vkImage)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while creating image");
+	}
+
+	// Получить требования к памяти с учетом параметров изображения
+	VkMemoryRequirements memReqs = {};
+	vkGetImageMemoryRequirements(device.logicalDevice, resultImage.vkImage, &memReqs);
+
+	// Конфигурация аллокации памяти (память на устройстве)
+	VkMemoryAllocateInfo memoryAllocInfo = {};
+	memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocInfo.allocationSize = memReqs.size;
+	memoryAllocInfo.memoryTypeIndex = vktoolkit::GetMemoryTypeIndex(device.physicalDevice, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	// Аллоцировать
+	if (vkAllocateMemory(device.logicalDevice, &memoryAllocInfo, nullptr, &(resultImage.vkDeviceMemory)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while allocating memory for image");
+	}
+
+	// Привязать
+	if (vkBindImageMemory(device.logicalDevice, resultImage.vkImage, resultImage.vkDeviceMemory, 0) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while binding memory to image");
+	}
+
+	// Подходящий тип view-объекта (в зависимости от типа изображения)
+	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_1D;
+	if (imageInfo.imageType == VK_IMAGE_TYPE_2D) {
+		viewType = VK_IMAGE_VIEW_TYPE_2D;
+	}
+	else if (imageInfo.imageType == VK_IMAGE_TYPE_3D) {
+		viewType = VK_IMAGE_VIEW_TYPE_3D;
+	}
+
+	// Конфигурация view-объекта
+	VkImageViewCreateInfo imageViewInfo = {};
+	imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewInfo.viewType = viewType;
+	imageViewInfo.format = format;
+	imageViewInfo.subresourceRange = {};
+	imageViewInfo.subresourceRange.aspectMask = subresourceRangeAspect;
+	imageViewInfo.subresourceRange.baseMipLevel = 0;
+	imageViewInfo.subresourceRange.levelCount = 1;
+	imageViewInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewInfo.subresourceRange.layerCount = 1;
+	imageViewInfo.image = resultImage.vkImage;
+
+	// Создание view-обхекта
+	if (vkCreateImageView(device.logicalDevice, &imageViewInfo, nullptr, &(resultImage.vkImageView)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while creating image view");
+	}
+
+	return resultImage;
+}
+
+/**
 * Получить описание привязок вершинных данных к конвейеру
 * @param unsigned int bindingIndex - индекс привязки буфера вершин к конвейеру
 * @return std::vector<VkVertexInputBindingDescription> - массив описаний привязок

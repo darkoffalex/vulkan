@@ -748,13 +748,11 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 	// Добавить информацию о формате и расширении в результирующий объект swap-chain'а (он будет отдан функцией)
 	resultSwapchain.imageFormat = swapchainCreateInfo.imageFormat;
 	resultSwapchain.imageExtent = swapchainCreateInfo.imageExtent;
-	resultSwapchain.depthStencilFormat = depthStencilFormat;
 
 	// Если старый swap-chain был передан - очистить его информацию о формате и расширении
 	if (oldSwapchain != nullptr) {
 		oldSwapchain->imageExtent = {};
 		oldSwapchain->imageFormat = {};
-		oldSwapchain->depthStencilFormat = {};
 	}
 
 	// Индексы семейств
@@ -763,7 +761,7 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 		(unsigned int)device.queueFamilies.present
 	};
 
-	// Есл для команд графики и представления используются разные семейства, значит доступ к ресурсу (в данном случае к буферам изображений)
+	// Если для команд графики и представления используются разные семейства, значит доступ к ресурсу (в данном случае к буферам изображений)
 	// должен быть распараллелен (следует использовать VK_SHARING_MODE_CONCURRENT, указав при этом кол-во семейств и их индексы)
 	if (device.queueFamilies.graphics != device.queueFamilies.present) {
 		swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -848,72 +846,18 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 
 	// Если это пересоздание swap-chain (передан старый) следует очистить компоненты прежнего буфера глубины
 	if (oldSwapchain != nullptr) {
-		if (!oldSwapchain->depthStencilImageView != VK_NULL_HANDLE) {
-			vkDestroyImageView(device.logicalDevice, oldSwapchain->depthStencilImageView, nullptr);
-			oldSwapchain->depthStencilImageView = VK_NULL_HANDLE;
-		}
-
-		if (!oldSwapchain->depthStencilImage != VK_NULL_HANDLE) {
-			vkDestroyImage(device.logicalDevice, oldSwapchain->depthStencilImage, nullptr);
-			oldSwapchain->depthStencilImage = VK_NULL_HANDLE;
-		}
-
-		if (!oldSwapchain->depthStencilImageMemory != VK_NULL_HANDLE) {
-			vkFreeMemory(device.logicalDevice, oldSwapchain->depthStencilImageMemory, nullptr);
-			oldSwapchain->depthStencilImageMemory = VK_NULL_HANDLE;
-		}
+		oldSwapchain->depthStencil.Deinit(device.logicalDevice);
 	}
 
-	// Инициализация основных компонентов буфера глубины 
-	// Создать изображение глубины
-	VkImageCreateInfo depthImageInfo = {};
-	depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
-	depthImageInfo.format = depthStencilFormat;
-	depthImageInfo.extent = { si.capabilities.currentExtent.width, si.capabilities.currentExtent.height, 1 };
-	depthImageInfo.mipLevels = 1;
-	depthImageInfo.arrayLayers = 1;
-	depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	
-	if (vkCreateImage(device.logicalDevice, &depthImageInfo, nullptr, &(resultSwapchain.depthStencilImage)) != VK_SUCCESS) {
-		throw std::runtime_error("Vulkan: Error while creating image for depth-stencil buffer");
-	}
-
-	// Ааллоцировать память на стороне устройства и привязать ее к изображению
-	VkMemoryAllocateInfo depthMemAllocinfo = {};
-	depthMemAllocinfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	VkMemoryRequirements depthMemReqs = {};
-	vkGetImageMemoryRequirements(device.logicalDevice, resultSwapchain.depthStencilImage, &depthMemReqs);
-	depthMemAllocinfo.allocationSize = depthMemReqs.size;
-	depthMemAllocinfo.memoryTypeIndex = vktoolkit::GetMemoryTypeIndex(device.physicalDevice, depthMemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	if (vkAllocateMemory(device.logicalDevice, &depthMemAllocinfo, nullptr, &(resultSwapchain.depthStencilImageMemory)) != VK_SUCCESS) {
-		throw std::runtime_error("Vulkan: Error while allocating memory for depth-stencil image");
-	}
-
-	if (vkBindImageMemory(device.logicalDevice, resultSwapchain.depthStencilImage, resultSwapchain.depthStencilImageMemory, 0) != VK_SUCCESS) {
-		throw std::runtime_error("Vulkan: Error while binding memory to depth-stencil image");
-	}
-
-	// Создать view объект для изображения-буфера глубины
-	VkImageViewCreateInfo depthStencilView = {};
-	depthStencilView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	depthStencilView.format = depthStencilFormat;
-	depthStencilView.subresourceRange = {};
-	depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-	depthStencilView.subresourceRange.baseMipLevel = 0;
-	depthStencilView.subresourceRange.levelCount = 1;
-	depthStencilView.subresourceRange.baseArrayLayer = 0;
-	depthStencilView.subresourceRange.layerCount = 1;
-	depthStencilView.image = resultSwapchain.depthStencilImage;
-
-	if (vkCreateImageView(device.logicalDevice, &depthStencilView, nullptr, &(resultSwapchain.depthStencilImageView)) != VK_SUCCESS) {
-		throw std::runtime_error("Vulkan: Error while creating depth-stencil image view");
-	}
+	// Создать буфер глубины-трафарета (обычное 2D-изображение с требуемым форматом)
+	resultSwapchain.depthStencil = vktoolkit::CreateImageSingle(
+		device,
+		VK_IMAGE_TYPE_2D,
+		depthStencilFormat,
+		{ si.capabilities.currentExtent.width, si.capabilities.currentExtent.height, 1 },
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		swapchainCreateInfo.imageSharingMode);
 
 
 	// Теперь необходимо создать фрейм-буферы привязанные к image-views объектам изображений и буфера глубины (изображения глубины)
@@ -935,7 +879,7 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 
 		std::vector<VkImageView> attachments(2);
 		attachments[0] = resultSwapchain.imageViews[i];                             // Цветовое вложение (на каждый фрейм-буфер свое)		
-		attachments[1] = resultSwapchain.depthStencilImageView;                     // Буфер глубины (один на все фрейм-буферы)
+		attachments[1] = resultSwapchain.depthStencil.vkImageView;                  // Буфер глубины (один на все фрейм-буферы)
 
 		// Описание нового фреймбуфера
 		VkFramebufferCreateInfo framebufferInfo = {};
@@ -985,20 +929,7 @@ void VkRenderer::DeinitSwapchain(const vktoolkit::Device &device, vktoolkit::Swa
 	}
 
 	// Очиска компонентов Z-буфера
-	if (!swapchain->depthStencilImageView != VK_NULL_HANDLE) {
-		vkDestroyImageView(device.logicalDevice, swapchain->depthStencilImageView, nullptr);
-		swapchain->depthStencilImageView = VK_NULL_HANDLE;
-	}
-
-	if (!swapchain->depthStencilImage != VK_NULL_HANDLE) {
-		vkDestroyImage(device.logicalDevice, swapchain->depthStencilImage, nullptr);
-		swapchain->depthStencilImage = VK_NULL_HANDLE;
-	}
-
-	if (!swapchain->depthStencilImageMemory != VK_NULL_HANDLE) {
-		vkFreeMemory(device.logicalDevice, swapchain->depthStencilImageMemory, nullptr);
-		swapchain->depthStencilImageMemory = VK_NULL_HANDLE;
-	}
+	swapchain->depthStencil.Deinit(device.logicalDevice);
 
 	// Очистить swap-chain
 	if (swapchain->vkSwapchain != VK_NULL_HANDLE) {
@@ -1597,7 +1528,7 @@ VkPipeline VkRenderer::InitGraphicsPipeline(
 	rasterizationStage.polygonMode = VK_POLYGON_MODE_FILL;              // Закрашенные полигоны
 	rasterizationStage.lineWidth = 1.0f;                                // Ширина линии
 	rasterizationStage.cullMode = VK_CULL_MODE_BACK_BIT;                // Отсечение граней (отсекаются те, что считаются задними)
-	rasterizationStage.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;     // Порялок следования вершин для лицевой грани - по часовой стрелке
+	rasterizationStage.frontFace = VK_FRONT_FACE_CLOCKWISE;             // Порялок следования вершин для лицевой грани - по часовой стрелке
 	rasterizationStage.depthBiasEnable = VK_FALSE;                      // Контроль значений глубины
 	rasterizationStage.depthBiasConstantFactor = 0.0f;
 	rasterizationStage.depthBiasClamp = 0.0f;
