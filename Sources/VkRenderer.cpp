@@ -1557,7 +1557,7 @@ VkPipelineLayout VkRenderer::InitPipelineLayout(const vktoolkit::Device &device,
 	VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {};
 	pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pPipelineLayoutCreateInfo.pNext = nullptr;
-	pPipelineLayoutCreateInfo.setLayoutCount = descriptorSetLayouts.size();
+	pPipelineLayoutCreateInfo.setLayoutCount = (uint32_t)descriptorSetLayouts.size();
 	pPipelineLayoutCreateInfo.pSetLayouts = descriptorSetLayouts.data();
 
 	if (vkCreatePipelineLayout(device.logicalDevice, &pPipelineLayoutCreateInfo, nullptr, &resultLayout) != VK_SUCCESS) {
@@ -1861,8 +1861,7 @@ void VkRenderer::PrepareDrawCommands(
 	// Параметры очистки вложений в начале прохода
 	std::vector<VkClearValue> clearValues(2);
 	// Очистка первого вложения (цветового)
-	clearValues[0].color = { 0.0f, 0.0f, 0.2f, 1.0f };
-	clearValues[0].depthStencil = {};
+	clearValues[0].color = { 0.6f, 0.8f, 0.8f, 1.0f };
 	// Очиска второго вложения (вложения глубины-трфарета)
 	clearValues[1].depthStencil.depth = 1.0f;
 	clearValues[1].depthStencil.stencil = 0;
@@ -1924,7 +1923,7 @@ void VkRenderer::PrepareDrawCommands(
 					VK_PIPELINE_BIND_POINT_GRAPHICS, 
 					pipelineLayout, 
 					0, 
-					descriptorSets.size(), 
+					(uint32_t)descriptorSets.size(),
 					descriptorSets.data(), 
 					(uint32_t)dynamicOffsets.size(), 
 					dynamicOffsets.data());
