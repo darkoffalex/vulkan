@@ -1,13 +1,13 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform UniformBufferObjectWorld {
+layout(set = 0, binding = 0) uniform UniformBufferObjectWorld {
     mat4 world;
     mat4 view;
     mat4 proj;
 } uboWorld;
 
-layout(binding = 1) uniform UniformBufferObjectModel {
+layout(set = 0, binding = 1) uniform UniformBufferObjectModel {
     mat4 model;
 } uboModel;
 

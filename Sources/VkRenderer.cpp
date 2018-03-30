@@ -17,8 +17,9 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	surface_(VK_NULL_HANDLE),
 	renderPass_(VK_NULL_HANDLE),
 	commandPoolDraw_(VK_NULL_HANDLE),
-	descriptorSetLayout_(VK_NULL_HANDLE),
-	descriptorSet_(VK_NULL_HANDLE),
+	descriptorSetLayoutMain_(VK_NULL_HANDLE),
+	descriptorSetLayoutTextures_(VK_NULL_HANDLE),
+	descriptorSetMain_(VK_NULL_HANDLE),
 	pipelineLayout_(VK_NULL_HANDLE),
 	pipeline_(VK_NULL_HANDLE),
 	primitivesMaxCount_(primitivesMaxCount),
@@ -67,17 +68,26 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	// Аллокация uniform-буфера отдельных объектов (динамический буфер)
 	this->uniformBufferModels_ = this->InitUniformBufferModels(this->device_, this->primitivesMaxCount_);
 
-	// Создание дескрипторного пула
-	this->descriptorPool_ = this->InitDescriptorPool(this->device_);
+	// Создание дескрипторного пула для выделения основного набора (для unform-буфера)
+	this->descriptorPoolMain_ = this->InitDescriptorPoolMain(this->device_);
 
-	// Инициализация размещения дескрипторного набора
-	this->descriptorSetLayout_ = this->InitDescriptorSetLayout(this->device_);
+	// Создание дескрипторного пула для выделения текстурного набора (текстурные семплеры)
+	this->descriptorPoolTextures_ = this->InitDescriptorPoolTextures(this->device_);
+
+	// Инициализация размещения основного дескрипторного набора
+	this->descriptorSetLayoutMain_ = this->InitDescriptorSetLayoutMain(this->device_);
+
+	// Инициализация размещения теккстурного набора
+	this->descriptorSetLayoutTextures_ = this->InitDescriptorSetLayoutTextures(this->device_);
+
+	// Инициализация текстурного семплера
+	this->textureSampler_ = this->InitTextureSampler(this->device_);
 
 	// Инициализация дескрипторного набора
-	this->descriptorSet_ = this->InitDescriptorSet(
+	this->descriptorSetMain_ = this->InitDescriptorSetMain(
 		this->device_,
-		this->descriptorPool_,
-		this->descriptorSetLayout_,
+		this->descriptorPoolMain_,
+		this->descriptorSetLayoutMain_,
 		this->uniformBufferWorld_,
 		this->uniformBufferModels_);
 
@@ -85,7 +95,7 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 	this->uboModels_ = this->AllocateUboModels(this->device_, this->primitivesMaxCount_);
 
 	// Инициализация размещения графического конвейера
-	this->pipelineLayout_ = this->InitPipelineLayout(this->device_, this->descriptorSetLayout_);
+	this->pipelineLayout_ = this->InitPipelineLayout(this->device_, { this->descriptorSetLayoutMain_, this->descriptorSetLayoutTextures_});
 
 	// Инициализация графического конвейера
 	this->pipeline_ = this->InitGraphicsPipeline(this->device_, this->pipelineLayout_, this->swapchain_, this->renderPass_);
@@ -98,7 +108,7 @@ VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, unsigned int primitivesMa
 		this->commandBuffersDraw_,
 		this->renderPass_,
 		this->pipelineLayout_,
-		this->descriptorSet_,
+		this->descriptorSetMain_,
 		this->pipeline_,
 		this->swapchain_,
 		this->primitives_);
@@ -135,13 +145,22 @@ VkRenderer::~VkRenderer()
 	this->FreeUboModels(&(this->uboModels_));
 
 	// Деинициализация набора дескрипторов
-	this->DeinitDescriptorSet(this->device_, this->descriptorPool_, &(this->descriptorSet_));
+	this->DeinitDescriptorSet(this->device_, this->descriptorPoolMain_, &(this->descriptorSetMain_));
 
-	// Деинициализация размещения дескрипторного набора
-	this->DeinitDescriporSetLayout(this->device_, &(this->descriptorSetLayout_));
+	// Деинициализация текстурного семплера
+	this->DeinitTextureSampler(this->device_, &(this->textureSampler_));
 
-	// Уничтожение дескрипторного пула
-	this->DeinitDescriptorPool(this->device_, &(this->descriptorPool_));
+	// Деинициализация размещения текстурного дескрипторного набора
+	this->DeinitDescriporSetLayout(this->device_, &(this->descriptorSetLayoutTextures_));
+
+	// Деинициализация размещения основоного дескрипторного набора
+	this->DeinitDescriporSetLayout(this->device_, &(this->descriptorSetLayoutMain_));
+
+	// Уничтожение ntrcnehyjuj дескрипторного пула
+	this->DeinitDescriptorPool(this->device_, &(this->descriptorPoolTextures_));
+
+	// Уничтожение основного дескрипторного пула
+	this->DeinitDescriptorPool(this->device_, &(this->descriptorPoolMain_));
 
 	// Деинициализация uniform-буффера объектов
 	this->DeinitUniformBuffer(this->device_, &(this->uniformBufferModels_));
@@ -857,6 +876,9 @@ vktoolkit::Swapchain VkRenderer::InitSwapChain(
 		{ si.capabilities.currentExtent.width, si.capabilities.currentExtent.height, 1 },
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
 		VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
 		swapchainCreateInfo.imageSharingMode);
 
 
@@ -1150,12 +1172,12 @@ void VkRenderer::DeinitUniformBuffer(const vktoolkit::Device &device, vktoolkit:
 /* Д Е С К Р И П Т О Р Н Ы Й  П У Л */
 
 /**
-* Создание декскрипторного пула
+* Инициализация основного декскрипторного пула
 * @param const vktoolkit::Device &device - устройство
 * @return VkDescriptorPool - хендл дескрипторного пула
 * @note - дескрипторный пул позволяет выделять специальные наборы дескрипторов, обеспечивающие доступ к определенным буферам из шейдера
 */
-VkDescriptorPool VkRenderer::InitDescriptorPool(const vktoolkit::Device &device)
+VkDescriptorPool VkRenderer::InitDescriptorPoolMain(const vktoolkit::Device &device)
 {
 	// Хендл нового дескрипторого пула
 	VkDescriptorPool descriptorPoolResult = VK_NULL_HANDLE;
@@ -1182,7 +1204,44 @@ VkDescriptorPool VkRenderer::InitDescriptorPool(const vktoolkit::Device &device)
 		throw std::runtime_error("Vulkan: Error in vkCreateDescriptorPool function. Cant't create descriptor pool");
 	}
 
-	toolkit::LogMessage("Vulkan: Descriptor pool successfully initialized");
+	toolkit::LogMessage("Vulkan: Main descriptor pool successfully initialized");
+
+	// Отдать результат
+	return descriptorPoolResult;
+}
+
+/**
+* Инициализация декскрипторного пула под текстурные наборы дескрипторов
+* @param const vktoolkit::Device &device - устройство
+* @param uint32_t maxDescriptorSets - максимальное кол-во наборов
+* @return VkDescriptorPool - хендл дескрипторного пула
+* @note - дескрипторный пул позволяет выделять специальные наборы дескрипторов, обеспечивающие доступ к определенным буферам из шейдера
+*/
+VkDescriptorPool VkRenderer::InitDescriptorPoolTextures(const vktoolkit::Device &device, uint32_t maxDescriptorSets)
+{
+	// Хендл нового дескрипторого пула
+	VkDescriptorPool descriptorPoolResult = VK_NULL_HANDLE;
+
+	// Парамтеры размеров пула
+	std::vector<VkDescriptorPoolSize> descriptorPoolSizes =
+	{
+		// Один дескриптор для текстурного семплера
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER , 1 },
+	};
+
+	// Конфигурация пула
+	VkDescriptorPoolCreateInfo poolInfo = {};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = (uint32_t)descriptorPoolSizes.size();
+	poolInfo.pPoolSizes = descriptorPoolSizes.data();
+	poolInfo.maxSets = maxDescriptorSets;
+
+	// Создание дескрипторного пула
+	if (vkCreateDescriptorPool(device.logicalDevice, &poolInfo, nullptr, &descriptorPoolResult) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error in vkCreateDescriptorPool function. Cant't create descriptor pool");
+	}
+
+	toolkit::LogMessage("Vulkan: Texture descriptor pool successfully initialized");
 
 	// Отдать результат
 	return descriptorPoolResult;
@@ -1205,12 +1264,12 @@ void VkRenderer::DeinitDescriptorPool(const vktoolkit::Device &device, VkDescrip
 /* Р А З М Е Щ Е Н И Е  Д Е С К Р И П Т О Р Н О Г О  Н А Б О Р А */
 
 /**
-* Инициализация описания размещения дескрипторного пула
+* Инициализация описания размещения дескрипторного пула (под основной дескрипторный набор)
 * @param const vktoolkit::Device &device - устройство
 * @return VkDescriptorSetLayout - хендл размещения дескрипторного пула
 * @note - Размещение - информация о том сколько и каких именно (какого типа) дескрипторов следует ожидать на определенных этапах конвейера
 */
-VkDescriptorSetLayout VkRenderer::InitDescriptorSetLayout(const vktoolkit::Device &device)
+VkDescriptorSetLayout VkRenderer::InitDescriptorSetLayoutMain(const vktoolkit::Device &device)
 {
 	// Результирующий хендл
 	VkDescriptorSetLayout layoutResult = VK_NULL_HANDLE;
@@ -1246,7 +1305,47 @@ VkDescriptorSetLayout VkRenderer::InitDescriptorSetLayout(const vktoolkit::Devic
 		throw std::runtime_error("Vulkan: Error in vkCreateDescriptorSetLayout. Can't initialize descriptor set layout");
 	}
 
-	toolkit::LogMessage("Vulkan: Descriptor set layout successfully initialized");
+	toolkit::LogMessage("Vulkan: Main descriptor set layout successfully initialized");
+
+	return layoutResult;
+}
+
+/**
+* Инициализация описания размещения дескрипторного пула (под текстурные наборы дескрипторов)
+* @param const vktoolkit::Device &device - устройство
+* @return VkDescriptorSetLayout - хендл размещения дескрипторного пула
+* @note - Размещение - информация о том сколько и каких именно (какого типа) дескрипторов следует ожидать на определенных этапах конвейера
+*/
+VkDescriptorSetLayout VkRenderer::InitDescriptorSetLayoutTextures(const vktoolkit::Device &device)
+{
+	// Результирующий хендл
+	VkDescriptorSetLayout layoutResult = VK_NULL_HANDLE;
+
+	// Необходимо описать привязки дескрипторов к этапам конвейера
+	// Каждая привязка соостветствует типу дескриптора и может относиться к определенному этапу графического конвейера
+	std::vector<VkDescriptorSetLayoutBinding> bindings =
+	{
+		{
+			0,                                            // Индекс привязки
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,    // Тип дескриптора (семплер изображения)
+			1,                                            // Кол-во дескрипторов
+			VK_SHADER_STAGE_FRAGMENT_BIT,                 // Этап конвейера (вершинный шейдер)
+			nullptr
+		},
+	};
+
+	// Инициализировать размещение дескрипторного набора
+	VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {};
+	descriptorLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptorLayoutInfo.pNext = nullptr;
+	descriptorLayoutInfo.bindingCount = (uint32_t)bindings.size();
+	descriptorLayoutInfo.pBindings = bindings.data();
+
+	if (vkCreateDescriptorSetLayout(device.logicalDevice, &descriptorLayoutInfo, nullptr, &layoutResult) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error in vkCreateDescriptorSetLayout. Can't initialize descriptor set layout");
+	}
+
+	toolkit::LogMessage("Vulkan: Texture descriptor set layout successfully initialized");
 
 	return layoutResult;
 }
@@ -1266,6 +1365,57 @@ void VkRenderer::DeinitDescriporSetLayout(const vktoolkit::Device &device, VkDes
 	}
 }
 
+/* Т Е К С Т У Р Н Ы Й  С Е М П Л Е Р */
+
+/**
+* Инициализация текстурного семплера
+* @param const vktoolkit::Device &device - устройство
+* @note - описывает как данные текстуры подаются в шейдер и как интерпретируются координаты
+*/
+VkSampler VkRenderer::InitTextureSampler(const vktoolkit::Device &device)
+{
+	// Результирующий хендл семплера
+	VkSampler resultSampler;
+
+	// Настройка семплера
+	VkSamplerCreateInfo samplerInfo = {};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.magFilter = VK_FILTER_LINEAR;                      // Тип интерполяции когда тексели больше фрагментов
+	samplerInfo.minFilter = VK_FILTER_LINEAR;                      // Тип интерполяции когда тексели меньше фрагментов
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;     // Повторять при выходе за пределы
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.anisotropyEnable = VK_TRUE;                        // Включть анизотропную фильтрацию
+	samplerInfo.maxAnisotropy = 4;                                 // уровень фильтрации
+	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;    // Цвет грани
+	samplerInfo.unnormalizedCoordinates = VK_FALSE;                // Использовать нормальзованные координаты (не пиксельные)
+	samplerInfo.compareEnable = VK_FALSE;
+	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+	// Создание семплера
+	if (vkCreateSampler(device.logicalDevice, &samplerInfo, nullptr, &resultSampler) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error while creating texture sampler");
+	}
+
+	toolkit::LogMessage("Vulkan: Texture sampler successfully initialized");
+
+	return resultSampler;
+}
+
+/**
+* Деинициализация текстурного семплера
+* @param const vktoolkit::Device &device - устройство
+* @param VkSampler * sampler - деинициализация текстурного семплера
+*/
+void VkRenderer::DeinitTextureSampler(const vktoolkit::Device &device, VkSampler * sampler)
+{
+	if (sampler != nullptr && *sampler != VK_NULL_HANDLE) {
+		vkDestroySampler(device.logicalDevice, *sampler, nullptr);
+		*sampler = VK_NULL_HANDLE;
+	}
+}
+
 /* Н А Б О Р  Д Е С К Р И П Т О Р О В */
 
 /**
@@ -1276,7 +1426,7 @@ void VkRenderer::DeinitDescriporSetLayout(const vktoolkit::Device &device, VkDes
 * @param const vktoolkit::UniformBuffer &uniformBufferWorld - буфер содержит необходимую для создания дескриптора информацию
 * @param const vktoolkit::UniformBuffer &uniformBufferModels - буфер содержит необходимую для создания дескриптора информацию
 */
-VkDescriptorSet VkRenderer::InitDescriptorSet(
+VkDescriptorSet VkRenderer::InitDescriptorSetMain(
 	const vktoolkit::Device &device,
 	VkDescriptorPool descriptorPool,
 	VkDescriptorSetLayout descriptorSetLayout,
@@ -1344,7 +1494,7 @@ VkDescriptorSet VkRenderer::InitDescriptorSet(
 void VkRenderer::DeinitDescriptorSet(const vktoolkit::Device &device, VkDescriptorPool descriptorPool, VkDescriptorSet * descriptorSet)
 {
 	if (device.logicalDevice != VK_NULL_HANDLE
-		&& descriptorPool_ != VK_NULL_HANDLE
+		&& descriptorPool != VK_NULL_HANDLE
 		&& descriptorSet != nullptr
 		&& *descriptorSet != VK_NULL_HANDLE)
 	{
@@ -1397,18 +1547,18 @@ void VkRenderer::FreeUboModels(vktoolkit::UboModelArray * uboModels)
 /**
 * Инициализация размещения графического конвейера
 * @param const vktoolkit::Device &device - устройство
-* @param VkDescriptorSetLayout descriptorSetLayout - хендл размещения дискрипторного набора (дает конвейеру инфу о дескрипторах)
+* @param std::vector<VkDescriptorSetLayout> descriptorSetLayouts - хендлы размещениий дискрипторного набора (дает конвейеру инфу о дескрипторах)
 * @return VkPipelineLayout - хендл размещения конвейера
 */
-VkPipelineLayout VkRenderer::InitPipelineLayout(const vktoolkit::Device &device, VkDescriptorSetLayout descriptorSetLayout)
+VkPipelineLayout VkRenderer::InitPipelineLayout(const vktoolkit::Device &device, std::vector<VkDescriptorSetLayout> descriptorSetLayouts)
 {
 	VkPipelineLayout resultLayout;
 
 	VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {};
 	pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pPipelineLayoutCreateInfo.pNext = nullptr;
-	pPipelineLayoutCreateInfo.setLayoutCount = 1;
-	pPipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
+	pPipelineLayoutCreateInfo.setLayoutCount = descriptorSetLayouts.size();
+	pPipelineLayoutCreateInfo.pSetLayouts = descriptorSetLayouts.data();
 
 	if (vkCreatePipelineLayout(device.logicalDevice, &pPipelineLayoutCreateInfo, nullptr, &resultLayout) != VK_SUCCESS) {
 		throw std::runtime_error("Vulkan: Error while creating pipeline layout");
@@ -1696,7 +1846,7 @@ void VkRenderer::PrepareDrawCommands(
 	std::vector<VkCommandBuffer> commandBuffers,
 	VkRenderPass renderPass,
 	VkPipelineLayout pipelineLayout,
-	VkDescriptorSet descriptorSet,
+	VkDescriptorSet descriptorSetMain,
 	VkPipeline pipeline,
 	const vktoolkit::Swapchain &swapchain,
 	const std::vector<vktoolkit::Primitive> &primitives)
@@ -1756,13 +1906,26 @@ void VkRenderer::PrepareDrawCommands(
 					primitiveIndex * static_cast<uint32_t>(this->device_.GetDynamicAlignment<glm::mat4>())
 				};
 
+				// Наборы дескрипторов (массив наборов)
+				// По умолчанию в нем только основной
+				std::vector<VkDescriptorSet> descriptorSets = {
+					descriptorSetMain
+				};
+
+				// Если у примитива есть текстура
+				// Добавить в список дескрипторов еще один (отвечающий за подачу текстуры и параметров семплинга в шейдер)
+				if (primitives[primitiveIndex].texture != nullptr) {
+					descriptorSets.push_back(primitives[primitiveIndex].texture->descriptorSet);
+				}
+				
+				// Привязать наборы дескрипторов
 				vkCmdBindDescriptorSets(
 					commandBuffers[i], 
 					VK_PIPELINE_BIND_POINT_GRAPHICS, 
 					pipelineLayout, 
 					0, 
-					1, 
-					&descriptorSet, 
+					descriptorSets.size(), 
+					descriptorSets.data(), 
 					(uint32_t)dynamicOffsets.size(), 
 					dynamicOffsets.data());
 
@@ -1901,7 +2064,7 @@ void VkRenderer::VideoSettingsChanged()
 		this->commandBuffersDraw_,
 		this->renderPass_,
 		this->pipelineLayout_,
-		this->descriptorSet_,
+		this->descriptorSetMain_,
 		this->pipeline_,
 		this->swapchain_,
 		this->primitives_);
@@ -2090,6 +2253,7 @@ void VkRenderer::SetCameraRotation(float x, float y, float z)
 unsigned int VkRenderer::AddPrimitive(
 	const std::vector<vktoolkit::Vertex> &vertices,
 	const std::vector<unsigned int> &indices,
+	const vktoolkit::Texture *texture,
 	glm::vec3 position,
 	glm::vec3 rotaton,
 	glm::vec3 scale)
@@ -2099,6 +2263,7 @@ unsigned int VkRenderer::AddPrimitive(
 	primitive.position = position;
 	primitive.rotation = rotaton;
 	primitive.scale = scale;
+	primitive.texture = texture;
 	primitive.drawIndexed = !indices.empty();
 
 	// Буфер вершин (временный)
@@ -2147,8 +2312,169 @@ unsigned int VkRenderer::AddPrimitive(
 
 	// Обновить командный буфер
 	this->ResetCommandBuffers(this->device_, this->commandBuffersDraw_);
-	this->PrepareDrawCommands(this->commandBuffersDraw_, this->renderPass_, this->pipelineLayout_, this->descriptorSet_, this->pipeline_, this->swapchain_, this->primitives_);
+	this->PrepareDrawCommands(this->commandBuffersDraw_, this->renderPass_, this->pipelineLayout_, this->descriptorSetMain_, this->pipeline_, this->swapchain_, this->primitives_);
 
 	// Вернуть индекс
 	return (unsigned int)(this->primitives_.size() - 1);
+}
+
+/**
+* Создание текстуры по данным о пикселях
+* @param const unsigned char* pixels - пиксели загруженные из файла
+* @return vktoolkit::Texture - структура с набором хендлов изображения и дескриптора
+*
+* @note - при загрузке используется временный буфер (временное изображение) для перемещения
+* в буфер распологающийся в памяти устройства. Нельзя сразу создать буфер в памяти устройства и переместить
+* в него данные. Это можно сделать только пр помощи команды копирования (из памяти доступной хосту в память
+* доступную только устройству)
+*/
+vktoolkit::Texture VkRenderer::CreateTexture(const unsigned char* pixels, uint32_t width, uint32_t height, uint32_t channels, uint32_t bpp)
+{
+	// Приостановить выполнение основных команд (если какие-либо в процессе)
+	this->Pause();
+
+	// Результат
+	vktoolkit::Texture resultTexture = {};
+
+	// Размер изображения (ожидаем по умолчанию 4 байта на пиксель, в режиме RGBA)
+	VkDeviceSize size = (VkDeviceSize)(width * height * bpp);
+
+	// Если данных не обнаружено
+	if (!pixels) {
+		throw std::runtime_error("Vulkan: Error while creating texture. Empty pixel buffer recieved");
+	}
+
+	// Создать промежуточное изображение
+	vktoolkit::Image stagingImage = vktoolkit::CreateImageSingle(
+		this->device_,
+		VK_IMAGE_TYPE_2D,
+		VK_FORMAT_R8G8B8A8_UNORM,
+		{ width,height,1 },
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_PREINITIALIZED,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		VK_IMAGE_TILING_LINEAR);
+
+	// Выбрать подресурс изображения (мип-уровень 0, слой - 0)
+	VkImageSubresource subresource = {};
+	subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	subresource.mipLevel = 0;
+	subresource.arrayLayer = 0;
+
+	// Размещение байт в подресурсе
+	VkSubresourceLayout stagingImageSubresourceLayout = {};
+	vkGetImageSubresourceLayout(this->device_.logicalDevice, stagingImage.vkImage, &subresource, &stagingImageSubresourceLayout);
+
+	// Разметить память под изображение
+	void* data;
+	vkMapMemory(this->device_.logicalDevice, stagingImage.vkDeviceMemory, 0, size, 0, &data);
+
+	// Если "ширина строки" равна кол-ву пиксилей по ширине помноженному на bpp - можно исользовать обычный memcpy
+	if (stagingImageSubresourceLayout.rowPitch == width * bpp) {
+		memcpy(data, pixels, (unsigned int)size);
+	}
+	// Если нет (например размер изображения не кратен степени двойки) - перебираем байты со смещением и копируем каждую стороку
+	else {
+		unsigned char* dataBytes = reinterpret_cast<unsigned char*>(data);
+		for (unsigned int y = 0; y < height; y++) {
+			memcpy(
+				&dataBytes[y * (stagingImageSubresourceLayout.rowPitch)],
+				&pixels[y * width * bpp],
+				width * bpp
+			);
+		}
+	}
+
+	// Убрать разметку памяти
+	vkUnmapMemory(this->device_.logicalDevice, stagingImage.vkDeviceMemory);
+
+	// Создать финальное изображение (в памяти устройства)
+	resultTexture.image = vktoolkit::CreateImageSingle(
+		this->device_,
+		VK_IMAGE_TYPE_2D,
+		VK_FORMAT_R8G8B8A8_UNORM,
+		{ width,height,1 },
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_LAYOUT_PREINITIALIZED,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+		VK_IMAGE_TILING_OPTIMAL);
+
+	
+	// Создать командный буфер для команд перевода размещения изображений
+	VkCommandBuffer transitionCmdBuffer = vktoolkit::CreateSingleTimeCommandBuffer(this->device_, this->commandPoolDraw_);
+
+	// Подресурс подвергающийся смере размещения в изображениях (описываем его)
+	VkImageSubresourceRange subresourceRange = {};
+	subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	subresourceRange.baseMipLevel = 0;
+	subresourceRange.levelCount = 1;
+	subresourceRange.baseArrayLayer = 0;
+	subresourceRange.layerCount = 1;
+
+	// Сменить размещение памяти промежуточного изображения в VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	vktoolkit::CmdImageLayoutTransition(transitionCmdBuffer, stagingImage.vkImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, subresourceRange);
+
+	// Сменить размещение памяти целевого изображения в VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+	vktoolkit::CmdImageLayoutTransition(transitionCmdBuffer, resultTexture.image.vkImage, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
+
+	// Выполнить команды перевода размещения
+	vktoolkit::FlushSingleTimeCommandBuffer(this->device_, this->commandPoolDraw_, transitionCmdBuffer, this->device_.queues.graphics);
+
+	// Создать командный буфер для копирования изображения
+	VkCommandBuffer copyCmdBuffer = vktoolkit::CreateSingleTimeCommandBuffer(this->device_, this->commandPoolDraw_);
+	
+	// Копирование из промежуточной картинки в основную
+	vktoolkit::CmdImageCopy(copyCmdBuffer, stagingImage.vkImage, resultTexture.image.vkImage, width, height);
+
+	// Выполнить команды копирования
+	vktoolkit::FlushSingleTimeCommandBuffer(this->device_, this->commandPoolDraw_, copyCmdBuffer, this->device_.queues.graphics);
+
+	// Очистить промежуточное изображение
+	stagingImage.Deinit(this->device_.logicalDevice);
+
+
+	// Получить новый набор дескрипторов из дескриптороного пула
+	VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {};
+	descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocInfo.descriptorPool = this->descriptorPoolTextures_;
+	descriptorSetAllocInfo.descriptorSetCount = 1;
+	descriptorSetAllocInfo.pSetLayouts = &(this->descriptorSetLayoutTextures_);
+
+	if (vkAllocateDescriptorSets(this->device_.logicalDevice, &descriptorSetAllocInfo, &(resultTexture.descriptorSet)) != VK_SUCCESS) {
+		throw std::runtime_error("Vulkan: Error in vkAllocateDescriptorSets. Can't allocate descriptor set for texture");
+	}
+
+	// Информация о передаваемом изображении
+	VkDescriptorImageInfo imageInfo = {};
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfo.imageView = resultTexture.image.vkImageView;
+	imageInfo.sampler = this->textureSampler_;
+
+	// Конфигурация добавляемых в набор дескрипторов
+	std::vector<VkWriteDescriptorSet> writes =
+	{
+		{
+			VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,      // Тип структуры
+			nullptr,                                     // pNext
+			resultTexture.descriptorSet,                 // Целевой набор дескрипторов
+			0,                                           // Точка привязки (у шейдера)
+			0,                                           // Элемент массив (массив не используется)
+			1,                                           // Кол-во дескрипторов
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,   // Тип дескриптора
+			&imageInfo,                                  // Информация о параметрах изображения
+			nullptr,
+			nullptr
+		}
+	};
+
+	// Обновить наборы дескрипторов
+	vkUpdateDescriptorSets(this->device_.logicalDevice, (uint32_t)writes.size(), writes.data(), 0, nullptr);
+
+	// Исполнение основых команд снова возможно
+	this->Continue();
+
+	// Вернуть результат
+	return resultTexture;
 }

@@ -335,7 +335,17 @@ vktoolkit::Buffer vktoolkit::CreateBuffer(const vktoolkit::Device &device, VkDev
 * @param VkImageAspectFlags subresourceRangeAspect - использование области подресурса (???)
 * @param VkSharingMode sharingMode - настройка доступа к памяти изображения для очередей (VK_SHARING_MODE_EXCLUSIVE - с буфером работает одна очередь)
 */
-vktoolkit::Image vktoolkit::CreateImageSingle(const vktoolkit::Device &device, VkImageType imageType, VkFormat format, VkExtent3D extent, VkImageUsageFlags usage, VkImageAspectFlags subresourceRangeAspect, VkSharingMode sharingMode)
+vktoolkit::Image vktoolkit::CreateImageSingle(
+	const vktoolkit::Device &device,
+	VkImageType imageType,
+	VkFormat format,
+	VkExtent3D extent,
+	VkImageUsageFlags usage,
+	VkImageAspectFlags subresourceRangeAspect,
+	VkImageLayout initialLayout,
+	VkMemoryPropertyFlags memoryProperties,
+	VkImageTiling tiling,
+	VkSharingMode sharingMode)
 {
 	// Результирующий объект изображения
 	vktoolkit::Image resultImage;
@@ -351,10 +361,10 @@ vktoolkit::Image vktoolkit::CreateImageSingle(const vktoolkit::Device &device, V
 	imageInfo.mipLevels = 1;
 	imageInfo.arrayLayers = 1;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.tiling = tiling;
 	imageInfo.sharingMode = sharingMode;
 	imageInfo.usage = usage;
-	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageInfo.initialLayout = initialLayout;
 
 	// Создание изображения
 	if (vkCreateImage(device.logicalDevice, &imageInfo, nullptr, &(resultImage.vkImage)) != VK_SUCCESS) {
@@ -369,7 +379,7 @@ vktoolkit::Image vktoolkit::CreateImageSingle(const vktoolkit::Device &device, V
 	VkMemoryAllocateInfo memoryAllocInfo = {};
 	memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocInfo.allocationSize = memReqs.size;
-	memoryAllocInfo.memoryTypeIndex = vktoolkit::GetMemoryTypeIndex(device.physicalDevice, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	memoryAllocInfo.memoryTypeIndex = vktoolkit::GetMemoryTypeIndex(device.physicalDevice, memReqs.memoryTypeBits, memoryProperties);
 
 	// Аллоцировать
 	if (vkAllocateMemory(device.logicalDevice, &memoryAllocInfo, nullptr, &(resultImage.vkDeviceMemory)) != VK_SUCCESS) {
@@ -462,6 +472,12 @@ std::vector<VkVertexInputAttributeDescription> vktoolkit::GetVertexInputAttribut
 			VK_FORMAT_R32G32_SFLOAT,               // Тип аттрибута (соответствует vec2 у шейдера)
 			offsetof(vktoolkit::Vertex, texCoord)
 		},
+		{
+			3,
+			bindingIndex,
+			VK_FORMAT_R32_UINT,                    // Тип аттрибута (соответствует uint у шейдера)
+			offsetof(vktoolkit::Vertex, textureUsed)
+		},
 	};
 }
 
@@ -508,3 +524,156 @@ VkShaderModule vktoolkit::LoadSPIRVShader(std::string filename, VkDevice logical
 	return shaderModule;
 }
 
+/**
+* Изменить размещение изображения
+* @param VkCommandBuffer cmdBuffer - хендл командного буфера, в который будет записана команда смены размещения
+* @param VkImage image - хендл изображения, размещение которого нужно сменить
+* @param VkImageLayout oldImageLayout - старое размещение
+* @param VkImageLayout newImageLayout - новое размещение
+* @param VkImageSubresourceRange subresourceRange - описывает какие регионы изображения подвергнутся переходу размещения
+*/
+void vktoolkit::CmdImageLayoutTransition(VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkImageSubresourceRange subresourceRange)
+{
+	// Создать барьер памяти изображения
+	VkImageMemoryBarrier imageMemoryBarrier = {};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.oldLayout = oldImageLayout;
+	imageMemoryBarrier.newLayout = newImageLayout;
+	imageMemoryBarrier.image = image;
+	imageMemoryBarrier.subresourceRange = subresourceRange;
+
+	// В зависимоти от старого (исходного) размещения меняется исходная маска доступа
+	switch (oldImageLayout)
+	{
+	case VK_IMAGE_LAYOUT_UNDEFINED:
+		imageMemoryBarrier.srcAccessMask = 0;
+		break;
+	case VK_IMAGE_LAYOUT_PREINITIALIZED:
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		break;
+	}
+
+	// В зависимости от нового (целевого) размещения меняется целевая маска доступа
+	switch (newImageLayout)
+	{
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		break;
+	}
+
+	// Разметить барьер на верише конвейера (в самом начале)
+	VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+	// Отправить команду барьера в командный буфер
+	vkCmdPipelineBarrier(
+		cmdBuffer,
+		srcStageFlags,
+		destStageFlags,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageMemoryBarrier);
+}
+
+/**
+* Копировать изображение
+* @param VkCommandBuffer cmdBuffer - хендл командного буфера, в который будет записана команда смены размещения
+* @param VkImage srcImage - исходное изображение, память которого нужно скопировать
+* @param VkImage dstImage - целевое изображение, в которое нужно перенести память
+* @param uint32_t width - ширина
+* @param uint32_t height - высота
+*/
+void vktoolkit::CmdImageCopy(VkCommandBuffer cmdBuffer, VkImage srcImage, VkImage dstImage, uint32_t width, uint32_t height)
+{
+	// Описание слоев подресурса (мип-уровни не используются)
+	VkImageSubresourceLayers subresourceLayers = {};
+	subresourceLayers.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	subresourceLayers.baseArrayLayer = 0;
+	subresourceLayers.mipLevel = 0;
+	subresourceLayers.layerCount = 1;
+
+	// Конфигурация копирования
+	VkImageCopy region = {};
+	region.srcSubresource = subresourceLayers;
+	region.dstSubresource = subresourceLayers;
+	region.srcOffset = { 0, 0, 0 };
+	region.dstOffset = { 0, 0, 0 };
+	region.extent.width = width;
+	region.extent.height = height;
+	region.extent.depth = 1;
+
+	// Записать команду копирования в буфер
+	vkCmdCopyImage(
+		cmdBuffer,
+		srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1, &region
+	);
+}
+
+/**
+* Создать буфер одиночных команд
+* @param const vktoolkit::Device &device - устройство
+* @param VkCommandPool commandPool - командный пул, из которого будет выделен буфер
+* @return VkCommandBuffer - хендл нового буфера
+*/
+VkCommandBuffer vktoolkit::CreateSingleTimeCommandBuffer(const vktoolkit::Device &device, VkCommandPool commandPool)
+{
+	// Хендл нового буфера
+	VkCommandBuffer commandBuffer;
+
+	// Аллоцировать буфер
+	VkCommandBufferAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandPool = commandPool;
+	allocInfo.commandBufferCount = 1;
+	vkAllocateCommandBuffers(device.logicalDevice, &allocInfo, &commandBuffer);
+
+	// Начать командный буфер (готов к записи команд)
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Используем один раз и ожидаем результата
+	vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+	// Отдать хендл
+	return commandBuffer;
+}
+
+/**
+* Отправить команду на исполнение и очистить буфер
+* @param const vktoolkit::Device &device - устройство
+* @param VkCommandPool commandPool - командный пул, из которого был выделен буфер
+* @param VkCommandBuffer commandBuffer - командный буфер
+*/
+
+void vktoolkit::FlushSingleTimeCommandBuffer(const vktoolkit::Device &device, VkCommandPool commandPool, VkCommandBuffer commandBuffer, VkQueue queue)
+{
+	// Завершаем наполнение командного буффера
+	vkEndCommandBuffer(commandBuffer);
+
+	// Отправка команд в очередь
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+
+	// Ожидаем выполнения команды
+	vkQueueWaitIdle(queue);
+
+	// Очищаем буфер
+	vkFreeCommandBuffers(device.logicalDevice, commandPool, 1, &commandBuffer);
+}

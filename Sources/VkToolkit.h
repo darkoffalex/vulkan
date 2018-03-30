@@ -336,6 +336,7 @@ namespace vktoolkit
 		glm::vec3 position;
 		glm::vec3 color;
 		glm::vec2 texCoord;
+		glm::uint32 textureUsed;
 	};
 
 	/**
@@ -346,23 +347,6 @@ namespace vktoolkit
 	{
 		VkSemaphore readyToRender = VK_NULL_HANDLE;
 		VkSemaphore readyToPresent = VK_NULL_HANDLE;
-	};
-
-	/**
-	* Стурктура описывающая примитив (набор вершин)
-	* Содержит хендлы буферов вершин и индексов, а так же параметры положеняи примитива
-	* - Позиция в глобальном пространстве
-	* - Повторот относительно локального (своего) центра
-	* - Масштаб (размер)
-	*/
-	struct Primitive
-	{
-		bool drawIndexed = true;
-		vktoolkit::VertexBuffer vertexBuffer;
-		vktoolkit::IndexBuffer indexBuffer;
-		glm::vec3 position = {};
-		glm::vec3 rotation = {};
-		glm::vec3 scale = {};
 	};
 
 	/**
@@ -394,7 +378,7 @@ namespace vktoolkit
 		float fNear = 0.1f;
 		float fFar = 256.0f;
 
-		// Подготовить матрицу проекии
+		// Подготовить матрицу проекции
 		glm::mat4 MakeProjectionMatrix() const {
 			glm::mat4 result = glm::perspective(glm::radians(this->fFOV), aspectRatio, fNear, fFar);
 			result[1][1] *= -1; // Хотфикс glm для вулканом (glm разработан для opengl, а там ось Y инвертирована)
@@ -411,6 +395,48 @@ namespace vktoolkit
 
 			return rotationMatrix * translationMatrix;
 		};
+	};
+
+	/**
+	* Стурктура описывает текстуру
+	* Содержит изображение, а так же компоненты используемые для подачи данных в шейдер
+	* - Изобаржение (в памяти устройства)
+	* - Дескрипторный набор (отвечает за подачу данных в конвейер)
+	*/
+	struct Texture
+	{
+		vktoolkit::Image image = {};
+		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+
+		void Deinit(VkDevice logicalDevice, VkDescriptorPool descriptorPool) {
+
+			if (descriptorSet != VK_NULL_HANDLE) {
+				if (vkFreeDescriptorSets(logicalDevice, descriptorPool, 1, &(this->descriptorSet)) != VK_SUCCESS) {
+					throw std::runtime_error("Vulkan: Error while destroying descriptor set");
+					this->descriptorSet = VK_NULL_HANDLE;
+				}
+			}
+
+			image.Deinit(logicalDevice);
+		}
+	};
+
+	/**
+	* Стурктура описывающая примитив (набор вершин)
+	* Содержит хендлы буферов вершин и индексов, а так же параметры положеняи примитива
+	* - Позиция в глобальном пространстве
+	* - Повторот относительно локального (своего) центра
+	* - Масштаб (размер)
+	*/
+	struct Primitive
+	{
+		bool drawIndexed = true;
+		vktoolkit::VertexBuffer vertexBuffer;
+		vktoolkit::IndexBuffer indexBuffer;
+		const vktoolkit::Texture * texture;
+		glm::vec3 position = {};
+		glm::vec3 rotation = {};
+		glm::vec3 scale = {};
 	};
 
 	/* В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы */
@@ -501,7 +527,17 @@ namespace vktoolkit
 	* @param VkImageAspectFlags subresourceRangeAspect - использование области подресурса (???)
 	* @param VkSharingMode sharingMode - настройка доступа к памяти изображения для очередей (VK_SHARING_MODE_EXCLUSIVE - с буфером работает одна очередь)
 	*/
-	Image CreateImageSingle(const vktoolkit::Device &device, VkImageType imageType, VkFormat format, VkExtent3D extent, VkImageUsageFlags usage, VkImageAspectFlags subresourceRangeAspect, VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE);
+	Image CreateImageSingle(
+		const vktoolkit::Device &device,
+		VkImageType imageType,
+		VkFormat format,
+		VkExtent3D extent,
+		VkImageUsageFlags usage,
+		VkImageAspectFlags subresourceRangeAspect,
+		VkImageLayout initialLayout,
+		VkMemoryPropertyFlags memoryProperties,
+		VkImageTiling tiling,
+		VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE);
 
 	/**
 	* Получить описание привязок вершинных данных к конвейеру
@@ -531,5 +567,41 @@ namespace vktoolkit
 	* @return VkShaderModule - хендл шейдерного модуля созданного из загруженного файла
 	*/
 	VkShaderModule LoadSPIRVShader(std::string filename, VkDevice logicalDevice);
+
+	/**
+	* Изменить размещение изображения
+	* @param VkCommandBuffer cmdBuffer - хендл командного буфера, в который будет записана команда смены размещения
+	* @param VkImage image - хендл изображения, размещение которого нужно сменить
+	* @param VkImageLayout oldImageLayout - старое размещение
+	* @param VkImageLayout newImageLayout - новое размещение
+	* @param VkImageSubresourceRange subresourceRange - описывает какие регионы изображения подвергнутся переходу размещения
+	*/
+	void CmdImageLayoutTransition(VkCommandBuffer cmdBuffer, VkImage image, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkImageSubresourceRange subresourceRange);
+
+	/**
+	* Копировать изображение
+	* @param VkCommandBuffer cmdBuffer - хендл командного буфера, в который будет записана команда смены размещения
+	* @param VkImage srcImage - исходное изображение, память которого нужно скопировать
+	* @param VkImage dstImage - целевое изображение, в которое нужно перенести память
+	* @param uint32_t width - ширина
+	* @param uint32_t height - высота
+	*/
+	void CmdImageCopy(VkCommandBuffer cmdBuffer, VkImage srcImage, VkImage dstImage, uint32_t width, uint32_t height);
+
+	/**
+	* Создать буфер одиночных команд
+	* @param const vktoolkit::Device &device - устройство
+	* @param VkCommandPool commandPool - командный пул, из которого будет выделен буфер
+	* @return VkCommandBuffer - хендл нового буфера
+	*/
+	VkCommandBuffer CreateSingleTimeCommandBuffer(const vktoolkit::Device &device, VkCommandPool commandPool);
+
+	/**
+	* Отправить команду на исполнение и очистить буфер
+	* @param const vktoolkit::Device &device - устройство
+	* @param VkCommandPool commandPool - командный пул, из которого был выделен буфер
+	* @param VkCommandBuffer commandBuffer - командный буфер
+	*/
+	void FlushSingleTimeCommandBuffer(const vktoolkit::Device &device, VkCommandPool commandPool, VkCommandBuffer commandBuffer, VkQueue queue);
 };
 

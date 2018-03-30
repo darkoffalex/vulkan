@@ -56,9 +56,15 @@ private:
 	vktoolkit::UniformBuffer uniformBufferModels_;        // Буфер формы объектов (содержит хендлы буфера, памяти, инфо для дескриптора)
 	vktoolkit::UboWorld uboWorld_;                        // Структура с матрицами для общих преобразований сцены (данный объект буедт передаваться в буфер формы сцены)
 	vktoolkit::UboModelArray uboModels_;                  // Массив матриц (указатель на него) для отдельный объектов (матрицы модели, передаются в буфер формы объектов)
-	VkDescriptorPool descriptorPool_;                     // Пул дескрипторов (для выделения наборов дескрипторов)
-	VkDescriptorSetLayout descriptorSetLayout_;           // Размещение набора дескрипторов (дескрипторы каких типов к каким стадиям конвейера привязаываются)
-	VkDescriptorSet descriptorSet_;                       // Набор дескрипторов
+
+	VkDescriptorPool descriptorPoolMain_;                 // Пул дескрипторов (для основного набора)
+	VkDescriptorSetLayout descriptorSetLayoutMain_;       // Размещение набора дескрипторов (для основного набора)
+	VkDescriptorSet descriptorSetMain_;                   // Набор дескрипторов (основной)
+
+	VkDescriptorPool descriptorPoolTextures_;             // Пул дескрипторов (для наборов под текстуры)
+	VkDescriptorSetLayout descriptorSetLayoutTextures_;   // Размещение набора дескрипторов (для наборов под текстуры)
+	VkSampler textureSampler_;                            // Текстурный семплер (описывает как данные подаются в шейдер и как интерпретируются координаты)
+
 	VkPipelineLayout pipelineLayout_;                     // Размещение конвейера
 	VkPipeline pipeline_;                                 // Основной графический конвейер
 	vktoolkit::Synchronization sync_;                     // Примитивы синхронизации
@@ -258,12 +264,21 @@ private:
 	/* Д Е С К Р И П Т О Р Н Ы Й  П У Л */
 
 	/**
-	* Инициализация декскрипторного пула
+	* Инициализация основного декскрипторного пула
 	* @param const vktoolkit::Device &device - устройство
 	* @return VkDescriptorPool - хендл дескрипторного пула
 	* @note - дескрипторный пул позволяет выделять специальные наборы дескрипторов, обеспечивающие доступ к определенным буферам из шейдера
 	*/
-	VkDescriptorPool InitDescriptorPool(const vktoolkit::Device &device);
+	VkDescriptorPool InitDescriptorPoolMain(const vktoolkit::Device &device);
+
+	/**
+	* Инициализация декскрипторного пула под текстурные наборы дескрипторов
+	* @param const vktoolkit::Device &device - устройство
+	* @param uint32_t maxDescriptorSets - максимальное кол-во наборов
+	* @return VkDescriptorPool - хендл дескрипторного пула
+	* @note - дескрипторный пул позволяет выделять специальные наборы дескрипторов, обеспечивающие доступ к определенным буферам из шейдера
+	*/
+	VkDescriptorPool InitDescriptorPoolTextures(const vktoolkit::Device &device, uint32_t maxDescriptorSets = 1000);
 
 	/**
 	* Деинициализация дескрипторного пула
@@ -275,12 +290,20 @@ private:
 	/* Р А З М Е Щ Е Н И Е  Д Е С К Р И П Т О Р Н О Г О  Н А Б О Р А */
 
 	/**
-	* Инициализация описания размещения дескрипторного пула
+	* Инициализация описания размещения дескрипторного пула (под основной дескрипторный набор)
 	* @param const vktoolkit::Device &device - устройство
 	* @return VkDescriptorSetLayout - хендл размещения дескрипторного пула
 	* @note - Размещение - информация о том сколько и каких именно (какого типа) дескрипторов следует ожидать на определенных этапах конвейера
 	*/
-	VkDescriptorSetLayout InitDescriptorSetLayout(const vktoolkit::Device &device);
+	VkDescriptorSetLayout InitDescriptorSetLayoutMain(const vktoolkit::Device &device);
+
+	/**
+	* Инициализация описания размещения дескрипторного пула (под текстурные наборы дескрипторов)
+	* @param const vktoolkit::Device &device - устройство
+	* @return VkDescriptorSetLayout - хендл размещения дескрипторного пула
+	* @note - Размещение - информация о том сколько и каких именно (какого типа) дескрипторов следует ожидать на определенных этапах конвейера
+	*/
+	VkDescriptorSetLayout InitDescriptorSetLayoutTextures(const vktoolkit::Device &device);
 
 	/**
 	* Деинициализация размещения
@@ -288,6 +311,22 @@ private:
 	* @VkDescriptorSetLayout * descriptorSetLayout - указатель на хендл размещения
 	*/
 	void DeinitDescriporSetLayout(const vktoolkit::Device &device, VkDescriptorSetLayout * descriptorSetLayout);
+
+	/* Т Е К С Т У Р Н Ы Й  С Е М П Л Е Р */
+
+	/**
+	* Инициализация текстурного семплера
+	* @param const vktoolkit::Device &device - устройство
+	* @note - описывает как данные текстуры подаются в шейдер и как интерпретируются координаты
+	*/
+	VkSampler InitTextureSampler(const vktoolkit::Device &device);
+
+	/**
+	* Деинициализация текстурного семплера
+	* @param const vktoolkit::Device &device - устройство
+	* @param VkSampler * sampler - деинициализация текстурного семплера
+	*/
+	void DeinitTextureSampler(const vktoolkit::Device &device, VkSampler * sampler);
 
 	/* Н А Б О Р  Д Е С К Р И П Т О Р О В */
 
@@ -299,7 +338,7 @@ private:
 	* @param const vktoolkit::UniformBuffer &uniformBufferWorld - буфер содержит необходимую для создания дескриптора информацию
 	* @param const vktoolkit::UniformBuffer &uniformBufferModels - буфер содержит необходимую для создания дескриптора информацию
 	*/
-	VkDescriptorSet InitDescriptorSet(
+	VkDescriptorSet InitDescriptorSetMain(
 		const vktoolkit::Device &device,
 		VkDescriptorPool descriptorPool,
 		VkDescriptorSetLayout descriptorSetLayout,
@@ -335,10 +374,10 @@ private:
 	/**
 	* Инициализация размещения графического конвейера
 	* @param const vktoolkit::Device &device - устройство
-	* @param VkDescriptorSetLayout descriptorSetLayout - хендл размещения дискрипторного набора (дает конвейеру инфу о дескрипторах)
+	* @param std::vector<VkDescriptorSetLayout> descriptorSetLayouts - хендлы размещениий дискрипторного набора (дает конвейеру инфу о дескрипторах)
 	* @return VkPipelineLayout - хендл размещения конвейера
 	*/
-	VkPipelineLayout InitPipelineLayout(const vktoolkit::Device &device, VkDescriptorSetLayout descriptorSetLayout);
+	VkPipelineLayout InitPipelineLayout(const vktoolkit::Device &device, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
 
 	/**
 	* Деинициализация размещения графического конвейера
@@ -410,7 +449,7 @@ private:
 		std::vector<VkCommandBuffer> commandBuffers,
 		VkRenderPass renderPass,
 		VkPipelineLayout pipelineLayout,
-		VkDescriptorSet descriptorSet,
+		VkDescriptorSet descriptorSetMain,
 		VkPipeline pipeline,
 		const vktoolkit::Swapchain &swapchain,
 		const std::vector<vktoolkit::Primitive> &primitives);
@@ -489,9 +528,22 @@ public:
 	unsigned int AddPrimitive(
 		const std::vector<vktoolkit::Vertex> &vertices,
 		const std::vector<unsigned int> &indices,
+		const vktoolkit::Texture *texture,
 		glm::vec3 position,
 		glm::vec3 rotaton,
 		glm::vec3 scale = { 1.0f,1.0f,1.0f });
+
+	/**
+	* Создание текстуры по данным о пикселях
+	* @param const unsigned char* pixels - пиксели загруженные из файла
+	* @return vktoolkit::Texture - структура с набором хендлов изображения и дескриптора
+	*
+	* @note - при загрузке используется временный буфер (временное изображение) для перемещения
+	* в буфер распологающийся в памяти устройства. Нельзя сразу создать буфер в памяти устройства и переместить
+	* в него данные. Это можно сделать только пр помощи команды копирования (из памяти доступной хосту в память
+	* доступную только устройству)
+	*/
+	vktoolkit::Texture CreateTexture(const unsigned char* pixels, uint32_t width, uint32_t height, uint32_t channels, uint32_t bpp = 4);
 
 	/**
 	* Конструктор рендерера
