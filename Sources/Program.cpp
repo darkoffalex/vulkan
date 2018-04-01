@@ -134,11 +134,6 @@ int main(int argc, char* argv[])
 		// Показ окна
 		ShowWindow(hMainWindow, SW_SHOWNORMAL);
 
-		// Загрузка данных текстуры
-		int width; int height; int channels;
-		std::string texDir = toolkit::ExeDir() + "..\\Textures\\texture.jpg";
-		unsigned char* pixels = stbi_load(texDir.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
 		// Инициализация рендерера
 		vkRenderer = new VkRenderer(hInstance, hMainWindow, 100);
 
