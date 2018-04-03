@@ -457,7 +457,7 @@ vktoolkit::Device VkRenderer::InitDevice(
 
 	// Массив инедксов семейств (2 индекса - графич. семейство и семейство представления. 
 	// Индексы могут совпадать, семейство у обеих очередей может быть одно и то же)
-	uint32_t queueFamilies[2] = { resultDevice.queueFamilies.graphics, resultDevice.queueFamilies.present };
+	uint32_t queueFamilies[2] = { (uint32_t)resultDevice.queueFamilies.graphics, (uint32_t)resultDevice.queueFamilies.present };
 
 	// Если графич. семейство и семейство представления - одно и то же (тот же индекс),
 	// нет смысла создавать две очереди одного и того же семейства, можно обойтись одной

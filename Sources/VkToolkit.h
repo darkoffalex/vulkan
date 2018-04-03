@@ -38,10 +38,10 @@ namespace vktoolkit
 	struct QueueFamilyInfo {
 
 		// Индексты семейств очередей
-		uint32_t graphics = -1;
-		uint32_t present = -1;
-		uint32_t compute = -1;
-		uint32_t transfer = -1;
+		int graphics = -1;
+		int present = -1;
+		int compute = -1;
+		int transfer = -1;
 
 		// Совместим ли набор доступных семейств с рендерингом
 		bool IsRenderingCompatible() const {
