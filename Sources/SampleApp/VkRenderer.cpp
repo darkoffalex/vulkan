@@ -1,7 +1,7 @@
 #include "VkRenderer.h"
 #include "ext_loader/vulkan_ext.h"
 
-#include <iostream>
+#include <glm/glm.hpp>
 
 /**
  * Инициализация экземпляра
@@ -328,14 +328,37 @@ void VkRenderer::initFrameBuffers(std::vector<vk::tools::FrameBuffer> *frameBuff
     }
 }
 
+/**
+ * Инициализация UBO буферов
+ * @param device Объект-обертка устройства
+ * @param uboViewProjection Указатель на объект UBO буфера матриц вида-проекции
+ * @param uboModel  Указатель на объект UBO буфера матриц модели (на каждый меш своя матрица)
+ * @param maxMeshes Максимальное кол-во возможных мешей
+ */
+void VkRenderer::initUboBuffers(const vk::tools::Device &device,
+        vk::tools::Buffer *uboViewProjection,
+        vk::tools::Buffer *uboModel,
+        size_t maxMeshes)
+{
+    // Создаем UBO буферы для матриц вида и проекции
+    *uboViewProjection = vk::tools::Buffer(&device, sizeof(glm::mat4)*2,vk::BufferUsageFlagBits::eUniformBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+    if(!uboViewProjection->isReady()) throw vk::InitializationFailedError("Can't create view-projection UBO buffer");
+
+    // Создаем UBO буферы для матриц модели (на каждый меш своя матрица)
+    // В связи с тем что тип дескриптора предполагается как "динамический буфер", используем динамическое выравнивание для выяснения размеров буфера
+    *uboModel = vk::tools::Buffer(&device, device.getDynamicallyAlignedUboBlockSize<glm::mat4>() * maxMeshes, vk::BufferUsageFlagBits::eUniformBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
+    if(!uboModel->isReady()) throw vk::InitializationFailedError("Can't create model UBO buffer");
+}
+
 /** C O N S T R U C T O R - D E S T R U C T O R **/
 
 /**
  * Конструктор
- * @param hInstance экземпляр WinApi приложения
- * @param hWnd дескриптор окна WinApi
+ * @param hInstance Экземпляр WinApi приложения
+ * @param hWnd Дескриптор окна WinApi
+ * @param maxMeshes Максимальное кол-во мешей
  */
-VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd):
+VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, size_t maxMeshes):
 debugReportCallback_(VK_NULL_HANDLE)
 {
     // Инициализация экземпляра Vulkan
@@ -379,6 +402,10 @@ debugReportCallback_(VK_NULL_HANDLE)
     auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
+
+    // Выделение UBO буферов
+    initUboBuffers(device_,&uboBufferViewProjection_,&uboBufferModel_,maxMeshes);
+    std::cout << "UBO-buffers allocated (" << uboBufferViewProjection_.getSize() << " and " << uboBufferModel_.getSize() << ")." << std::endl;
 }
 
 /**
@@ -386,6 +413,11 @@ debugReportCallback_(VK_NULL_HANDLE)
  */
 VkRenderer::~VkRenderer()
 {
+    // Освобождение UBO буферов
+    uboBufferViewProjection_.destroyVulkanResources();
+    uboBufferModel_.destroyVulkanResources();
+    std::cout << "UBO-buffers freed." << std::endl;
+
     // Освобождение командных буферов
     device_.getLogicalDevice()->freeCommandBuffers(device_.getCommandGfxPool().get(),commandBuffers_);
     commandBuffers_.clear();

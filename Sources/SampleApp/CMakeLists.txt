@@ -9,7 +9,7 @@ set(TARGET_BIN_NAME "SampleApp")
 add_executable(${TARGET_NAME}
         "Main.cpp" "Tools.hpp"
         "ext_loader/vulkan_ext.h" "ext_loader/vulkan_ext.c"
-        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp"
+        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp"
         "VkRenderer.h" "VkRenderer.cpp")
 
 # Директории с библиотеками (.lib)
@@ -20,7 +20,7 @@ else()
 endif()
 
 # Директории с включаемыми файлами (.h)
-target_include_directories(${TARGET_NAME} PUBLIC ${VULKAN_PATH}Include)
+target_include_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Include" "../../Include")
 
 # Меняем название запускаемого файла в зависимости от типа сборки
 set_property(TARGET ${TARGET_NAME} PROPERTY OUTPUT_NAME "${TARGET_BIN_NAME}$<$<CONFIG:Debug>:_Debug>_${PLATFORM_BIT_SUFFIX}")

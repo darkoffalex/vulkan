@@ -3,6 +3,7 @@
 #include "VkTools.h"
 #include "VkToolsDevice.hpp"
 #include "VkToolsFrameBuffer.hpp"
+#include "VkToolsBuffer.hpp"
 
 class VkRenderer
 {
@@ -23,6 +24,11 @@ private:
     std::vector<vk::tools::FrameBuffer> frameBuffers_;
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
+
+    /// UBO буфер для матриц вида и проекции
+    vk::tools::Buffer uboBufferViewProjection_;
+    /// UBO буфер для матриц модели (для каждого меша свой регион буфера)
+    vk::tools::Buffer uboBufferModel_;
 
 
     /**
@@ -113,13 +119,23 @@ private:
             const vk::Format& colorAttachmentFormat,
             const vk::Format& depthStencilAttachmentFormat);
 
+    /**
+     * Инициализация UBO буферов
+     * @param device Объект-обертка устройства
+     * @param uboViewProjection Указатель на объект UBO буфера матриц вида-проекции
+     * @param uboModel Указатель на объект UBO буфера матриц модели (на каждый меш своя матрица)
+     * @param maxMeshes Максимальное кол-во возможных мешей
+     */
+    static void initUboBuffers(const vk::tools::Device& device, vk::tools::Buffer* uboViewProjection, vk::tools::Buffer* uboModel, size_t maxMeshes);
+
 public:
     /**
      * Конструктор
-     * @param hInstance экземпляр WinApi приложения
-     * @param hWnd дескриптор окна WinApi
+     * @param hInstance Экземпляр WinApi приложения
+     * @param hWnd Дескриптор окна WinApi
+     * @param maxMeshes Максимальное кол-во мешей
      */
-    VkRenderer(HINSTANCE hInstance, HWND hWnd);
+    VkRenderer(HINSTANCE hInstance, HWND hWnd, size_t maxMeshes = 1000);
 
     /**
      * Деструктор
