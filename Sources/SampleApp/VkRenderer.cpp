@@ -93,12 +93,14 @@ vk::UniqueSurfaceKHR VkRenderer::createSurface(const vk::UniqueInstance& vulkanI
  * @param surfaceKhr Поверхность отображения
  * @param requireExtensions Запрашивать расширения (названия расширений)
  * @param requireValidationLayers Запрашивать слои (названия слоев)
+ * @param allowIntegratedDevices Позволять использование встроенной графики
  * @return Указатель на созданный объект-обертку над устройством Vulkan
  */
 vk::tools::Device VkRenderer::initDevice(const vk::UniqueInstance &instance,
         const vk::UniqueSurfaceKHR &surfaceKhr,
         const std::vector<const char *> &requireExtensions,
-        const std::vector<const char *> &requireValidationLayers)
+        const std::vector<const char *> &requireValidationLayers,
+        bool allowIntegratedDevices)
 {
     vk::tools::Device device(
             instance,

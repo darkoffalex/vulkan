@@ -102,11 +102,13 @@ namespace vk
              * @param surfaceKhr Поверхность отображения на окне (для проверки доступности представления)
              * @param requireExtensions Запрашивать расширения (названия расширений)
              * @param requireValidationLayers Запрашивать слои (названия слоев)
+             * @param allowIntegrated Позволять использование встроенных устройств
              */
             explicit Device(const vk::UniqueInstance& instance,
                             const vk::UniqueSurfaceKHR& surfaceKhr,
                             const std::vector<const char*>& requireExtensions = {},
-                            const std::vector<const char*>& requireValidationLayers = {})
+                            const std::vector<const char*>& requireValidationLayers = {},
+                            bool allowIntegrated = false)
             {
                 // Найти подходящее физ. устройство. Семейства очередей устройства должны поддерживать необходимые типы команд
                 auto physicalDevices = instance->enumeratePhysicalDevices();
@@ -146,6 +148,11 @@ namespace vk
 
                         // Если запросили какие-то слои устройства и не все из них доступны - к следующему устройству
                         if(!requireValidationLayers.empty() && !CheckDeviceLayersSupported(physicalDevice,requireValidationLayers)){
+                            continue;
+                        }
+
+                        // Если запрещено использовать встроенные устройства, то в случае если устройство не дискретное - к следующему устройству
+                        if(!allowIntegrated && physicalDevice.getProperties().deviceType != vk::PhysicalDeviceType::eDiscreteGpu){
                             continue;
                         }
 
