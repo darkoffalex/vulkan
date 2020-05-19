@@ -11,6 +11,14 @@ namespace vk
     namespace tools
     {
         /**
+         * Тип дескрипторного набора
+         */
+        enum DescriptorSetType {
+            eUBO,
+            eMeshMaterial
+        };
+
+        /**
          * Проверить доступны ли указанные расширения
          * @param extensionNames Список наименований расширений
          * @return Да или нет

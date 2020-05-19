@@ -30,6 +30,19 @@ private:
     /// UBO буфер для матриц модели (для каждого меша свой регион буфера)
     vk::tools::Buffer uboBufferModel_;
 
+    /// Объект дескрипторного пула для выделения наборов UBO
+    vk::UniqueDescriptorPool descriptorPoolUBO_;
+    /// Объект дескрипторного пула для выделения наборов материала меша
+    vk::UniqueDescriptorPool descriptorPoolMeshMaterial_;
+
+    /// Макет размещения дескрипторного набора для UBO буфера
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutUBO_;
+    /// Макет размещения дескрипторного набора для описания материала меша
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshMaterial_;
+
+    /// Дескрипторный набор для UBO
+    vk::UniqueDescriptorSet descriptorSetUBO_;
+
 
     /**
      * Инициализация экземпляра
@@ -129,6 +142,40 @@ private:
      * @param maxMeshes Максимальное кол-во возможных мешей
      */
     static void initUboBuffers(const vk::tools::Device& device, vk::tools::Buffer* uboViewProjection, vk::tools::Buffer* uboModel, size_t maxMeshes);
+
+    /**
+     * Создание дескрипторного пула, из которого будет выделены необходимые наборы
+     * @param device Объект-обертка устройства
+     * @param type Тип целевого набора, который будет выделятся из пула
+     * @param maxSets Максимальное кол-вао выделяемых наборов
+     * @return Объект дескрипторного пула (smart-pointer)
+     */
+    static vk::UniqueDescriptorPool createDescriptorPool(const vk::tools::Device& device, const vk::tools::DescriptorSetType& type, size_t maxSets);
+
+    /**
+     * Создать макет размещения дескрипторного набора
+     * @param device Объект-обертка устройства
+     * @param type Тип дескрипторного набора
+     * @return Объект макета размещения набора дескрипторов (smart-pointer)
+    */
+    static vk::UniqueDescriptorSetLayout createDescriptorSetLayout(const vk::tools::Device& device, const vk::tools::DescriptorSetType& type);
+
+    /**
+     * Создать дескрипторный набор для UBO буфера
+     * Несмотря на то, что у каждого меша может быть свое положение (своя матрица модели) можно использовать общий UBO набор с динамическим UBO дескриптором
+     * @param device Объект-обертка устройства
+     * @param layout Объект-обертка макета дескрипторного набора
+     * @param pool Объект-обертка дескрипторного пула
+     * @param uboViewProj Статический UBO буфер вида-проекции
+     * @param uboModel Динамический UBO для матриц модели мешей
+     * @return Объект набора дескрипторов (smart-pointer)
+     */
+    static vk::UniqueDescriptorSet allocateDescriptorSetUBO(
+            const vk::tools::Device& device,
+            const vk::UniqueDescriptorSetLayout& layout,
+            const vk::UniqueDescriptorPool& pool,
+            const vk::tools::Buffer& uboViewProj,
+            const vk::tools::Buffer& uboModel);
 
 public:
     /**

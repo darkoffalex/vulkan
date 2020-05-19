@@ -352,6 +352,188 @@ void VkRenderer::initUboBuffers(const vk::tools::Device &device,
     if(!uboModel->isReady()) throw vk::InitializationFailedError("Can't create model UBO buffer");
 }
 
+/**
+ * Создание дескрипторного пула, из которого будет выделены необходимые наборы
+ * @param device Объект-обертка устройства
+ * @param type Тип целевого набора, который будет выделятся из пула
+ * @param maxSets Максимальное кол-вао выделяемых наборов
+ * @return Объект дескрипторного пула (smart-pointer)
+ */
+vk::UniqueDescriptorPool VkRenderer::createDescriptorPool(
+        const vk::tools::Device &device,
+        const vk::tools::DescriptorSetType &type,
+        size_t maxSets)
+{
+    // Определяем количество дескрипторов (и их тип) которые смогут храниться в выделенном из данного пула множестве дескрипторов (descriptorSet)
+    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes;
+
+    switch(type)
+    {
+        default:
+        case vk::tools::DescriptorSetType::eUBO:
+        {
+            descriptorPoolSizes = {
+                    // Один дескриптор в наборе отвечает за обычный UBO буфер (привязывается единожды за кадр)
+                    {vk::DescriptorType::eUniformBuffer, 1},
+                    // Один дескриптор в наборе отвечает за динамический UBO буфер (может привязываться несколько раз за кадр со смещением в буфере)
+                    {vk::DescriptorType::eUniformBufferDynamic, 1},
+            };
+        }
+        case vk::tools::DescriptorSetType::eMeshMaterial:
+        {
+            descriptorPoolSizes = {
+                    // Один дескриптор в наборе отвечает за текстуру совмещенную с текстурным семплером
+                    {vk::DescriptorType::eCombinedImageSampler, 1}
+            };
+        }
+    }
+
+    // Создать дескрипторный пул и вернуть его
+    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+    descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+    descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+    descriptorPoolCreateInfo.maxSets = 2;
+    return device.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+}
+
+/**
+ * Создать макет размещения дескрипторного набора
+ * @param device Объект-обертка устройства
+ * @param type Тип дескрипторного набора
+ * @return Объект макета размещения набора дескрипторов (smart-pointer)
+ */
+vk::UniqueDescriptorSetLayout VkRenderer::createDescriptorSetLayout(const vk::tools::Device &device, const vk::tools::DescriptorSetType &type)
+{
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+
+    switch(type)
+    {
+        // Если это дескрипторный набор для UBO буфера
+        default:
+        case vk::tools::DescriptorSetType::eUBO:
+        {
+            bindings = {
+                    // Обычный UBO буфер
+                    {
+                            0,
+                            vk::DescriptorType::eUniformBuffer,
+                            1,
+                            vk::ShaderStageFlagBits::eVertex,
+                            nullptr,
+                    },
+                    // Динамический UBO буфер
+                    // Привязывая набор с этим буфером можно указать динамическое смещение
+                    {
+                            1,
+                            vk::DescriptorType::eUniformBufferDynamic,
+                            1,
+                            vk::ShaderStageFlagBits::eVertex,
+                            nullptr,
+                    },
+            };
+            break;
+        }
+        // Если это дескрипторный набор материала меша (descriptor set per mesh)
+        case vk::tools::DescriptorSetType::eMeshMaterial:
+        {
+            bindings = {
+                    // Обычный UBO буфер
+                    {
+                            0,
+                            vk::DescriptorType::eCombinedImageSampler,
+                            1,
+                            vk::ShaderStageFlagBits::eFragment,
+                            nullptr,
+                    },
+            };
+            break;
+        }
+    }
+
+    // Создать макет размещения дескрипторного набора
+    vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+    descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+    descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+    return device.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+}
+
+/**
+ * Создать дескрипторный набор для UBO буфера
+ * Несмотря на то, что у каждого меша может быть свое положение (своя матрица модели) можно использовать общий UBO набор с динамическим UBO дескриптором
+ * @param device Объект-обертка устройства
+ * @param layout Объект-обертка макета дескрипторного набора
+ * @param pool Объект-обертка дескрипторного пула
+ * @param uboViewProj UBO буфер вида-проекции
+ * @param uboModel UBO для матриц модели мешей
+ * @return Объект набора дескрипторов (smart-pointer)
+ */
+vk::UniqueDescriptorSet VkRenderer::allocateDescriptorSetUBO(
+        const vk::tools::Device& device,
+        const vk::UniqueDescriptorSetLayout& layout,
+        const vk::UniqueDescriptorPool& pool,
+        const vk::tools::Buffer& uboViewProj,
+        const vk::tools::Buffer& uboModel)
+{
+    // Выделить из пула набор дескрипторов
+    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+    descriptorSetAllocateInfo.descriptorPool = pool.get(),
+    descriptorSetAllocateInfo.pSetLayouts = &(layout.get());
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    auto allocatedSets = device.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+
+    // Информация о буферах
+    std::vector<vk::DescriptorBufferInfo> bufferInfos = {
+            {uboViewProj.getBuffer().get(),0,VK_WHOLE_SIZE},
+            {uboModel.getBuffer().get(),0,VK_WHOLE_SIZE}
+    };
+
+    // Связать дескрипторы с буферами (описание "записей")
+    std::vector<vk::WriteDescriptorSet> writes = {
+            {
+                // Целевой набор
+                allocatedSets[0],
+                // Индекс привязки
+                0,
+                // Элемент массива (не используется)
+                0,
+                // Кол-во дескрипторов
+                1,
+                // Тип дескриптора (обычный UBO буфер)
+                vk::DescriptorType::eUniformBuffer,
+                // Изображение (не используется)
+                nullptr,
+                // Буфер (используется)
+                bufferInfos.data() + 0,
+                // Тексель-буфер (не используется)
+                nullptr
+            },
+            {
+                // Целевой набор
+                allocatedSets[0],
+                // Индекс привязки
+                1,
+                // Элемент массива (не используется)
+                0,
+                // Кол-во дескрипторов
+                1,
+                // Тип дескриптора (динамический UBO буфер со смещением)
+                vk::DescriptorType::eUniformBufferDynamic,
+                // Изображение (не используется)
+                nullptr,
+                // Буфер (используется)
+                bufferInfos.data() + 1,
+                // Тексель-буфер (не используется)
+                nullptr
+            }
+    };
+
+    // Обновление набора дескрипторов
+    device.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
+
+    // Вернуть итоговый набор дескрипторов
+    return vk::UniqueDescriptorSet(allocatedSets[0]);
+}
+
 /** C O N S T R U C T O R - D E S T R U C T O R **/
 
 /**
@@ -408,6 +590,23 @@ debugReportCallback_(VK_NULL_HANDLE)
     // Выделение UBO буферов
     initUboBuffers(device_,&uboBufferViewProjection_,&uboBufferModel_,maxMeshes);
     std::cout << "UBO-buffers allocated (" << uboBufferViewProjection_.getSize() << " and " << uboBufferModel_.getSize() << ")." << std::endl;
+
+    // Создание пулов дескрипторов
+    // Поскольку в UBO наборе используется динамический UBO дескриптор для матриц модели, можно обойтись и одним UBO набором
+    // В случае с набором материала, в нем используются дескрипторы текстур без динамического смещения, посему на каждый меш по набору
+    descriptorPoolUBO_ = createDescriptorPool(device_,vk::tools::DescriptorSetType::eUBO, 1);
+    descriptorPoolMeshMaterial_ = createDescriptorPool(device_,vk::tools::DescriptorSetType::eMeshMaterial, maxMeshes);
+    std::cout << "Descriptor pools created." << std::endl;
+
+    // Создаем размещение набором дескрипторов
+    // Макет размещения описывает какие дескрипторы и сколько их, будет задействовано в конкретном наборе
+    descriptorSetLayoutUBO_ = createDescriptorSetLayout(device_,vk::tools::DescriptorSetType::eUBO);
+    descriptorSetLayoutMeshMaterial_ = createDescriptorSetLayout(device_, vk::tools::DescriptorSetType::eMeshMaterial);
+    std::cout << "Descriptor set layouts created." << std::endl;
+
+    // Создать UBO дескрипторный набор, и связать дескрипторы с ресурсами (буферами для матриц вида-проекции и модели)
+    descriptorSetUBO_ = allocateDescriptorSetUBO(device_, descriptorSetLayoutUBO_, descriptorPoolUBO_, uboBufferViewProjection_, uboBufferModel_);
+    std::cout << "UBO descriptor set allocated." << std::endl;
 }
 
 /**
@@ -415,6 +614,25 @@ debugReportCallback_(VK_NULL_HANDLE)
  */
 VkRenderer::~VkRenderer()
 {
+    // Освобождение UBO набора дескрипторов
+    device_.getLogicalDevice()->freeDescriptorSets(descriptorPoolUBO_.get(),1,&(descriptorSetUBO_.get()));
+    descriptorSetUBO_.release();
+    std::cout << "UBO descriptor set freed." << std::endl;
+
+    // Уничтожение макета размещения наборов дескрипторов
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutUBO_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshMaterial_.get());
+    descriptorSetLayoutUBO_.release();
+    descriptorSetLayoutMeshMaterial_.release();
+    std::cout << "Descriptor set layouts destroyed." << std::endl;
+
+    // Уничтожение пулов дескрипторов
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolUBO_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshMaterial_.get());
+    descriptorPoolUBO_.release();
+    descriptorPoolMeshMaterial_.release();
+    std::cout << "Descriptor pools destroyed." << std::endl;
+
     // Освобождение UBO буферов
     uboBufferViewProjection_.destroyVulkanResources();
     uboBufferModel_.destroyVulkanResources();
