@@ -132,5 +132,44 @@ namespace vk
             std::cout << "Vulkan: validation layer - " << msg << std::endl;
             return VK_FALSE;
         }
+
+        /**
+         * Создать семплер для изображения
+         * @param device Объект логического устройства
+         * @param filtering Тип фильтрации (интерполяции) текселей
+         * @param addressMode Адресный режим для координат выходящих за пределы
+         * @param anisotropyLevel Уровень анизотропной фильтрации
+         * @return Объект текстурного семплера (smart-pointer)
+         */
+        vk::UniqueSampler createImageSampler(const vk::Device& device,
+                const vk::Filter& filtering,
+                const vk::SamplerAddressMode& addressMode,
+                float anisotropyLevel)
+        {
+            vk::SamplerCreateInfo samplerCreateInfo{};
+            // Тип фильтрации в случае если тексель отображаемой текстуры больше фрагмента (пикселя экрана)
+            samplerCreateInfo.magFilter = filtering;
+            // Тип фильтрации в случае если тексель отображаемой текстуры меньше фрагмента (пикселя экрана)
+            samplerCreateInfo.minFilter = filtering;
+            // Тип фильтрации для mip уровней
+            samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+            // Как обрабатывать координаты оказавшиеся за пределами изображения
+            samplerCreateInfo.addressModeU = addressMode;
+            samplerCreateInfo.addressModeV = addressMode;
+            samplerCreateInfo.addressModeW = addressMode;
+            // Анизотропная фильтрация
+            samplerCreateInfo.anisotropyEnable = anisotropyLevel > 0;
+            samplerCreateInfo.maxAnisotropy = anisotropyLevel;
+            // Цвет границ (если, например, используется адресный режим vk::SamplerAddressMode::eClampToBorder
+            samplerCreateInfo.borderColor = vk::BorderColor::eIntOpaqueBlack;
+            // Не используем не нормированные координаты (выборка в шейдере от 0 ло 1)
+            samplerCreateInfo.unnormalizedCoordinates = false;
+            // Не используем функцию сравнения глубины
+            // Если изображение с которым работает семплер содержит вложение глубины, то можно осуществлять проверку (больше ли глубина чем глубина текущего фрагмента)
+            samplerCreateInfo.compareEnable = false;
+            samplerCreateInfo.compareOp = vk::CompareOp::eAlways;
+
+            return device.createSamplerUnique(samplerCreateInfo);
+        }
     }
 }

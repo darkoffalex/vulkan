@@ -3,6 +3,7 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #define VULKAN_HPP_TYPESAFE_CONVERSION
 
+#include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
@@ -11,12 +12,25 @@ namespace vk
     namespace tools
     {
         /**
+         * Вершина
+         */
+        struct Vertex
+        {
+            glm::vec3 position;
+            glm::vec3 color;
+            glm::vec2 uv;
+            glm::vec3 normal;
+        };
+
+        /**
          * Тип дескрипторного набора
          */
         enum DescriptorSetType {
             eUBO,
             eMeshMaterial
         };
+
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         /**
          * Проверить доступны ли указанные расширения
@@ -68,5 +82,17 @@ namespace vk
                 const char* pLayerPrefix,
                 const char* msg,
                 void* userData);
+        /**
+         * Создать семплер для изображения
+         * @param device Объект логического устройства
+         * @param filtering Тип фильтрации (интерполяции) текселей
+         * @param addressMode Адресный режим для координат выходящих за пределы
+         * @param anisotropyLevel Уровень анизотропной фильтрации
+         * @return Объект текстурного семплера (smart-pointer)
+         */
+        vk::UniqueSampler createImageSampler(const vk::Device& device,
+                const vk::Filter& filtering,
+                const vk::SamplerAddressMode& addressMode,
+                float anisotropyLevel = 0);
     }
 }

@@ -1,8 +1,18 @@
 #pragma once
+
 #include <windows.h>
+#include <vector>
+#include <string>
+#include <shlwapi.h>
+#include <fstream>
 
 namespace tools
 {
+    /**
+     * Вызывается перед закрытием окна (должна быть реализована в .cpp)
+     */
+    void beforeWindowClose();
+
     /**
      * Обработчик оконных сообщений
      * @param hWnd Дескриптор окна
@@ -20,6 +30,12 @@ namespace tools
             {
                 PostQuitMessage(0);
                 break;
+            }
+
+            case WM_CLOSE:
+            {
+                beforeWindowClose();
+                return DefWindowProc(hWnd, message, wParam, lParam);
             }
 
             // Нажатие кнопок клавиатуры
@@ -90,5 +106,64 @@ namespace tools
 
         // Вернуть состояние регистрации класса
         return RegisterClassEx(&classInfo) != 0;
+    }
+
+    /**
+     * Путь к рабочему каталогу
+     * @return Строка содержащая путь к директории
+     */
+    std::string WorkingDir()
+    {
+        char path[MAX_PATH] = {};
+        GetCurrentDirectoryA(MAX_PATH, path);
+        PathAddBackslashA(path);
+        return std::string(path);
+    }
+
+    /**
+     * Путь к каталогу с исполняемым файлом (директория содержащая запущенный .exe)
+     * @return Строка содержащая путь к директории
+     */
+    std::string ExeDir()
+    {
+        char path[MAX_PATH] = {};
+        GetModuleFileNameA(nullptr, path, MAX_PATH);
+        PathRemoveFileSpecA(path);
+        PathAddBackslashA(path);
+        return std::string(path);
+    }
+
+    /**
+     * Абсолютный путь к папке с шейдерами
+     * @return Строка содержащая путь к директории
+     */
+    std::string ShaderDir()
+    {
+        std::string exeDir = ExeDir();
+        return exeDir.append("..\\Shaders\\");
+    }
+
+    /**
+     * Загрузить байты из файлы
+     * @param path Путь к файлу
+     * @return Массив байт
+     */
+    inline std::vector<unsigned char> LoadBytesFromFile(const std::string &path)
+    {
+        // Открытие файла в режиме бинарного чтения
+        std::ifstream is(path.c_str(), std::ios::binary | std::ios::in | std::ios::ate);
+
+        if (is.is_open())
+        {
+            auto size = is.tellg();
+            auto pData = new char[size];
+            is.seekg(0, std::ios::beg);
+            is.read(pData,size);
+            is.close();
+
+            return std::vector<unsigned char>(pData, pData + size);
+        }
+
+        return {};
     }
 }

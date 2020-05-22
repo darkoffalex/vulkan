@@ -8,6 +8,11 @@
 class VkRenderer
 {
 private:
+    /// Запущен ли рендеринг
+    bool isEnabled_;
+    /// Готовы ли командные буферы
+    bool isCommandsReady_;
+
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
     /// Идентификатор объекта для работы с debug-callback'ом
@@ -29,6 +34,8 @@ private:
     vk::tools::Buffer uboBufferViewProjection_;
     /// UBO буфер для матриц модели (для каждого меша свой регион буфера)
     vk::tools::Buffer uboBufferModel_;
+    /// Текстурный семплер по умолчанию, используемый для всех создаваемых текстур
+    vk::UniqueSampler textureSamplerDefault_;
 
     /// Объект дескрипторного пула для выделения наборов UBO
     vk::UniqueDescriptorPool descriptorPoolUBO_;
@@ -42,6 +49,16 @@ private:
 
     /// Дескрипторный набор для UBO
     vk::UniqueDescriptorSet descriptorSetUBO_;
+
+    /// Макет размещения графического конвейера
+    vk::UniquePipelineLayout pipelineLayout_;
+    /// Графический конвейер
+    vk::UniquePipeline pipeline_;
+
+    /// Примитивы синхронизации - семафор сигнализирующий о готовности к рендерингу
+    vk::UniqueSemaphore semaphoreReadyToRender_;
+    /// Примитивы синхронизации - семафор сигнализирующий о готовности к показу отрендереной картинки
+    vk::UniqueSemaphore semaphoreReadyToPresent_;
 
 
     /**
@@ -164,8 +181,8 @@ private:
      * Создать дескрипторный набор для UBO буфера
      * Несмотря на то, что у каждого меша может быть свое положение (своя матрица модели) можно использовать общий UBO набор с динамическим UBO дескриптором
      * @param device Объект-обертка устройства
-     * @param layout Объект-обертка макета дескрипторного набора
-     * @param pool Объект-обертка дескрипторного пула
+     * @param layout Объект макета дескрипторного набора
+     * @param pool Объект дескрипторного пула
      * @param uboViewProj Статический UBO буфер вида-проекции
      * @param uboModel Динамический UBO для матриц модели мешей
      * @return Объект набора дескрипторов (smart-pointer)
@@ -177,17 +194,51 @@ private:
             const vk::tools::Buffer& uboViewProj,
             const vk::tools::Buffer& uboModel);
 
+    /**
+     * Создать графический конвейер
+     * @param device Объект-обертка устройства
+     * @param layout Объект макета размещения конвейера
+     * @param frameBufferExtent Размеры (разрешение) кадрового буфера
+     * @param renderPass Объект прохода рендеринга
+     * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
+     * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
+     * @return Объект графического конвейера (smart-pointer)
+     */
+    static vk::UniquePipeline createGraphicsPipeline(
+            const vk::tools::Device& device,
+            const vk::UniquePipelineLayout& layout,
+            const vk::Extent3D& frameBufferExtent,
+            const vk::UniqueRenderPass& renderPass,
+            const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& fragmentShaderCodeBytes);
+
 public:
     /**
      * Конструктор
      * @param hInstance Экземпляр WinApi приложения
      * @param hWnd Дескриптор окна WinApi
+     * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
+     * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
      * @param maxMeshes Максимальное кол-во мешей
      */
-    VkRenderer(HINSTANCE hInstance, HWND hWnd, size_t maxMeshes = 1000);
+    VkRenderer(HINSTANCE hInstance,
+            HWND hWnd,
+            const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& fragmentShaderCodeBytes,
+            size_t maxMeshes = 1000);
 
     /**
      * Деструктор
      */
     ~VkRenderer();
+
+    /**
+     * Остановка рендеринга
+     */
+    void stopRendering();
+
+    /**
+     * Рендеринг кадра
+     */
+    void draw();
 };

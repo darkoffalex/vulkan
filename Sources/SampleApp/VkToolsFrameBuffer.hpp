@@ -19,6 +19,9 @@ namespace vk
             /// Указатель на устройство владеющее изображением (создающее его)
             const vk::tools::Device* pDevice_;
 
+            /// Разрешение
+            vk::Extent3D extent_;
+
             /// Объект кадрового буфера Vulkan (smart pointer)
             vk::UniqueFramebuffer frameBuffer_;
 
@@ -58,6 +61,7 @@ namespace vk
             FrameBuffer(FrameBuffer&& other) noexcept:FrameBuffer(){
                 std::swap(isReady_,other.isReady_);
                 std::swap(pDevice_,other.pDevice_);
+                std::swap(extent_, other.extent_);
                 frameBuffer_.swap(other.frameBuffer_);
                 colorAttachment_.image.swap(other.colorAttachment_.image);
                 colorAttachment_.imageView.swap(other.colorAttachment_.imageView);
@@ -78,6 +82,7 @@ namespace vk
 
                 std::swap(isReady_,other.isReady_);
                 std::swap(pDevice_,other.pDevice_);
+                std::swap(extent_,other.extent_);
                 frameBuffer_.swap(other.frameBuffer_);
                 colorAttachment_.image.swap(other.colorAttachment_.image);
                 colorAttachment_.imageView.swap(other.colorAttachment_.imageView);
@@ -102,7 +107,8 @@ namespace vk
                     const vk::Format& depthStencilAttFormat,
                     const vk::Extent3D& extent,
                     const vk::UniqueRenderPass& renderPass):
-            pDevice_(pDevice)
+            pDevice_(pDevice),
+            extent_(extent)
             {
                 // Сохранить полученный объект изображения
                 colorAttachment_.image = vk::UniqueImage(image);
@@ -147,8 +153,8 @@ namespace vk
                 frameBufferCreateInfo.renderPass = renderPass.get();
                 frameBufferCreateInfo.attachmentCount = attachments.size();
                 frameBufferCreateInfo.pAttachments = attachments.data();
-                frameBufferCreateInfo.width = extent.width;
-                frameBufferCreateInfo.height = extent.height;
+                frameBufferCreateInfo.width = extent_.width;
+                frameBufferCreateInfo.height = extent_.height;
                 frameBufferCreateInfo.layers = 1;
                 frameBuffer_ = pDevice_->getLogicalDevice()->createFramebufferUnique(frameBufferCreateInfo);
 
@@ -188,6 +194,24 @@ namespace vk
             ~FrameBuffer()
             {
                 destroyVulkanResources();
+            }
+
+            /**
+             * Получить разрешение
+             * @return объект структуры Extent3D
+             */
+            vk::Extent3D getExtent() const
+            {
+                return extent_;
+            }
+
+            /**
+             * Получить кадровый буфер Vulkan
+             * @return ссылка на unique smart pointer объекта буфера
+             */
+            const vk::UniqueFramebuffer& getVulkanFrameBuffer() const
+            {
+                return frameBuffer_;
             }
         };
     }

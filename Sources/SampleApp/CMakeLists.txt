@@ -33,4 +33,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 # Линковка Vulkan
-target_link_libraries(${TARGET_NAME} vulkan-1.lib)
+target_link_libraries(${TARGET_NAME} PUBLIC vulkan-1.lib)
+# Линковка с shlwapi.lib для получения путей к файлам (tools)
+target_link_libraries(${TARGET_NAME} PUBLIC "shlwapi.lib")

@@ -1,8 +1,6 @@
 #include "VkRenderer.h"
 #include "ext_loader/vulkan_ext.h"
 
-#include <glm/glm.hpp>
-
 /**
  * Инициализация экземпляра
  * @param appName Наименования приложения
@@ -146,7 +144,7 @@ vk::UniqueRenderPass VkRenderer::createRenderPass(const vk::tools::Device& devic
 
     // Описываем цветовое вложение
     vk::AttachmentDescription colorAttDesc{};
-    colorAttDesc.setFormat(colorAttachmentFormat);
+    colorAttDesc.format = colorAttachmentFormat;
     colorAttDesc.samples = vk::SampleCountFlagBits::e1;                  // Один семпл на пиксель (без мульти-семплинга)
     colorAttDesc.loadOp = vk::AttachmentLoadOp::eClear;                  // Начало под-прохода - очищать вложение
     colorAttDesc.storeOp = vk::AttachmentStoreOp::eStore;                // Конец под-прохода - хранить для показа
@@ -158,7 +156,7 @@ vk::UniqueRenderPass VkRenderer::createRenderPass(const vk::tools::Device& devic
 
     // Описываем вложение глубины-трафарета (Z-buffer + stencil)
     vk::AttachmentDescription depthStAttDesc{};
-    depthStAttDesc.setFormat(colorAttachmentFormat);
+    depthStAttDesc.format = depthStencilAttachmentFormat;
     depthStAttDesc.samples = vk::SampleCountFlagBits::e1;                   // Один семпл на пиксель (без мульти-семплинга)
     depthStAttDesc.loadOp = vk::AttachmentLoadOp::eClear;                   // Цвет. Начало под-прохода - очищать вложение
     depthStAttDesc.storeOp = vk::AttachmentStoreOp::eDontCare;              // Цвет. Конец под-прохода - не важно (показывать не нужно)
@@ -534,6 +532,211 @@ vk::UniqueDescriptorSet VkRenderer::allocateDescriptorSetUBO(
     return vk::UniqueDescriptorSet(allocatedSets[0]);
 }
 
+/**
+ * Создать графический конвейер
+ * @param device Объект-обертка устройства
+ * @param layout Объект макета размещения конвейера
+ * @param frameBufferExtent Размеры (разрешение) кадрового буфера
+ * @param renderPass Объект прохода рендеринга
+ * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
+ * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
+ * @return Объект графического конвейера (smart-pointer)
+ */
+vk::UniquePipeline VkRenderer::createGraphicsPipeline(
+        const vk::tools::Device& device,
+        const vk::UniquePipelineLayout& layout,
+        const vk::Extent3D& frameBufferExtent,
+        const vk::UniqueRenderPass& renderPass,
+        const std::vector<unsigned char>& vertexShaderCodeBytes,
+        const std::vector<unsigned char>& fragmentShaderCodeBytes)
+{
+
+    // Э Т А П  В В О Д А  Д А Н Н Ы Х
+
+    // Описываем первый привязываемый вершинный буфер
+    std::vector<vk::VertexInputBindingDescription> vertexInputBindingDescriptions = {
+            {
+                    0,
+                    sizeof(vk::tools::Vertex),
+                    vk::VertexInputRate::eVertex
+            }
+    };
+
+    // Описываем атрибуты вершин
+    std::vector<vk::VertexInputAttributeDescription> vertexInputAttributeDescriptions = {
+            {
+                    0,
+                    0,
+                    vk::Format::eR32G32B32Sfloat,
+                    offsetof(vk::tools::Vertex, position)
+            },
+            {
+                    1,
+                    0,
+                    vk::Format::eR32G32B32Sfloat,
+                    offsetof(vk::tools::Vertex, color)
+            },
+            {
+                    2,
+                    0,
+                    vk::Format::eR32G32Sfloat,
+                    offsetof(vk::tools::Vertex, uv)
+            },
+            {
+                    3,
+                    0,
+                    vk::Format::eR32G32B32Sfloat,
+                    offsetof(vk::tools::Vertex, normal)
+            },
+    };
+
+    vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo{};
+    pipelineVertexInputStateCreateInfo.vertexBindingDescriptionCount = vertexInputBindingDescriptions.size();
+    pipelineVertexInputStateCreateInfo.pVertexBindingDescriptions = vertexInputBindingDescriptions.data();
+    pipelineVertexInputStateCreateInfo.vertexAttributeDescriptionCount = vertexInputAttributeDescriptions.size();
+    pipelineVertexInputStateCreateInfo.pVertexAttributeDescriptions = vertexInputAttributeDescriptions.data();
+
+    // Э Т А П  С Б О Р К И  П Р И М И Т И В О В
+
+    vk::PipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo{};
+    pipelineInputAssemblyStateCreateInfo.topology = vk::PrimitiveTopology::eTriangleList; // Ожидаем обычные треугольники
+    pipelineInputAssemblyStateCreateInfo.primitiveRestartEnable = false;                  // Без перегрузки примитивов
+
+    // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
+
+    // Убеждаемся что шейдерный код был предоставлен
+    if(vertexShaderCodeBytes.empty() || fragmentShaderCodeBytes.empty()){
+        throw vk::InitializationFailedError("No shader code provided");
+    }
+
+    // Вершинный шейдер
+    vk::ShaderModule shaderModuleVS = device.getLogicalDevice()->createShaderModule({
+        {},
+        vertexShaderCodeBytes.size(),
+        reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
+
+    // Фрагментный шейдер
+    vk::ShaderModule shaderModuleFS = device.getLogicalDevice()->createShaderModule({
+        {},
+        fragmentShaderCodeBytes.size(),
+        reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
+
+    // Описываем стадии
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eVertex,shaderModuleVS,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFS,"main")
+    };
+
+
+    // V I E W  P O R T  &  S C I S S O R S
+
+    // Настройки области отображения
+    vk::Viewport viewport{};
+    viewport.setX(0.0f);
+    viewport.setY(0.0f);
+    viewport.setWidth(frameBufferExtent.width);
+    viewport.setHeight(frameBufferExtent.height);
+    viewport.setMinDepth(0.0f);
+    viewport.setMaxDepth(1.0f);
+
+    // Настройки обрезки
+    vk::Rect2D scissors{};
+    scissors.offset.x = 0;
+    scissors.offset.y = 0;
+    scissors.extent.width = frameBufferExtent.width;
+    scissors.extent.height = frameBufferExtent.height;
+
+    // Описываем кол-во областей вида и обрезки
+    vk::PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{};
+    pipelineViewportStateCreateInfo.viewportCount = 1;
+    pipelineViewportStateCreateInfo.pViewports = &viewport;
+    pipelineViewportStateCreateInfo.scissorCount = 1;
+    pipelineViewportStateCreateInfo.pScissors = &scissors;
+
+    // Р А С Т Е Р И З А Ц И Я
+
+    // Основные параметры растеризации
+    vk::PipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo{};
+    pipelineRasterizationStateCreateInfo.depthClampEnable = false;               // Отбрасывать бесконечно далекие объекты
+    pipelineRasterizationStateCreateInfo.rasterizerDiscardEnable = false;        // Не отключать этап растеризации
+    pipelineRasterizationStateCreateInfo.polygonMode = vk::PolygonMode::eFill;   // Закрашивать полигоны
+    pipelineRasterizationStateCreateInfo.lineWidth = 1.0f;
+    pipelineRasterizationStateCreateInfo.cullMode = vk::CullModeFlagBits::eBack; // Отсекать задние грани
+    pipelineRasterizationStateCreateInfo.frontFace = vk::FrontFace::eClockwise;  // Передние грани описываются по часовой
+    pipelineRasterizationStateCreateInfo.depthBiasEnable = false;
+    pipelineRasterizationStateCreateInfo.depthBiasConstantFactor = 0.0f;
+    pipelineRasterizationStateCreateInfo.depthBiasClamp = 0.0f;
+    pipelineRasterizationStateCreateInfo.depthBiasSlopeFactor = 0.0f;
+
+    // Параметры теста глубины
+    vk::PipelineDepthStencilStateCreateInfo pipelineDepthStencilStateCreateInfo{};
+    pipelineDepthStencilStateCreateInfo.depthTestEnable = true;                        // Тест глубины включен
+    pipelineDepthStencilStateCreateInfo.depthWriteEnable = true;                       // Запись в тест глубины включена
+    pipelineDepthStencilStateCreateInfo.depthCompareOp = vk::CompareOp::eLessOrEqual;  // Функция сравнения (меньше или равно)
+    pipelineDepthStencilStateCreateInfo.depthBoundsTestEnable = false;                 // Тест границ глубины отеключен
+    pipelineDepthStencilStateCreateInfo.stencilTestEnable = false;                     // Тест трафарета отключен
+    pipelineDepthStencilStateCreateInfo.back.failOp = vk::StencilOp::eKeep;            // В случае провала теста трафарета для задних граней
+    pipelineDepthStencilStateCreateInfo.back.passOp = vk::StencilOp::eKeep;            // В случае прохождения теста трафарета для задних граней
+    pipelineDepthStencilStateCreateInfo.back.compareOp = vk::CompareOp::eAlways;       // Функция теста трафарета для задних граней
+    pipelineDepthStencilStateCreateInfo.front.failOp = vk::StencilOp::eKeep;           // В случае провала теста трафарета для лицевых граней
+    pipelineDepthStencilStateCreateInfo.front.passOp = vk::StencilOp::eKeep;           // В случае прохождения теста трафарета для лицевых граней
+    pipelineDepthStencilStateCreateInfo.front.compareOp = vk::CompareOp::eAlways;      // Функция теста трафарета для лицевых граней
+
+    // Параметры стадии мульти-семплинга (пока не используем  мульти-семплинг)
+    vk::PipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo{};
+    pipelineMultisampleStateCreateInfo.sampleShadingEnable = false;
+    pipelineMultisampleStateCreateInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    pipelineMultisampleStateCreateInfo.minSampleShading = 1.0f;
+    pipelineMultisampleStateCreateInfo.pSampleMask = nullptr;
+    pipelineMultisampleStateCreateInfo.alphaToCoverageEnable = false;
+    pipelineMultisampleStateCreateInfo.alphaToOneEnable = false;
+
+    // С М Е Ш И В А Н И Е  Ц В Е Т О В  ( C O L O R  B L E N D I N G )
+
+    // Описываем параметры смешивания для единственного цветового вложения
+    vk::PipelineColorBlendAttachmentState pipelineColorBlendAttachmentState{};
+    pipelineColorBlendAttachmentState.blendEnable = true;
+    pipelineColorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+    pipelineColorBlendAttachmentState.colorBlendOp = vk::BlendOp::eAdd;                          // Для цветов - аддитивное смешивание (сложение) по правилам определенным ниже
+    pipelineColorBlendAttachmentState.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;          // Множитель исходного цвета равен альфе
+    pipelineColorBlendAttachmentState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;  // Множитель второго цвета равен 1 минус альфа исходного
+    pipelineColorBlendAttachmentState.alphaBlendOp = vk::BlendOp::eAdd;                          // Для альфа - аддитивное смешивание (сложение) пр правила определенным ниже
+    pipelineColorBlendAttachmentState.srcAlphaBlendFactor = vk::BlendFactor::eOne;               // Множитель исходной альфы равен единице
+    pipelineColorBlendAttachmentState.dstColorBlendFactor = vk::BlendFactor::eZero;              // Множитель второй альфы равен нулю
+
+    // Описываем общие настройки смешивания
+    vk::PipelineColorBlendStateCreateInfo pipelineColorBlendStateCreateInfo{};
+    pipelineColorBlendStateCreateInfo.logicOpEnable = false;
+    pipelineColorBlendStateCreateInfo.logicOp = vk::LogicOp::eCopy;
+    pipelineColorBlendStateCreateInfo.attachmentCount = 1;
+    pipelineColorBlendStateCreateInfo.pAttachments = &pipelineColorBlendAttachmentState;
+
+    // К О Н В Е Й Е Р
+
+    // Создать объект конвейера
+    vk::GraphicsPipelineCreateInfo graphicsPipelineCreateInfo{};
+    graphicsPipelineCreateInfo.stageCount = shaderStages.size();
+    graphicsPipelineCreateInfo.pStages = shaderStages.data();
+    graphicsPipelineCreateInfo.pVertexInputState = &pipelineVertexInputStateCreateInfo;
+    graphicsPipelineCreateInfo.pInputAssemblyState = &pipelineInputAssemblyStateCreateInfo;
+    graphicsPipelineCreateInfo.pViewportState = &pipelineViewportStateCreateInfo;
+    graphicsPipelineCreateInfo.pRasterizationState = &pipelineRasterizationStateCreateInfo;
+    graphicsPipelineCreateInfo.pDepthStencilState = &pipelineDepthStencilStateCreateInfo;
+    graphicsPipelineCreateInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
+    graphicsPipelineCreateInfo.pColorBlendState = &pipelineColorBlendStateCreateInfo;
+    graphicsPipelineCreateInfo.layout = layout.get();
+    graphicsPipelineCreateInfo.renderPass = renderPass.get();
+    graphicsPipelineCreateInfo.subpass = 0;
+    auto pipeline = device.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
+
+    // Уничтожить шейдерные модули (конвейер создан, они не нужны)
+    device.getLogicalDevice()->destroyShaderModule(shaderModuleVS);
+    device.getLogicalDevice()->destroyShaderModule(shaderModuleFS);
+
+    // Вернуть unique smart pointer
+    return vk::UniquePipeline(pipeline);
+}
+
 /** C O N S T R U C T O R - D E S T R U C T O R **/
 
 /**
@@ -542,8 +745,14 @@ vk::UniqueDescriptorSet VkRenderer::allocateDescriptorSetUBO(
  * @param hWnd Дескриптор окна WinApi
  * @param maxMeshes Максимальное кол-во мешей
  */
-VkRenderer::VkRenderer(HINSTANCE hInstance, HWND hWnd, size_t maxMeshes):
-debugReportCallback_(VK_NULL_HANDLE)
+VkRenderer::VkRenderer(HINSTANCE hInstance,
+        HWND hWnd,
+        const std::vector<unsigned char>& vertexShaderCodeBytes,
+        const std::vector<unsigned char>& fragmentShaderCodeBytes,
+        size_t maxMeshes):
+debugReportCallback_(VK_NULL_HANDLE),
+isEnabled_(true),
+isCommandsReady_(false)
 {
     // Инициализация экземпляра Vulkan
     this->vulkanInstance_ = initInstance("My Application",
@@ -591,6 +800,10 @@ debugReportCallback_(VK_NULL_HANDLE)
     initUboBuffers(device_,&uboBufferViewProjection_,&uboBufferModel_,maxMeshes);
     std::cout << "UBO-buffers allocated (" << uboBufferViewProjection_.getSize() << " and " << uboBufferModel_.getSize() << ")." << std::endl;
 
+    // Создать текстурный семплер по умолчанию
+    textureSamplerDefault_ = vk::tools::createImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear, vk::SamplerAddressMode::eRepeat, 4);
+    std::cout << "Default texture sampler created." << std::endl;
+
     // Создание пулов дескрипторов
     // Поскольку в UBO наборе используется динамический UBO дескриптор для матриц модели, можно обойтись и одним UBO набором
     // В случае с набором материала, в нем используются дескрипторы текстур без динамического смещения, посему на каждый меш по набору
@@ -607,6 +820,20 @@ debugReportCallback_(VK_NULL_HANDLE)
     // Создать UBO дескрипторный набор, и связать дескрипторы с ресурсами (буферами для матриц вида-проекции и модели)
     descriptorSetUBO_ = allocateDescriptorSetUBO(device_, descriptorSetLayoutUBO_, descriptorPoolUBO_, uboBufferViewProjection_, uboBufferModel_);
     std::cout << "UBO descriptor set allocated." << std::endl;
+
+    // Создать макет размещения графического конвейера
+    std::vector<vk::DescriptorSetLayout> layouts = {descriptorSetLayoutUBO_.get(),descriptorSetLayoutMeshMaterial_.get()};
+    pipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique(vk::PipelineLayoutCreateInfo({},layouts.size(),layouts.data()));
+    std::cout << "Pipeline layout created." << std::endl;
+
+    // Создать проход рендеринга
+    pipeline_ = createGraphicsPipeline(device_,pipelineLayout_,frameBuffers_[0].getExtent(),mainRenderPass_,vertexShaderCodeBytes,fragmentShaderCodeBytes);
+    std::cout << "Graphics pipeline created." << std::endl;
+
+    // Создать примитивы синхронизации (семафоры)
+    semaphoreReadyToPresent_ = device_.getLogicalDevice()->createSemaphoreUnique({});
+    semaphoreReadyToRender_ = device_.getLogicalDevice()->createSemaphoreUnique({});
+    std::cout << "Synchronization semaphores created." << std::endl;
 }
 
 /**
@@ -614,6 +841,26 @@ debugReportCallback_(VK_NULL_HANDLE)
  */
 VkRenderer::~VkRenderer()
 {
+    // Остановка рендеринга
+    this->stopRendering();
+
+    // Удалить примитивы синхронизации
+    device_.getLogicalDevice()->destroySemaphore(semaphoreReadyToRender_.get());
+    device_.getLogicalDevice()->destroySemaphore(semaphoreReadyToPresent_.get());
+    semaphoreReadyToRender_.release();
+    semaphoreReadyToPresent_.release();
+    std::cout << "Synchronization semaphores destroyed." << std::endl;
+
+    // Уничтожение прохода рендеринга
+    device_.getLogicalDevice()->destroyPipeline(pipeline_.get());
+    pipeline_.release();
+    std::cout << "Graphics pipeline destroyed." << std::endl;
+
+    // Уничтожение макета размещения графического конвейера
+    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayout_.get());
+    pipelineLayout_.release();
+    std::cout << "Pipeline layout destroyed." << std::endl;
+
     // Освобождение UBO набора дескрипторов
     device_.getLogicalDevice()->freeDescriptorSets(descriptorPoolUBO_.get(),1,&(descriptorSetUBO_.get()));
     descriptorSetUBO_.release();
@@ -632,6 +879,11 @@ VkRenderer::~VkRenderer()
     descriptorPoolUBO_.release();
     descriptorPoolMeshMaterial_.release();
     std::cout << "Descriptor pools destroyed." << std::endl;
+
+    // Уничтожение текстурного семплера по умолчанию
+    device_.getLogicalDevice()->destroySampler(textureSamplerDefault_.get());
+    textureSamplerDefault_.release();
+    std::cout << "Default texture sampler destroyed." << std::endl;
 
     // Освобождение UBO буферов
     uboBufferViewProjection_.destroyVulkanResources();
@@ -675,4 +927,118 @@ VkRenderer::~VkRenderer()
     vulkanInstance_->destroy();
     vulkanInstance_.release();
     std::cout << "Vulkan instance destroyed." << std::endl;
+}
+
+/**
+ * Остановка рендеринга
+ */
+void VkRenderer::stopRendering()
+{
+    // Ожидаем завершения всех команд
+    device_.getLogicalDevice()->waitIdle();
+    // Отключаем рендеринг
+    isEnabled_ = false;
+}
+
+/**
+ * Рендеринг кадра
+ */
+void VkRenderer::draw()
+{
+    // Если рендеринг не включен - выход
+    if(!isEnabled_){
+        return;
+    }
+
+    // П О Д Г О Т О В К А  К О М А Н Д
+
+    // Если командные буферы не готовы - заполнить их командами
+    if(!isCommandsReady_)
+    {
+        // Описываем очистку вложений
+        std::vector<vk::ClearValue> clearValues(2);
+        clearValues[0].color = vk::ClearColorValue( std::array<float, 4>({ 1.0f, 0.0f, 0.0f, 1.0f }));
+        clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
+
+        // Описываем начало прохода
+        vk::RenderPassBeginInfo renderPassBeginInfo{};
+        renderPassBeginInfo.pNext = nullptr;
+        renderPassBeginInfo.renderPass = mainRenderPass_.get();
+        renderPassBeginInfo.renderArea.offset.x = 0;
+        renderPassBeginInfo.renderArea.offset.y = 0;
+        renderPassBeginInfo.renderArea.extent.width = frameBuffers_[0].getExtent().width;
+        renderPassBeginInfo.renderArea.extent.height = frameBuffers_[0].getExtent().height;
+        renderPassBeginInfo.clearValueCount = clearValues.size();
+        renderPassBeginInfo.pClearValues = clearValues.data();
+
+        // Подготовка команд (запись в командные буферы)
+        for(size_t i = 0; i < commandBuffers_.size(); ++i)
+        {
+            // Начинаем работу с командным буфером (запись команд)
+            vk::CommandBufferBeginInfo commandBufferBeginInfo{};
+            commandBufferBeginInfo.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse;
+            commandBufferBeginInfo.pNext = nullptr;
+            commandBuffers_[i].begin(commandBufferBeginInfo);
+
+            // Сменить целевой кадровый буфер и начать работу с проходом (это очистит вложения)
+            renderPassBeginInfo.framebuffer = frameBuffers_[i].getVulkanFrameBuffer().get();
+            commandBuffers_[i].beginRenderPass(renderPassBeginInfo,vk::SubpassContents::eInline);
+
+            // Привязать графический конвейер
+            commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline_.get());
+
+            //TODO: привязка наборов дескрипторов и вершинных буферов
+
+            // Завершение прохода добавит неявное преобразование памяти кадрового буфера в VK_IMAGE_LAYOUT_PRESENT_SRC_KHR для представления содержимого
+            commandBuffers_[i].endRenderPass();
+
+            // Завершаем работу с командным буфером
+            commandBuffers_[i].end();
+        }
+
+        // Командные буфер готовы
+        isCommandsReady_ = true;
+    }
+
+    // О Т П Р А В К А  К О М А Н Д  И  П О К А З
+
+    // Индекс доступного изображения
+    size_t availableImageIndex = 0;
+
+    // Получить индекс доступного для рендеринга изображения и взвести семафор готовности к рендерингу
+    device_.getLogicalDevice()->acquireNextImageKHR(
+            swapChainKhr_.get(),
+            10000,
+            semaphoreReadyToRender_.get(),
+            {},
+            &availableImageIndex);
+
+    // Семафоры, которые будут ожидаться конвейером
+    std::vector<vk::Semaphore> waitSemaphores = {semaphoreReadyToRender_.get()};
+
+    // Семафоры, которые будут взводиться конвейером после прохождения конвейера
+    std::vector<vk::Semaphore> signalSemaphores = {semaphoreReadyToPresent_.get()};
+
+    // Стадии, на которых конвейер будет приостанавливаться, чтобы ожидать своего семафора
+    std::vector<vk::PipelineStageFlags> waitStages = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+
+    // Отправить команды на выполнение
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;                                       // Кол-во командных буферов
+    submitInfo.pCommandBuffers = &(commandBuffers_[availableImageIndex]);    // Командные буферы
+    submitInfo.waitSemaphoreCount = waitSemaphores.size();                   // Кол-во семафоров, которые будет ожидать конвейер
+    submitInfo.pWaitSemaphores = waitSemaphores.data();                      // Семафоры ожидания
+    submitInfo.pWaitDstStageMask = waitStages.data();                        // Этапы конвейера, на которых будет ожидание
+    submitInfo.signalSemaphoreCount = signalSemaphores.size();               // Кол-во семафоров, которые будут взведены после выполнения
+    submitInfo.pSignalSemaphores = signalSemaphores.data();                  // Семафоры взведения
+    device_.getGraphicsQueue().submit({submitInfo}, nullptr); // Отправка командного буфера на выполнение
+
+    // Инициировать показ (когда картинка будет готова)
+    vk::PresentInfoKHR presentInfoKhr{};
+    presentInfoKhr.waitSemaphoreCount = signalSemaphores.size();              // Кол-во семафоров, которые будут ожидаться
+    presentInfoKhr.pWaitSemaphores = signalSemaphores.data();                 // Семафоры, которые ожидаются
+    presentInfoKhr.swapchainCount = 1;                                        // Кол-во цепочек показа
+    presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                      // Цепочка показа
+    presentInfoKhr.pImageIndices = &availableImageIndex;                      // Индекс показываемого изображения
+    device_.getPresentQueue().presentKHR(presentInfoKhr);                     // Осуществить показ
 }

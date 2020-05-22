@@ -54,9 +54,12 @@ int main(int argc, char* argv[])
 
         /** Рендерер - инициализация **/
 
-        //TODO: Здесь может быть загрузка исходных кодов шейдеров
+        // Загрузка кода шейдеров
+        auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.vert.spv"));
+        auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
 
-        _vkRenderer = new VkRenderer(_hInstance,_hwnd);
+        // Инициализация рендерера
+        _vkRenderer = new VkRenderer(_hInstance,_hwnd,vsCode,fsCode);
 
         /** Рендерер - загрузка ресурсов **/
 
@@ -82,7 +85,9 @@ int main(int argc, char* argv[])
                 }
 
                 //TODO: здесь может быть обновление сцены (изменение положения объектов и прочее)
-                //TODO: здесь может быть рисование сцены
+
+                // Рисование и показ сцены
+                _vkRenderer->draw();
             }
         }
 
@@ -106,4 +111,14 @@ int main(int argc, char* argv[])
     UnregisterClass("AppWindowClass",_hInstance);
 
     return 0;
+}
+
+/**
+ * Перед закрытием окна
+ */
+void tools::beforeWindowClose()
+{
+    // Поскольку при закрытии окно меняет размеры и уничтожается, это может вызвать ошибку поверхности.
+    // Чтобы этого не произошло - останавливаем рендеринг
+    _vkRenderer->stopRendering();
 }
