@@ -22,14 +22,6 @@ namespace vk
             glm::vec3 normal;
         };
 
-        /**
-         * Тип дескрипторного набора
-         */
-        enum DescriptorSetType {
-            eUBO,
-            eMeshMaterial
-        };
-
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         /**
@@ -62,6 +54,24 @@ namespace vk
         bool CheckDeviceLayersSupported(const vk::PhysicalDevice& device, const std::vector<const char *> &layerNames);
 
         /**
+         * Создать экземпляр Vulkan
+         * @param appName Наименование приложения
+         * @param engineName Наименование движка
+         * @param appVersion Версия приложения
+         * @param engineVersion Версия движка
+         * @param requireExtensions Запрашивать следующие расширения
+         * @param requireLayers Запрашивать следующие слои
+         * @return Unique smart pointer объект экземпляра
+         */
+        vk::UniqueInstance CreateVulkanInstance(
+                const std::string& appName,
+                const std::string& engineName,
+                uint32_t appVersion = 1,
+                uint32_t engineVersion = 1,
+                const std::vector<const char*>& requireExtensions = {},
+                const std::vector<const char*>& requireLayers = {});
+
+        /**
          * Метод обратного вызова для обработки сообщений об ошибках и предупреждениях в ходе работы Vulkan
          * @param flags Битовая маска набора причин вызвавших метод обратного вызова (VkDebugReportFlagBitsEXT)
          * @param objType Тип объекта при работе с которым был вызван метод (VkDebugReportObjectTypeEXT)
@@ -90,9 +100,9 @@ namespace vk
          * @param anisotropyLevel Уровень анизотропной фильтрации
          * @return Объект текстурного семплера (smart-pointer)
          */
-        vk::UniqueSampler createImageSampler(const vk::Device& device,
-                const vk::Filter& filtering,
-                const vk::SamplerAddressMode& addressMode,
-                float anisotropyLevel = 0);
+        vk::UniqueSampler CreateImageSampler(const vk::Device& device,
+                                             const vk::Filter& filtering,
+                                             const vk::SamplerAddressMode& addressMode,
+                                             float anisotropyLevel = 0);
     }
 }

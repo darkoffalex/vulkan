@@ -120,5 +120,5 @@ void tools::beforeWindowClose()
 {
     // Поскольку при закрытии окно меняет размеры и уничтожается, это может вызвать ошибку поверхности.
     // Чтобы этого не произошло - останавливаем рендеринг
-    _vkRenderer->stopRendering();
+    _vkRenderer->setRenderingStatus(false);
 }

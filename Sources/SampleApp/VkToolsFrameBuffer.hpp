@@ -8,6 +8,24 @@ namespace vk
     namespace tools
     {
         /**
+         * Инициализирующая структура описывающая вложение кадрового буфера
+         */
+        struct FrameBufferAttachmentInfo
+        {
+            // Если передан указать на объект изображения - оно не будет создаваться
+            // Это полезно если у нас уже есть изображение (например из swap-chain)
+            const vk::Image* pImage = nullptr;
+            // Тип изображения (1D, 2D, 3D)
+            vk::ImageType imageType = vk::ImageType::e2D;
+            // Формат изображения
+            vk::Format format;
+            // Флаг использования (в качестве чего будет использовано изображение, используется если pImage равен nullptr)
+            vk::ImageUsageFlags usageFlags;
+            // Флаг доступа к под-ресурсам (слоям) изображения
+            vk::ImageAspectFlags aspectFlags;
+        };
+
+        /**
          * Класс обертка для работы с кадровым буфером Vulkan
          */
         class FrameBuffer
@@ -25,14 +43,8 @@ namespace vk
             /// Объект кадрового буфера Vulkan (smart pointer)
             vk::UniqueFramebuffer frameBuffer_;
 
-            /// Цветовое вложение
-            struct Attachment{
-                vk::UniqueImage image;
-                vk::UniqueImageView imageView;
-            } colorAttachment_;
-
-            /// Вложение глубины трафарета
-            vk::tools::Image depthStencilAttachment_;
+            /// Массив вложений (изображений) кадрового буфера
+            std::vector<vk::tools::Image> attachments_;
 
         public:
             /**
@@ -63,9 +75,7 @@ namespace vk
                 std::swap(pDevice_,other.pDevice_);
                 std::swap(extent_, other.extent_);
                 frameBuffer_.swap(other.frameBuffer_);
-                colorAttachment_.image.swap(other.colorAttachment_.image);
-                colorAttachment_.imageView.swap(other.colorAttachment_.imageView);
-                depthStencilAttachment_ = std::move(other.depthStencilAttachment_);
+                attachments_.swap(other.attachments_);
             }
 
             /**
@@ -84,75 +94,70 @@ namespace vk
                 std::swap(pDevice_,other.pDevice_);
                 std::swap(extent_,other.extent_);
                 frameBuffer_.swap(other.frameBuffer_);
-                colorAttachment_.image.swap(other.colorAttachment_.image);
-                colorAttachment_.imageView.swap(other.colorAttachment_.imageView);
-                depthStencilAttachment_ = std::move(other.depthStencilAttachment_);
+                attachments_.swap(other.attachments_);
 
                 return *this;
             }
 
             /**
-             * Основной конструктор
+             * Основной конструктор кадрового буфера
              * @param pDevice Указатель на устройство создающее кадровый буфер (и владеющее им)
-             * @param image Полученное от swap-chain изображение цветового вложения
-             * @param colorAttImageFormat Формат цветового вложения
-             * @param depthStencilAttFormat Формат вложения глубины-трафарета
+             * @param renderPass Целевой проход рендеринга, в котором будет использован данный кадровый буфер
              * @param extent Расширение (разрешение) буфера
-             * @param renderPass Проход рендеринга
+             * @param attachmentsInfo Массив структур описывающих вложения
              */
             explicit FrameBuffer(
                     const vk::tools::Device* pDevice,
-                    const vk::Image& image,
-                    const vk::Format& colorAttImageFormat,
-                    const vk::Format& depthStencilAttFormat,
+                    const vk::UniqueRenderPass& renderPass,
                     const vk::Extent3D& extent,
-                    const vk::UniqueRenderPass& renderPass):
-            pDevice_(pDevice),
-            extent_(extent)
+                    const std::vector<vk::tools::FrameBufferAttachmentInfo>& attachmentsInfo):
+                    pDevice_(pDevice),
+                    isReady_(false),
+                    extent_(extent)
             {
-                // Сохранить полученный объект изображения
-                colorAttachment_.image = vk::UniqueImage(image);
-
                 // Проверить устройство
                 if(pDevice_ == nullptr || !pDevice_->isReady()){
                     throw vk::DeviceLostError("Device is not available");
                 }
 
-                // Создать image-view для цветового вложения
-                vk::ImageViewCreateInfo imageViewCreateInfo{};
-                imageViewCreateInfo.image = image;
-                imageViewCreateInfo.viewType = vk::ImageViewType::e2D;
-                imageViewCreateInfo.format = colorAttImageFormat;
-                imageViewCreateInfo.components = {vk::ComponentSwizzle::eR,vk::ComponentSwizzle::eG,vk::ComponentSwizzle::eB,vk::ComponentSwizzle::eA};
-                imageViewCreateInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-                imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-                imageViewCreateInfo.subresourceRange.levelCount = 1;
-                imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-                imageViewCreateInfo.subresourceRange.layerCount = 1;
-                colorAttachment_.imageView = pDevice_->getLogicalDevice()->createImageViewUnique(imageViewCreateInfo);
+                // Массив объектов imageView вложений для создания кадрового буфера
+                std::vector<vk::ImageView> attachmentsImageViews;
 
-                // Создать буфер глубины трафарета
-                depthStencilAttachment_ = vk::tools::Image(
-                        pDevice_,
-                        vk::ImageType::e2D,
-                        depthStencilAttFormat,
-                        extent,
-                        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc,
-                        vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil,
-                        vk::MemoryPropertyFlagBits::eDeviceLocal,
-                        pDevice_->isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent);
+                // Пройти по всем объектам инициализации вложений буфера
+                for(const auto& info : attachmentsInfo)
+                {
+                    // Если объект изображения не был передан
+                    if(info.pImage == nullptr){
+                        // Создать вложение создавая изображение и выделяя память
+                        attachments_.emplace_back(vk::tools::Image(
+                                pDevice_,
+                                info.imageType,
+                                info.format,
+                                extent,
+                                info.usageFlags,
+                                info.aspectFlags,
+                                vk::MemoryPropertyFlagBits::eDeviceLocal,
+                                pDevice_->isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent));
+                    }
+                    // Если объект изображения был передан
+                    else{
+                        attachments_.emplace_back(vk::tools::Image(
+                                pDevice_,
+                                *(info.pImage),
+                                info.imageType,
+                                info.format,
+                                info.aspectFlags));
+                    }
 
-                // Массив вложений (1 цветовое, 1 глубины-трафарета)
-                std::vector<vk::ImageView> attachments = {
-                        colorAttachment_.imageView.get(),
-                        depthStencilAttachment_.getImageView().get()
-                };
+                    // Добавить image-view объект в массив
+                    attachmentsImageViews.push_back(attachments_.back().getImageView().get());
+                }
 
                 // Создать объект кадрового буфера Vulkan
                 vk::FramebufferCreateInfo frameBufferCreateInfo{};
                 frameBufferCreateInfo.renderPass = renderPass.get();
-                frameBufferCreateInfo.attachmentCount = attachments.size();
-                frameBufferCreateInfo.pAttachments = attachments.data();
+                frameBufferCreateInfo.attachmentCount = attachmentsImageViews.size();
+                frameBufferCreateInfo.pAttachments = attachmentsImageViews.data();
                 frameBufferCreateInfo.width = extent_.width;
                 frameBufferCreateInfo.height = extent_.height;
                 frameBufferCreateInfo.layers = 1;
@@ -170,15 +175,8 @@ namespace vk
                 // Если объект инициализирован и устройство доступно
                 if(isReady_ && pDevice_!= nullptr && pDevice_->isReady())
                 {
-                    // Удалить созданный image-view
-                    pDevice_->getLogicalDevice()->destroyImageView(colorAttachment_.imageView.get());
-                    colorAttachment_.imageView.release();
-
-                    // Отвязать image объект об smart-pointer'а (дабы не вызвать авто-удаление объекта которым владеет swap-chain)
-                    colorAttachment_.image.release();
-
-                    // Уничтожить выделенные Vulkan ресурсы объекта изображения глубины-трафарета
-                    depthStencilAttachment_.destroyVulkanResources();
+                    // Очистка массива вложений (деструкторы объектов vk::tools::Image очистят ресурсы Vulkan)
+                    attachments_.clear();
 
                     // Удалить созданный объект кадрового буфера
                     pDevice_->getLogicalDevice()->destroyFramebuffer(frameBuffer_.get());
@@ -212,6 +210,15 @@ namespace vk
             const vk::UniqueFramebuffer& getVulkanFrameBuffer() const
             {
                 return frameBuffer_;
+            }
+
+            /**
+             * Получить список объектов вложений
+             * @return ссылка на массив изображений
+             */
+            const std::vector<vk::tools::Image>& getAttachmentImages() const
+            {
+                return attachments_;
             }
         };
     }

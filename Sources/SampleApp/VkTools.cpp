@@ -108,6 +108,58 @@ namespace vk
         }
 
         /**
+         * Создать экземпляр Vulkan
+         * @param appName Наименование приложения
+         * @param engineName Наименование движка
+         * @param appVersion Версия приложения
+         * @param engineVersion Версия движка
+         * @param requireExtensions Запрашивать следующие расширения
+         * @param requireLayers Запрашивать следующие слои
+         * @return Unique smart pointer объект экземпляра
+         */
+        vk::UniqueInstance CreateVulkanInstance(
+                const std::string& appName,
+                const std::string& engineName,
+                uint32_t appVersion,
+                uint32_t engineVersion,
+                const std::vector<const char*>& requireExtensions,
+                const std::vector<const char*>& requireLayers)
+        {
+            // Структуры с информацией о приложении
+            vk::ApplicationInfo applicationInfo(
+                    appName.c_str(),
+                    appVersion,
+                    engineName.c_str(),
+                    engineVersion,
+                    VK_API_VERSION_1_2);
+
+            // Структура для инициализации экземпляра Vulkan
+            vk::InstanceCreateInfo instanceCreateInfo({},&applicationInfo);
+
+            // Если были запрошены расширения
+            if(!requireExtensions.empty()){
+                if(vk::tools::CheckInstanceExtensionsSupported(requireExtensions)){
+                    instanceCreateInfo.setPpEnabledExtensionNames(requireExtensions.data());
+                    instanceCreateInfo.setEnabledExtensionCount(requireExtensions.size());
+                }else{
+                    throw vk::ExtensionNotPresentError("Some of required extensions is unavailable");
+                }
+            }
+
+            // Если были запрошены слои
+            if(!requireLayers.empty()){
+                if(vk::tools::CheckInstanceLayersSupported(requireLayers)){
+                    instanceCreateInfo.setPpEnabledLayerNames(requireLayers.data());
+                    instanceCreateInfo.setEnabledLayerCount(requireLayers.size());
+                }else{
+                    throw vk::LayerNotPresentError("Some of required layers is unavailable");
+                }
+            }
+
+            return vk::createInstanceUnique(instanceCreateInfo);
+        }
+
+        /**
          * Метод обратного вызова для обработки сообщений об ошибках и предупреждениях в ходе работы Vulkan
          * @param flags Битовая маска набора причин вызвавших метод обратного вызова (VkDebugReportFlagBitsEXT)
          * @param objType Тип объекта при работе с которым был вызван метод (VkDebugReportObjectTypeEXT)
@@ -141,10 +193,10 @@ namespace vk
          * @param anisotropyLevel Уровень анизотропной фильтрации
          * @return Объект текстурного семплера (smart-pointer)
          */
-        vk::UniqueSampler createImageSampler(const vk::Device& device,
-                const vk::Filter& filtering,
-                const vk::SamplerAddressMode& addressMode,
-                float anisotropyLevel)
+        vk::UniqueSampler CreateImageSampler(const vk::Device& device,
+                                             const vk::Filter& filtering,
+                                             const vk::SamplerAddressMode& addressMode,
+                                             float anisotropyLevel)
         {
             vk::SamplerCreateInfo samplerCreateInfo{};
             // Тип фильтрации в случае если тексель отображаемой текстуры больше фрагмента (пикселя экрана)

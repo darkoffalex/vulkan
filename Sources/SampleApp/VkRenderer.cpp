@@ -2,138 +2,29 @@
 #include "ext_loader/vulkan_ext.h"
 
 /**
- * Инициализация экземпляра
- * @param appName Наименования приложения
- * @param engineName Наименование движка
- * @param requireExtensions Запрашивать расширения (названия расширений)
- * @param requireValidationLayers Запрашивать слои (названия слоев)
- */
-vk::UniqueInstance VkRenderer::initInstance(const std::string &appName,
-        const std::string &engineName,
-        const std::vector<const char *> &requireExtensions,
-        const std::vector<const char *> &requireValidationLayers)
-{
-    // Структуры с информацией о приложении
-    vk::ApplicationInfo applicationInfo(
-            appName.c_str(),
-            1,
-            engineName.c_str(),
-            1,
-            VK_API_VERSION_1_2);
-
-    // Структура для инициализации экземпляра Vulkan
-    vk::InstanceCreateInfo instanceCreateInfo({},&applicationInfo);
-
-    // Если были запрошены расширения
-    if(!requireExtensions.empty()){
-        if(vk::tools::CheckInstanceExtensionsSupported(requireExtensions)){
-            instanceCreateInfo.setPpEnabledExtensionNames(requireExtensions.data());
-            instanceCreateInfo.setEnabledExtensionCount(requireExtensions.size());
-        }else{
-            throw vk::ExtensionNotPresentError("Some of required extensions is unavailable");
-        }
-    }
-
-    // Если были запрошены слои
-    if(!requireValidationLayers.empty()){
-        if(vk::tools::CheckInstanceLayersSupported(requireValidationLayers)){
-            instanceCreateInfo.setPpEnabledLayerNames(requireValidationLayers.data());
-            instanceCreateInfo.setEnabledLayerCount(requireValidationLayers.size());
-        }else{
-            throw vk::LayerNotPresentError("Some of required layers is unavailable");
-        }
-    }
-
-    return vk::createInstanceUnique(instanceCreateInfo);
-}
-
-/**
- * Создание объекта для работы с debug-callback'ом
- * @param vulkanInstance Экземпляр Vulkan
- * @return Идентификатор объекта для работы с debug-callback'ом
- */
-VkDebugReportCallbackEXT VkRenderer::createDebugReportCallback(const vk::UniqueInstance& vulkanInstance)
-{
-    // Конфигурация callback'а
-    VkDebugReportCallbackCreateInfoEXT vkDebugReportCallbackCreateInfoExt{};
-    vkDebugReportCallbackCreateInfoExt.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-    vkDebugReportCallbackCreateInfoExt.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-    vkDebugReportCallbackCreateInfoExt.pfnCallback = vk::tools::DebugVulkanCallback;
-
-    // Создать объект и вернуть идентификатор
-    return vulkanInstance->createDebugReportCallbackEXT(vkDebugReportCallbackCreateInfoExt);
-}
-
-/**
- * Создание поверхности отображения на окне
- * @param vulkanInstance Экземпляр Vulkan
- * @param hInstance экземпляр WinApi приложения
- * @param hWnd дескриптор окна WinApi
- * @return Поверхность для рисования на окне (smart pointer)
- */
-vk::UniqueSurfaceKHR VkRenderer::createSurface(const vk::UniqueInstance& vulkanInstance, HINSTANCE hInstance, HWND hWnd)
-{
-    // Конфигурация поверхности
-    VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfoKhr{};
-    win32SurfaceCreateInfoKhr.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    win32SurfaceCreateInfoKhr.hwnd = hWnd;
-    win32SurfaceCreateInfoKhr.hinstance = hInstance;
-    win32SurfaceCreateInfoKhr.flags = 0;
-    win32SurfaceCreateInfoKhr.pNext = nullptr;
-
-    // Создать объект и вернуть smart pointer на него
-    return vulkanInstance->createWin32SurfaceKHRUnique(win32SurfaceCreateInfoKhr);
-}
-
-/**
- * Инициализация устройства
- * @param instance Экземпляр Vulkan
- * @param surfaceKhr Поверхность отображения
- * @param requireExtensions Запрашивать расширения (названия расширений)
- * @param requireValidationLayers Запрашивать слои (названия слоев)
- * @param allowIntegratedDevices Позволять использование встроенной графики
- * @return Указатель на созданный объект-обертку над устройством Vulkan
- */
-vk::tools::Device VkRenderer::initDevice(const vk::UniqueInstance &instance,
-        const vk::UniqueSurfaceKHR &surfaceKhr,
-        const std::vector<const char *> &requireExtensions,
-        const std::vector<const char *> &requireValidationLayers,
-        bool allowIntegratedDevices)
-{
-    vk::tools::Device device(
-            instance,
-            surfaceKhr,
-            requireExtensions,
-            requireValidationLayers);
-
-    if(!device.isReady()){
-        throw vk::InitializationFailedError("Can't initialize device");
-    }
-
-    return device;
-}
-
-/**
- * Создание прохода рендерера
- * @param surfaceKhr Поверхность отображения (для проверки поддержки форматов поверхностью)
+ * Инициализация проходов рендеринга
  * @param colorAttachmentFormat Формат цветовых вложений
- * @param depthStencilAttachmentFormat Формат вложений глубины трафарета
+ * @param depthStencilAttachmentFormat Формат буфера глубины
  * @details Цветовые вложения - по сути изображения в которые шейдеры пишут информацию. У них могут быть форматы.
- * Для vulkan важно настроить доступность и формат вложений на этапе инициализации прохода
- * @return Проход рендеринга (smart pointer)
+ * При создании проходов необходимо указать с каким форматом и размещением вложений происходит работа на конкретных этапах
  */
-vk::UniqueRenderPass VkRenderer::createRenderPass(const vk::tools::Device& device,
-                                                  const vk::UniqueSurfaceKHR &surfaceKhr,
-                                                  const vk::Format &colorAttachmentFormat,
-                                                  const vk::Format &depthStencilAttachmentFormat)
+void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
 {
-    // Проверка поддержки форматов
-    if(!device.isFormatSupported(colorAttachmentFormat,surfaceKhr)){
-        throw vk::FormatNotSupportedError("Color attachment format not supported");
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize render pass. Device not ready");
     }
-
-    if(!device.isDepthStencilSupportedForFormat(depthStencilAttachmentFormat)){
-        throw vk::FormatNotSupportedError("Depth-stencil attachment format not supported");
+    // Проверяем готовность поверхности
+    if(surface_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize render pass. Surface not ready");
+    }
+    // Проверяем поддержку формата цветового вложения
+    if(!device_.isFormatSupported(colorAttachmentFormat,surface_)){
+        throw vk::FormatNotSupportedError("Can't initialize render pass. Color attachment format not supported");
+    }
+    // Проверяем поддержку формата вложений глубины
+    if(!device_.isDepthStencilSupportedForFormat(depthStencilAttachmentFormat)){
+        throw vk::FormatNotSupportedError("Can't initialize render pass. Depth-stencil attachment format not supported");
     }
 
     // Массив описаний вложений
@@ -167,7 +58,7 @@ vk::UniqueRenderPass VkRenderer::createRenderPass(const vk::tools::Device& devic
     attachmentDescriptions.push_back(depthStAttDesc);
 
     // Ссылки на вложения
-    // Если считать что вложения находятся в массиве, то ссылка содержит индекс соответствующего вложения
+    // Они содержат индексы описаний вложений, они также совместимы с порядком вложений в кадровом буфере, который привязывается во время начала прохода
     // Также ссылка определяет макет памяти вложения, который используется во время под-прохода
     vk::AttachmentReference colorAttachmentReferences[1] = {{0,vk::ImageLayout::eColorAttachmentOptimal}};
     vk::AttachmentReference depthAttachmentReference{1,vk::ImageLayout::eDepthAttachmentOptimal};
@@ -220,37 +111,53 @@ vk::UniqueRenderPass VkRenderer::createRenderPass(const vk::tools::Device& devic
     renderPassCreateInfo.dependencyCount = subPassDependencies.size();
     renderPassCreateInfo.pDependencies = subPassDependencies.data();
 
-    // Создать проход и вернуть smart-pointer
-    return device.getLogicalDevice()->createRenderPassUnique(renderPassCreateInfo);
-
+    // Создать проход рендеринга
+    mainRenderPass_ = device_.getLogicalDevice()->createRenderPassUnique(renderPassCreateInfo);
 }
 
 /**
- * Создать объект цепочки показа
- * @param device Указатель на объект-обертку устройства
- * @param surfaceFormat Формат поверхности
- * @param surfaceKhr Поверхность отображения (для проверки поддержки форматов поверхностью)
- * @param bufferCount Кол-во буферов
- * @return Объект swap-chain (smart pointer)
+ * Де-инициализация проходов рендеринга
  */
-vk::UniqueSwapchainKHR VkRenderer::createSwapChain(
-        const vk::tools::Device& device,
-        const vk::SurfaceFormatKHR& surfaceFormat,
-        const vk::UniqueSurfaceKHR& surfaceKhr,
-        size_t bufferCount)
+void VkRenderer::deInitRenderPasses()
 {
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't de-init render pass. Device not ready");
+    }
+
+    // Уничтожить проход и освободить smart-pointer
+    device_.getLogicalDevice()->destroyRenderPass(mainRenderPass_.get());
+    mainRenderPass_.release();
+}
+
+/**
+ * Инициализация swap-chain (цепочки показа)
+ * Цепочка показа - набор сменяющихся изображений показываемых на поверхности отображения
+ * @param surfaceFormat Формат поверхности
+ * @param bufferCount Желаемое кол-во буферов изображений (0 для авто-определения)
+ */
+void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t bufferCount)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize swap-chain. Device not ready");
+    }
+    // Проверяем готовность поверхности
+    if(surface_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize swap-chain. Surface not ready");
+    }
     // Проверить поддерживается ли формат поверхности
-    if(!device.isSurfaceFormatSupported(surfaceFormat,surfaceKhr)){
-        throw vk::FormatNotSupportedError("Surface format not supported");
+    if(!device_.isSurfaceFormatSupported(surfaceFormat,surface_)){
+        throw vk::FormatNotSupportedError("Can't initialize swap-chain. Surface format not supported");
     }
 
     // Получить возможности устройства для поверхности
-    auto capabilities = device.getPhysicalDevice().getSurfaceCapabilitiesKHR(surfaceKhr.get());
+    auto capabilities = device_.getPhysicalDevice().getSurfaceCapabilitiesKHR(surface_.get());
 
     // Если задано кол-во буферов
     if(bufferCount > 0){
         if(bufferCount < capabilities.minImageCount || bufferCount > capabilities.maxImageCount){
-            throw vk::InitializationFailedError("Unsupported buffer count required. Please change it");
+            throw vk::InitializationFailedError("Can't initialize swap-chain. Unsupported buffer count required. Please change it");
         }
     }
     // Если нет - определить оптимальное кол-во
@@ -265,7 +172,7 @@ vk::UniqueSwapchainKHR VkRenderer::createSwapChain(
 
     // Если кол-во буферов больше единицы, есть смысл выбрать более сложный режим (если его поддерживает поверхность)
     if(bufferCount > 1){
-        auto presentModes = device.getPhysicalDevice().getSurfacePresentModesKHR(surfaceKhr.get());
+        auto presentModes = device_.getPhysicalDevice().getSurfacePresentModesKHR(surface_.get());
         for(const auto& presentModeEntry : presentModes){
             if(presentModeEntry == vk::PresentModeKHR::eMailbox){
                 presentMode = presentModeEntry;
@@ -274,282 +181,394 @@ vk::UniqueSwapchainKHR VkRenderer::createSwapChain(
         }
     }
 
+    // Старый swap-chain
+    auto oldSwapChain = swapChainKhr_.get() != nullptr ? swapChainKhr_.get() : nullptr;
+
     // Создать swap-chain
     vk::SwapchainCreateInfoKHR swapChainCreateInfo{};
-    swapChainCreateInfo.surface = surfaceKhr.get();
+    swapChainCreateInfo.surface = surface_.get();
     swapChainCreateInfo.minImageCount = bufferCount;
     swapChainCreateInfo.imageFormat = surfaceFormat.format;
     swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
     swapChainCreateInfo.imageExtent = capabilities.currentExtent;
     swapChainCreateInfo.imageArrayLayers = 1;
     swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
-    swapChainCreateInfo.imageSharingMode = device.isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
-    swapChainCreateInfo.queueFamilyIndexCount = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device.getQueueFamilyIndices().size() : 0;
-    swapChainCreateInfo.pQueueFamilyIndices = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device.getQueueFamilyIndices().data() : nullptr;
+    swapChainCreateInfo.imageSharingMode = device_.isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
+    swapChainCreateInfo.queueFamilyIndexCount = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device_.getQueueFamilyIndices().size() : 0;
+    swapChainCreateInfo.pQueueFamilyIndices = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device_.getQueueFamilyIndices().data() : nullptr;
     swapChainCreateInfo.preTransform = capabilities.currentTransform;
     swapChainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
     swapChainCreateInfo.presentMode = presentMode;
     swapChainCreateInfo.clipped = true;
-    swapChainCreateInfo.oldSwapchain = nullptr; //TODO: добавить параметр, сделать пересоздание swap-chain'а
-    return device.getLogicalDevice()->createSwapchainKHRUnique(swapChainCreateInfo);
+    swapChainCreateInfo.oldSwapchain = oldSwapChain;
+    swapChainKhr_ = device_.getLogicalDevice()->createSwapchainKHRUnique(swapChainCreateInfo);
+
+    // Уничтожить старый swap-chain если он был
+    if(oldSwapChain != nullptr){
+        device_.getLogicalDevice()->destroySwapchainKHR(oldSwapChain);
+    }
 }
 
 /**
- * Инициализировать кадровые буферы
- * @param frameBuffers Указатель на массив кадровых буферов
- * @param device Объект-обертка устройства
- * @param surfaceKhr Поверхность отображения (для получения разрешения и прочего)
- * @param swapChain Объект цепочки показа (swap-chain)
- * @param renderPass Объект прохода рендеринга (каждый кадровый буфер связан с проходом)
- * @param colorAttachmentFormat Формат цветовых вложений (соответствует тому, что был использован при создании прохода)
- * @param depthStencilAttachmentFormat Формат вложений глубины трафарета (соответствует тому, что был использован при создании прохода)
+ * Де-инициализация swap-chain (цепочки показа)
  */
-void VkRenderer::initFrameBuffers(std::vector<vk::tools::FrameBuffer> *frameBuffers, const vk::tools::Device &device,
-        const vk::UniqueSurfaceKHR &surfaceKhr, const vk::UniqueSwapchainKHR &swapChain,
-        const vk::UniqueRenderPass &renderPass, const vk::Format &colorAttachmentFormat,
-        const vk::Format &depthStencilAttachmentFormat)
+void VkRenderer::deInitSwapChain()
 {
-    // Получить изображения
-    auto swapChainImages = device.getLogicalDevice()->getSwapchainImagesKHR(swapChain.get());
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't de-init swap-chain. Device not ready");
+    }
+
+    // Уничтожить swap-chain и освободить smart-pointer
+    device_.getLogicalDevice()->destroySwapchainKHR(swapChainKhr_.get());
+    swapChainKhr_.release();
+}
+
+/**
+ * Инициализация кадровых буферов
+ * @param colorAttachmentFormat Формат цветовых вложений
+ * @param depthStencilAttachmentFormat Формат вложений глубины
+ */
+void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Device not ready");
+    }
+    // Проверяем готовность поверхности
+    if(surface_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Surface not ready");
+    }
+    // Проверяем готовность swap-chain'а
+    if(swapChainKhr_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize frame-buffers. Swap-chain not ready");
+    }
+    // Проверяем готовность прохода для которого создаются буферы
+    if(mainRenderPass_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize frame-buffers. Required render pass not ready");
+    }
+
+    // Получить изображения swap-chain'а
+    auto swapChainImages = device_.getLogicalDevice()->getSwapchainImagesKHR(swapChainKhr_.get());
 
     // Получить возможности устройства для поверхности
-    auto capabilities = device.getPhysicalDevice().getSurfaceCapabilitiesKHR(surfaceKhr.get());
+    auto capabilities = device_.getPhysicalDevice().getSurfaceCapabilitiesKHR(surface_.get());
 
     // Пройтись по всем изображениям и создать кадровый буфер для каждого
     for(const auto& swapChainImage : swapChainImages)
     {
-        frameBuffers->emplace_back(vk::tools::FrameBuffer(
-                &device,
-                swapChainImage,
-                colorAttachmentFormat,
-                depthStencilAttachmentFormat,
+        // Описываем вложения кадрового буфера
+        // Порядок вложений должен совпадать с порядком вложений в описании прохода рендеринга
+        std::vector<vk::tools::FrameBufferAttachmentInfo> attachmentsInfo = {
+                // Для цветового вложения уже существует изображение swap-chain
+                // По этой причине не нужно создавать его и выделять память, достаточно передать указатель на него
+                {
+                    &swapChainImage,
+                    vk::ImageType::e2D,
+                    colorAttachmentFormat,
+                    {},
+                    vk::ImageAspectFlagBits::eColor
+                },
+                // Для вложения глубины-трафарета отсутствует изображение, поэтому оно должно быть создано
+                // Объект изображения и объект его памяти будут содержаться в самом вложении
+                {
+                    nullptr,
+                    vk::ImageType::e2D,
+                    depthStencilAttachmentFormat,
+                    vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+                    vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil
+                }
+        };
+
+        // Создаем кадровый буфер со всеми необходимыми вложениями и добавляем его в массив
+        frameBuffers_.emplace_back(vk::tools::FrameBuffer(
+                &device_,
+                mainRenderPass_,
                 {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
-                renderPass));
+                attachmentsInfo));
     }
+}
+
+/**
+ * Де-инициализация кадровых буферов
+ */
+void VkRenderer::deInitFrameBuffers()
+{
+    // Очистка всех ресурсов Vulkan происходит в деструкторе объекта frame-buffer'а
+    // Достаточно вызвать очистку массива
+    frameBuffers_.clear();
 }
 
 /**
  * Инициализация UBO буферов
- * @param device Объект-обертка устройства
- * @param uboViewProjection Указатель на объект UBO буфера матриц вида-проекции
- * @param uboModel  Указатель на объект UBO буфера матриц модели (на каждый меш своя матрица)
- * @param maxMeshes Максимальное кол-во возможных мешей
+ * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей
  */
-void VkRenderer::initUboBuffers(const vk::tools::Device &device,
-        vk::tools::Buffer *uboViewProjection,
-        vk::tools::Buffer *uboModel,
-        size_t maxMeshes)
+void VkRenderer::initUboBuffers(size_t maxMeshes)
 {
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize UBO buffers. Device not ready");
+    }
+
     // Создаем UBO буферы для матриц вида и проекции
-    *uboViewProjection = vk::tools::Buffer(&device, sizeof(glm::mat4)*2,vk::BufferUsageFlagBits::eUniformBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-    if(!uboViewProjection->isReady()) throw vk::InitializationFailedError("Can't create view-projection UBO buffer");
+    uboBufferViewProjection_ = vk::tools::Buffer(
+            &device_,
+            sizeof(glm::mat4)*2,
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
     // Создаем UBO буферы для матриц модели (на каждый меш своя матрица)
     // В связи с тем что тип дескриптора предполагается как "динамический буфер", используем динамическое выравнивание для выяснения размеров буфера
-    *uboModel = vk::tools::Buffer(&device, device.getDynamicallyAlignedUboBlockSize<glm::mat4>() * maxMeshes, vk::BufferUsageFlagBits::eUniformBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
-    if(!uboModel->isReady()) throw vk::InitializationFailedError("Can't create model UBO buffer");
+    uboBufferModel_ = vk::tools::Buffer(
+            &device_,
+            device_.getDynamicallyAlignedUboBlockSize<glm::mat4>() * maxMeshes,
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible);
 }
 
 /**
- * Создание дескрипторного пула, из которого будет выделены необходимые наборы
- * @param device Объект-обертка устройства
- * @param type Тип целевого набора, который будет выделятся из пула
- * @param maxSets Максимальное кол-вао выделяемых наборов
- * @return Объект дескрипторного пула (smart-pointer)
+ * Де-инициализация UBO буферов
  */
-vk::UniqueDescriptorPool VkRenderer::createDescriptorPool(
-        const vk::tools::Device &device,
-        const vk::tools::DescriptorSetType &type,
-        size_t maxSets)
+void VkRenderer::deInitUboBuffers()
 {
-    // Определяем количество дескрипторов (и их тип) которые смогут храниться в выделенном из данного пула множестве дескрипторов (descriptorSet)
-    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes;
+    // Уничтожаем ресурсы Vulkan
+    uboBufferModel_.destroyVulkanResources();
+    uboBufferViewProjection_.destroyVulkanResources();
+}
 
-    switch(type)
-    {
-        default:
-        case vk::tools::DescriptorSetType::eUBO:
-        {
-            descriptorPoolSizes = {
-                    // Один дескриптор в наборе отвечает за обычный UBO буфер (привязывается единожды за кадр)
-                    {vk::DescriptorType::eUniformBuffer, 1},
-                    // Один дескриптор в наборе отвечает за динамический UBO буфер (может привязываться несколько раз за кадр со смещением в буфере)
-                    {vk::DescriptorType::eUniformBufferDynamic, 1},
-            };
-        }
-        case vk::tools::DescriptorSetType::eMeshMaterial:
-        {
-            descriptorPoolSizes = {
-                    // Один дескриптор в наборе отвечает за текстуру совмещенную с текстурным семплером
-                    {vk::DescriptorType::eCombinedImageSampler, 1}
-            };
-        }
+/**
+ * Инициализация дескрипторов (наборов дескрипторов)
+ * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
+ */
+void VkRenderer::initDescriptors(size_t maxMeshes)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize descriptors. Device not ready");
+    }
+    // Проверить готовность буферов UBO
+    if(!uboBufferModel_.isReady() || !uboBufferViewProjection_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize descriptors. UBO buffers not ready");
     }
 
-    // Создать дескрипторный пул и вернуть его
-    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
-    descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
-    descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
-    descriptorPoolCreateInfo.maxSets = 2;
-    return device.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
-}
+    // Д Е С К Р И П Т О Р Н Ы Е  П У Л Ы
+    // Наборы дескрипторов выделяются из пулов. При создании пула, необходимо знать какие дескрипторы и сколько их
+    // будут в наборах, которые будут выделяться из пула, а так же сколько таких наборов всего будет
 
-/**
- * Создать макет размещения дескрипторного набора
- * @param device Объект-обертка устройства
- * @param type Тип дескрипторного набора
- * @return Объект макета размещения набора дескрипторов (smart-pointer)
- */
-vk::UniqueDescriptorSetLayout VkRenderer::createDescriptorSetLayout(const vk::tools::Device &device, const vk::tools::DescriptorSetType &type)
-{
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
-
-    switch(type)
+    // Создать пул для наборов типа "UBO"
     {
-        // Если это дескрипторный набор для UBO буфера
-        default:
-        case vk::tools::DescriptorSetType::eUBO:
-        {
-            bindings = {
-                    // Обычный UBO буфер
-                    {
-                            0,
-                            vk::DescriptorType::eUniformBuffer,
-                            1,
-                            vk::ShaderStageFlagBits::eVertex,
-                            nullptr,
-                    },
-                    // Динамический UBO буфер
-                    // Привязывая набор с этим буфером можно указать динамическое смещение
-                    {
-                            1,
-                            vk::DescriptorType::eUniformBufferDynamic,
-                            1,
-                            vk::ShaderStageFlagBits::eVertex,
-                            nullptr,
-                    },
-            };
-            break;
-        }
-        // Если это дескрипторный набор материала меша (descriptor set per mesh)
-        case vk::tools::DescriptorSetType::eMeshMaterial:
-        {
-            bindings = {
-                    // Обычный UBO буфер
-                    {
-                            0,
-                            vk::DescriptorType::eCombinedImageSampler,
-                            1,
-                            vk::ShaderStageFlagBits::eFragment,
-                            nullptr,
-                    },
-            };
-            break;
-        }
+        // Размеры пула для наборов типа "UBO"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Один дескриптор в наборе отвечает за обычный UBO буфер (привязывается единожды за кадр)
+                {vk::DescriptorType::eUniformBuffer, 1},
+                // Один дескриптор в наборе отвечает за динамический UBO буфер (может привязываться несколько раз за кадр со смещением в буфере)
+                {vk::DescriptorType::eUniformBufferDynamic, 1},
+        };
+
+
+        // У набора UBO есть динамический дескриптор для матриц модели, что позволяет многократно привязывать один набор
+        // с динамическим смещением. Это позволяет использовать только один набор для всех матриц мешей
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolUBO_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
-    // Создать макет размещения дескрипторного набора
-    vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
-    descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
-    descriptorSetLayoutCreateInfo.pBindings = bindings.data();
-    return device.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
-}
+    // Создать для наборов типа "материал меша"
+    {
+        // Размеры пула для наборов типа "материал меша"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Один дескриптор в наборе отвечает за текстуру совмещенную с текстурным семплером
+                {vk::DescriptorType::eCombinedImageSampler, 1}
+        };
 
-/**
- * Создать дескрипторный набор для UBO буфера
- * Несмотря на то, что у каждого меша может быть свое положение (своя матрица модели) можно использовать общий UBO набор с динамическим UBO дескриптором
- * @param device Объект-обертка устройства
- * @param layout Объект-обертка макета дескрипторного набора
- * @param pool Объект-обертка дескрипторного пула
- * @param uboViewProj UBO буфер вида-проекции
- * @param uboModel UBO для матриц модели мешей
- * @return Объект набора дескрипторов (smart-pointer)
- */
-vk::UniqueDescriptorSet VkRenderer::allocateDescriptorSetUBO(
-        const vk::tools::Device& device,
-        const vk::UniqueDescriptorSetLayout& layout,
-        const vk::UniqueDescriptorPool& pool,
-        const vk::tools::Buffer& uboViewProj,
-        const vk::tools::Buffer& uboModel)
-{
+        // У данного набора нет динамических дескрипторов, и для данного набора нельзя использовать динамическое смещение,
+        // соответственно у каждого меша должен быть свой набор дескрипторов отвечающий за метериал (текстуры и прочее)
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = maxMeshes;
+        descriptorPoolMeshMaterial_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    }
+
+    // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
+    // Макет размещения набора подробно описывает какие конкретно типы дескрипторов будут в наборе, сколько их, на каком
+    // этапе конвейера они доступы, а так же какой у них индекс привязки (binding) в шейдере
+
+    // Макет размещения набора UBO
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Обычный UBO буфер (для матриц вида и проекции)
+                {
+                        0,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eVertex,
+                        nullptr,
+                },
+                // Динамический UBO буфер (для матриц модели)
+                // Привязывая набор с этим буфером можно указать динамическое смещение
+                {
+                        1,
+                        vk::DescriptorType::eUniformBufferDynamic,
+                        1,
+                        vk::ShaderStageFlagBits::eVertex,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutUBO_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
+
+    // Макет размещения материала меша
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Текстурный семплер
+                {
+                        0,
+                        vk::DescriptorType::eCombinedImageSampler,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutMeshMaterial_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
+
+    // U B O  Н А Б О Р
+    // В отличии от набора материала меша, который будет выделяться отдельно для каждого меше, набор UBO можно
+    // выделить уже сейчас, ибо это единственный набор.
+
     // Выделить из пула набор дескрипторов
     vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-    descriptorSetAllocateInfo.descriptorPool = pool.get(),
-    descriptorSetAllocateInfo.pSetLayouts = &(layout.get());
+    descriptorSetAllocateInfo.descriptorPool = descriptorPoolUBO_.get(),
+    descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutUBO_.get());
     descriptorSetAllocateInfo.descriptorSetCount = 1;
-    auto allocatedSets = device.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+    auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
 
     // Информация о буферах
     std::vector<vk::DescriptorBufferInfo> bufferInfos = {
-            {uboViewProj.getBuffer().get(),0,VK_WHOLE_SIZE},
-            {uboModel.getBuffer().get(),0,VK_WHOLE_SIZE}
+            {uboBufferViewProjection_.getBuffer().get(),0,VK_WHOLE_SIZE},
+            {uboBufferModel_.getBuffer().get(),0,VK_WHOLE_SIZE}
     };
 
-    // Связать дескрипторы с буферами (описание "записей")
+    // Описываем связи дескрипторов с буферами (описание "записей")
     std::vector<vk::WriteDescriptorSet> writes = {
             {
-                // Целевой набор
-                allocatedSets[0],
-                // Индекс привязки
-                0,
-                // Элемент массива (не используется)
-                0,
-                // Кол-во дескрипторов
-                1,
-                // Тип дескриптора (обычный UBO буфер)
-                vk::DescriptorType::eUniformBuffer,
-                // Изображение (не используется)
-                nullptr,
-                // Буфер (используется)
-                bufferInfos.data() + 0,
-                // Тексель-буфер (не используется)
-                nullptr
+                    // Целевой набор
+                    allocatedSets[0],
+                    // Индекс привязки
+                    0,
+                    // Элемент массива (не используется)
+                    0,
+                    // Кол-во дескрипторов
+                    1,
+                    // Тип дескриптора (обычный UBO буфер)
+                    vk::DescriptorType::eUniformBuffer,
+                    // Изображение (не используется)
+                    nullptr,
+                    // Буфер (используется)
+                    bufferInfos.data() + 0,
+                    // Тексель-буфер (не используется)
+                    nullptr
             },
             {
-                // Целевой набор
-                allocatedSets[0],
-                // Индекс привязки
-                1,
-                // Элемент массива (не используется)
-                0,
-                // Кол-во дескрипторов
-                1,
-                // Тип дескриптора (динамический UBO буфер со смещением)
-                vk::DescriptorType::eUniformBufferDynamic,
-                // Изображение (не используется)
-                nullptr,
-                // Буфер (используется)
-                bufferInfos.data() + 1,
-                // Тексель-буфер (не используется)
-                nullptr
+                    // Целевой набор
+                    allocatedSets[0],
+                    // Индекс привязки
+                    1,
+                    // Элемент массива (не используется)
+                    0,
+                    // Кол-во дескрипторов
+                    1,
+                    // Тип дескриптора (динамический UBO буфер со смещением)
+                    vk::DescriptorType::eUniformBufferDynamic,
+                    // Изображение (не используется)
+                    nullptr,
+                    // Буфер (используется)
+                    bufferInfos.data() + 1,
+                    // Тексель-буфер (не используется)
+                    nullptr
             }
     };
 
-    // Обновление набора дескрипторов
-    device.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
+    // Связываем дескрипторы с ресурсами (буферами)
+    device_.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
 
-    // Вернуть итоговый набор дескрипторов
-    return vk::UniqueDescriptorSet(allocatedSets[0]);
+    // Сохранить созданный набор
+    descriptorSetUBO_ = vk::UniqueDescriptorSet(allocatedSets[0]);
 }
 
 /**
- * Создать графический конвейер
- * @param device Объект-обертка устройства
- * @param layout Объект макета размещения конвейера
- * @param frameBufferExtent Размеры (разрешение) кадрового буфера
- * @param renderPass Объект прохода рендеринга
- * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
- * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
- * @return Объект графического конвейера (smart-pointer)
+ * Де-инициализация дескрипторов
  */
-vk::UniquePipeline VkRenderer::createGraphicsPipeline(
-        const vk::tools::Device& device,
-        const vk::UniquePipelineLayout& layout,
-        const vk::Extent3D& frameBufferExtent,
-        const vk::UniqueRenderPass& renderPass,
-        const std::vector<unsigned char>& vertexShaderCodeBytes,
-        const std::vector<unsigned char>& fragmentShaderCodeBytes)
+void VkRenderer::deInitDescriptors()
 {
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't de-init descriptors. Device not ready");
+    }
+
+    // Уничтожить все выделенные наборы дескрипторов
+    device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolUBO_.get());
+    device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshMaterial_.get());
+    descriptorSetUBO_.release();
+
+    // Уничтожить размещения дескрипторов
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutUBO_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshMaterial_.get());
+    descriptorSetLayoutUBO_.release();
+    descriptorSetLayoutMeshMaterial_.release();
+
+    // Уничтожить пулы дескрипторов
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolUBO_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshMaterial_.get());
+    descriptorPoolUBO_.release();
+    descriptorPoolMeshMaterial_.release();
+}
+
+/**
+ * Инициализация графического конвейера
+ * @param vertexShaderCodeBytes Код вершинного шейдера
+ * @param fragmentShaderCodeBytes Код фрагментного шейдера
+ */
+void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCodeBytes, const std::vector<unsigned char> &fragmentShaderCodeBytes)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize pipeline. Device not ready");
+    }
+    // Проверяем готовность основного прохода рендеринга
+    if(mainRenderPass_.get() == nullptr){
+        throw vk::InitializationFailedError("Can't initialize pipeline. Render pass not ready");
+    }
+
+    // М А К Е Т  Р А З М Е Щ Е Н И Я  К О Н В Е Й Е Р А
+
+    // Массив макетов размещения дескрипторов
+    std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
+            descriptorSetLayoutUBO_.get(),
+            descriptorSetLayoutMeshMaterial_.get()
+    };
+
+    // Создать макет размещения конвейера
+    pipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
+        {},
+        descriptorSetLayouts.size(),
+        descriptorSetLayouts.data()
+    });
 
     // Э Т А П  В В О Д А  Д А Н Н Ы Х
 
@@ -610,13 +629,13 @@ vk::UniquePipeline VkRenderer::createGraphicsPipeline(
     }
 
     // Вершинный шейдер
-    vk::ShaderModule shaderModuleVS = device.getLogicalDevice()->createShaderModule({
+    vk::ShaderModule shaderModuleVS = device_.getLogicalDevice()->createShaderModule({
         {},
         vertexShaderCodeBytes.size(),
         reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
 
     // Фрагментный шейдер
-    vk::ShaderModule shaderModuleFS = device.getLogicalDevice()->createShaderModule({
+    vk::ShaderModule shaderModuleFS = device_.getLogicalDevice()->createShaderModule({
         {},
         fragmentShaderCodeBytes.size(),
         reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
@@ -627,15 +646,17 @@ vk::UniquePipeline VkRenderer::createGraphicsPipeline(
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFS,"main")
     };
 
-
     // V I E W  P O R T  &  S C I S S O R S
+
+    // Получить разрешение view-port'а
+    auto viewPortExtent = frameBuffers_[0].getExtent();
 
     // Настройки области отображения
     vk::Viewport viewport{};
     viewport.setX(0.0f);
     viewport.setY(0.0f);
-    viewport.setWidth(frameBufferExtent.width);
-    viewport.setHeight(frameBufferExtent.height);
+    viewport.setWidth(viewPortExtent.width);
+    viewport.setHeight(viewPortExtent.height);
     viewport.setMinDepth(0.0f);
     viewport.setMaxDepth(1.0f);
 
@@ -643,8 +664,8 @@ vk::UniquePipeline VkRenderer::createGraphicsPipeline(
     vk::Rect2D scissors{};
     scissors.offset.x = 0;
     scissors.offset.y = 0;
-    scissors.extent.width = frameBufferExtent.width;
-    scissors.extent.height = frameBufferExtent.height;
+    scissors.extent.width = viewPortExtent.width;
+    scissors.extent.height = viewPortExtent.height;
 
     // Описываем кол-во областей вида и обрезки
     vk::PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{};
@@ -724,17 +745,36 @@ vk::UniquePipeline VkRenderer::createGraphicsPipeline(
     graphicsPipelineCreateInfo.pDepthStencilState = &pipelineDepthStencilStateCreateInfo;
     graphicsPipelineCreateInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
     graphicsPipelineCreateInfo.pColorBlendState = &pipelineColorBlendStateCreateInfo;
-    graphicsPipelineCreateInfo.layout = layout.get();
-    graphicsPipelineCreateInfo.renderPass = renderPass.get();
+    graphicsPipelineCreateInfo.layout = pipelineLayout_.get();
+    graphicsPipelineCreateInfo.renderPass = mainRenderPass_.get();
     graphicsPipelineCreateInfo.subpass = 0;
-    auto pipeline = device.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
+    auto pipeline = device_.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
 
     // Уничтожить шейдерные модули (конвейер создан, они не нужны)
-    device.getLogicalDevice()->destroyShaderModule(shaderModuleVS);
-    device.getLogicalDevice()->destroyShaderModule(shaderModuleFS);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleVS);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleFS);
 
     // Вернуть unique smart pointer
-    return vk::UniquePipeline(pipeline);
+    pipeline_ = vk::UniquePipeline(pipeline);
+}
+
+/**
+ * Де-инициализация графического конвейера
+ */
+void VkRenderer::deInitPipeline()
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't de-init pipeline. Device not ready");
+    }
+
+    // Уничтожить конвейер
+    device_.getLogicalDevice()->destroyPipeline(pipeline_.get());
+    pipeline_.release();
+
+    // Уничтожить размещение конвейера
+    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayout_.get());
+    pipelineLayout_.release();
 }
 
 /** C O N S T R U C T O R - D E S T R U C T O R **/
@@ -750,13 +790,13 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& vertexShaderCodeBytes,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
         size_t maxMeshes):
-debugReportCallback_(VK_NULL_HANDLE),
 isEnabled_(true),
 isCommandsReady_(false)
 {
     // Инициализация экземпляра Vulkan
-    this->vulkanInstance_ = initInstance("My Application",
+    this->vulkanInstance_ = vk::tools::CreateVulkanInstance("My Application",
             "My engine",
+            1,1,
             { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME},
             { "VK_LAYER_LUNARG_standard_validation"});
     std::cout << "Vulkan instance created." << std::endl;
@@ -765,30 +805,30 @@ isCommandsReady_(false)
     vkExtInitInstance(static_cast<VkInstance>(vulkanInstance_.get()));
 
     // Создание debug report callback'а (создается только в том случае, если расширение VK_EXT_DEBUG_REPORT_EXTENSION_NAME использовано)
-    this->debugReportCallback_ = createDebugReportCallback(vulkanInstance_);
+    debugReportCallbackExt_ = vulkanInstance_->createDebugReportCallbackEXTUnique(vk::DebugReportCallbackCreateInfoEXT({vk::DebugReportFlagBitsEXT::eError|vk::DebugReportFlagBitsEXT::eWarning},vk::tools::DebugVulkanCallback));
     std::cout << "Report callback object created." << std::endl;
 
     // Создание поверхности отображения на окне
-    this->surface_ = createSurface(this->vulkanInstance_,hInstance,hWnd);
+    this->surface_ = vulkanInstance_->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR({},hInstance,hWnd));
     std::cout << "Surface created." << std::endl;
 
     // Создание устройства
-    device_ = initDevice(this->vulkanInstance_,this->surface_,{VK_KHR_SWAPCHAIN_EXTENSION_NAME},{"VK_LAYER_LUNARG_standard_validation"});
+    device_ = vk::tools::Device(vulkanInstance_,surface_,{VK_KHR_SWAPCHAIN_EXTENSION_NAME},{"VK_LAYER_LUNARG_standard_validation"},false);
     std::cout << "Device initialized (" << device_.getPhysicalDevice().getProperties().deviceName << ")" << std::endl;
 
-    // Создание прохода
-    mainRenderPass_ = createRenderPass(device_,this->surface_,vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
-    std::cout << "Render pass created." << std::endl;
+    // Инициализация прохода/проходов рендеринга
+    this->initRenderPasses(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    std::cout << "Render passes initialized." << std::endl;
 
-    // Создание цепочки показа (swap-chain)
-    swapChainKhr_ = createSwapChain(device_,{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear},this->surface_);
+    // Инициализация цепочки показа (swap-chain)
+    this->initSwapChain({vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear});
     std::cout << "Swap-chain created." << std::endl;
 
     // Создание кадровых буферов
-    initFrameBuffers(&frameBuffers_,device_,surface_,swapChainKhr_,mainRenderPass_,vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
+    this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
     std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ")." << std::endl;
 
-    // Выделение кадровых буферов
+    // Выделение командных буферов
     // Командный буфер может быть и один, но в таком случае придется ожидать его выполнения перед тем, как начинать запись
     // в очередное изображение swap-chain'а (что не есть оптимально). Поэтому лучше использовать отдельные буферы, для каждого
     // изображения swap-chain'а (по сути это копии одного и того же буфера)
@@ -797,37 +837,19 @@ isCommandsReady_(false)
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
 
     // Выделение UBO буферов
-    initUboBuffers(device_,&uboBufferViewProjection_,&uboBufferModel_,maxMeshes);
+    this->initUboBuffers(maxMeshes);
     std::cout << "UBO-buffers allocated (" << uboBufferViewProjection_.getSize() << " and " << uboBufferModel_.getSize() << ")." << std::endl;
 
     // Создать текстурный семплер по умолчанию
-    textureSamplerDefault_ = vk::tools::createImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear, vk::SamplerAddressMode::eRepeat, 4);
+    textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 4);
     std::cout << "Default texture sampler created." << std::endl;
 
-    // Создание пулов дескрипторов
-    // Поскольку в UBO наборе используется динамический UBO дескриптор для матриц модели, можно обойтись и одним UBO набором
-    // В случае с набором материала, в нем используются дескрипторы текстур без динамического смещения, посему на каждый меш по набору
-    descriptorPoolUBO_ = createDescriptorPool(device_,vk::tools::DescriptorSetType::eUBO, 1);
-    descriptorPoolMeshMaterial_ = createDescriptorPool(device_,vk::tools::DescriptorSetType::eMeshMaterial, maxMeshes);
-    std::cout << "Descriptor pools created." << std::endl;
-
-    // Создаем размещение набором дескрипторов
-    // Макет размещения описывает какие дескрипторы и сколько их, будет задействовано в конкретном наборе
-    descriptorSetLayoutUBO_ = createDescriptorSetLayout(device_,vk::tools::DescriptorSetType::eUBO);
-    descriptorSetLayoutMeshMaterial_ = createDescriptorSetLayout(device_, vk::tools::DescriptorSetType::eMeshMaterial);
-    std::cout << "Descriptor set layouts created." << std::endl;
-
-    // Создать UBO дескрипторный набор, и связать дескрипторы с ресурсами (буферами для матриц вида-проекции и модели)
-    descriptorSetUBO_ = allocateDescriptorSetUBO(device_, descriptorSetLayoutUBO_, descriptorPoolUBO_, uboBufferViewProjection_, uboBufferModel_);
-    std::cout << "UBO descriptor set allocated." << std::endl;
-
-    // Создать макет размещения графического конвейера
-    std::vector<vk::DescriptorSetLayout> layouts = {descriptorSetLayoutUBO_.get(),descriptorSetLayoutMeshMaterial_.get()};
-    pipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique(vk::PipelineLayoutCreateInfo({},layouts.size(),layouts.data()));
-    std::cout << "Pipeline layout created." << std::endl;
+    // Инициализация дескрипторных пулов и наборов
+    this->initDescriptors(maxMeshes);
+    std::cout << "Descriptors initialized." << std::endl;
 
     // Создать проход рендеринга
-    pipeline_ = createGraphicsPipeline(device_,pipelineLayout_,frameBuffers_[0].getExtent(),mainRenderPass_,vertexShaderCodeBytes,fragmentShaderCodeBytes);
+    this->initPipeline(vertexShaderCodeBytes,fragmentShaderCodeBytes);
     std::cout << "Graphics pipeline created." << std::endl;
 
     // Создать примитивы синхронизации (семафоры)
@@ -842,7 +864,7 @@ isCommandsReady_(false)
 VkRenderer::~VkRenderer()
 {
     // Остановка рендеринга
-    this->stopRendering();
+    this->setRenderingStatus(false);
 
     // Удалить примитивы синхронизации
     device_.getLogicalDevice()->destroySemaphore(semaphoreReadyToRender_.get());
@@ -852,33 +874,12 @@ VkRenderer::~VkRenderer()
     std::cout << "Synchronization semaphores destroyed." << std::endl;
 
     // Уничтожение прохода рендеринга
-    device_.getLogicalDevice()->destroyPipeline(pipeline_.get());
-    pipeline_.release();
+    this->deInitPipeline();
     std::cout << "Graphics pipeline destroyed." << std::endl;
 
-    // Уничтожение макета размещения графического конвейера
-    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayout_.get());
-    pipelineLayout_.release();
-    std::cout << "Pipeline layout destroyed." << std::endl;
-
-    // Освобождение UBO набора дескрипторов
-    device_.getLogicalDevice()->freeDescriptorSets(descriptorPoolUBO_.get(),1,&(descriptorSetUBO_.get()));
-    descriptorSetUBO_.release();
-    std::cout << "UBO descriptor set freed." << std::endl;
-
-    // Уничтожение макета размещения наборов дескрипторов
-    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutUBO_.get());
-    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshMaterial_.get());
-    descriptorSetLayoutUBO_.release();
-    descriptorSetLayoutMeshMaterial_.release();
-    std::cout << "Descriptor set layouts destroyed." << std::endl;
-
-    // Уничтожение пулов дескрипторов
-    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolUBO_.get());
-    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshMaterial_.get());
-    descriptorPoolUBO_.release();
-    descriptorPoolMeshMaterial_.release();
-    std::cout << "Descriptor pools destroyed." << std::endl;
+    // Де-инициализация дескрипторов
+    this->deInitDescriptors();
+    std::cout << "Descriptors de-initialized" << std::endl;
 
     // Уничтожение текстурного семплера по умолчанию
     device_.getLogicalDevice()->destroySampler(textureSamplerDefault_.get());
@@ -886,8 +887,7 @@ VkRenderer::~VkRenderer()
     std::cout << "Default texture sampler destroyed." << std::endl;
 
     // Освобождение UBO буферов
-    uboBufferViewProjection_.destroyVulkanResources();
-    uboBufferModel_.destroyVulkanResources();
+    this->deInitUboBuffers();
     std::cout << "UBO-buffers freed." << std::endl;
 
     // Освобождение командных буферов
@@ -896,17 +896,15 @@ VkRenderer::~VkRenderer()
     std::cout << "Command-buffers freed." << std::endl;
 
     // Уничтожение кадровых буферов
-    frameBuffers_.clear();
+    this->deInitFrameBuffers();
     std::cout << "Frame-buffers destroyed." << std::endl;
 
     // Уничтожение цепочки показа (swap-chain)
-    device_.getLogicalDevice()->destroySwapchainKHR(swapChainKhr_.get());
-    swapChainKhr_.release();
+    this->deInitSwapChain();
     std::cout << "Swap-chain destroyed." << std::endl;
 
-    // Уничтожение прохода
-    device_.getLogicalDevice()->destroyRenderPass(mainRenderPass_.get());
-    mainRenderPass_.release();
+    // Де-инициализация прохода
+    this->deInitRenderPasses();
     std::cout << "Render pass destroyed." << std::endl;
 
     // Уничтожение устройства
@@ -919,8 +917,8 @@ VkRenderer::~VkRenderer()
     std::cout << "Surface destroyed." << std::endl;
 
     // Уничтожение debug report callback'а
-    vulkanInstance_->destroyDebugReportCallbackEXT(debugReportCallback_);
-    debugReportCallback_ = VK_NULL_HANDLE;
+    vulkanInstance_->destroyDebugReportCallbackEXT(debugReportCallbackExt_.get());
+    debugReportCallbackExt_.release();
     std::cout << "Report callback object destroyed." << std::endl;
 
     // Уничтожение (явное) экземпляра Vulkan
@@ -930,14 +928,19 @@ VkRenderer::~VkRenderer()
 }
 
 /**
- * Остановка рендеринга
+ * Сменить статус рендеринга
+ * @param isEnabled Выполняется ли рендеринг
  */
-void VkRenderer::stopRendering()
+void VkRenderer::setRenderingStatus(bool isEnabled)
 {
-    // Ожидаем завершения всех команд
-    device_.getLogicalDevice()->waitIdle();
-    // Отключаем рендеринг
-    isEnabled_ = false;
+    // Если мы выключаем рендеринг
+    if(!isEnabled && isEnabled_){
+        // Ожидаем завершения всех команд
+        device_.getLogicalDevice()->waitIdle();
+    }
+
+    // Сменить статус
+    isEnabled_ = isEnabled;
 }
 
 /**

@@ -232,6 +232,11 @@ namespace vk
                         isReady_ = true;
                     }
                 }
+
+                // Если в итоге устройство не инициализировано
+                if(!isReady_){
+                    throw vk::InitializationFailedError("Can't initialize device");
+                }
             }
 
             /**

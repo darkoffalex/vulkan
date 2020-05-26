@@ -16,7 +16,7 @@ private:
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
     /// Идентификатор объекта для работы с debug-callback'ом
-    VkDebugReportCallbackEXT debugReportCallback_;
+    vk::UniqueDebugReportCallbackEXT debugReportCallbackExt_;
     /// Поверхность для рисования на окне (smart pointer)
     vk::UniqueSurfaceKHR surface_;
     /// Устройство
@@ -62,155 +62,94 @@ private:
 
 
     /**
-     * Инициализация экземпляра
-     * @param appName Наименования приложения
-     * @param engineName Наименование движка
-     * @param requireExtensions Запрашивать расширения (названия расширений)
-     * @param requireValidationLayers Запрашивать слои (названия слоев)
-     */
-    static vk::UniqueInstance initInstance(const std::string& appName,
-            const std::string& engineName,
-            const std::vector<const char*>& requireExtensions = {},
-            const std::vector<const char*>& requireValidationLayers = {});
-
-    /**
-     * Создание объекта для работы с debug-callback'ом
-     * @param vulkanInstance Экземпляр Vulkan
-     * @return Идентификатор объекта для работы с debug-callback'ом
-     */
-    static VkDebugReportCallbackEXT createDebugReportCallback(const vk::UniqueInstance& vulkanInstance);
-
-    /**
-     * Создание поверхности отображения на окне
-     * @param vulkanInstance Экземпляр Vulkan
-     * @param hInstance экземпляр WinApi приложения
-     * @param hWnd дескриптор окна WinApi
-     * @return Поверхность для рисования на окне (smart pointer)
-     */
-    static vk::UniqueSurfaceKHR createSurface(const vk::UniqueInstance& vulkanInstance, HINSTANCE hInstance, HWND hWnd);
-
-    /**
-     * Инициализация устройства
-     * @param instance Экземпляр Vulkan
-     * @param surfaceKhr Поверхность отображения
-     * @param requireExtensions Запрашивать расширения (названия расширений)
-     * @param requireValidationLayers Запрашивать слои (названия слоев)
-     * @param allowIntegratedDevices Позволять использование встроенной графики
-     * @return Указатель на созданный объект-обертку над устройством Vulkan
-     */
-    static vk::tools::Device initDevice(const vk::UniqueInstance& instance,
-            const vk::UniqueSurfaceKHR& surfaceKhr,
-            const std::vector<const char*>& requireExtensions = {},
-            const std::vector<const char*>& requireValidationLayers = {},
-            bool allowIntegratedDevices = false);
-
-    /**
-     * Создание прохода рендерера
-     * @param device Объект-обертка устройства
-     * @param surfaceKhr Поверхность отображения (для проверки поддержки форматов поверхностью)
+     * Инициализация проходов рендеринга
      * @param colorAttachmentFormat Формат цветовых вложений
-     * @param depthStencilAttachmentFormat Формат вложений глубины трафарета
+     * @param depthStencilAttachmentFormat Формат вложений глубины
      * @details Цветовые вложения - по сути изображения в которые шейдеры пишут информацию. У них могут быть форматы.
-     * Для vulkan важно настроить доступность и формат вложений на этапе инициализации прохода
-     * @return Проход рендеринга (smart pointer)
+     * При создании проходов необходимо указать с каким форматом и размещением вложений происходит работа на конкретных этапах
      */
-    static vk::UniqueRenderPass createRenderPass(const vk::tools::Device& device,
-            const vk::UniqueSurfaceKHR& surfaceKhr,
-            const vk::Format& colorAttachmentFormat,
-            const vk::Format& depthStencilAttachmentFormat);
+    void initRenderPasses(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
 
     /**
-     * Создать объект цепочки показа
-     * @param device Объект-обертка устройства
+     * Де-инициализация проходов рендеринга
+     */
+    void deInitRenderPasses();
+
+
+    /**
+     * Инициализация swap-chain (цепочки показа)
+     * Цепочка показа - набор сменяющихся изображений показываемых на поверхности отображения
      * @param surfaceFormat Формат поверхности
-     * @param surfaceKhr Поверхность отображения (для проверки поддержки форматов поверхностью)
-     * @param bufferCount Кол-во буферов (0 - авто-определение)
-     * @return Объект swap-chain (smart pointer)
+     * @param bufferCount Желаемое кол-во буферов изображений (0 для авто-определения)
      */
-    static vk::UniqueSwapchainKHR createSwapChain(
-            const vk::tools::Device& device,
-            const vk::SurfaceFormatKHR& surfaceFormat,
-            const vk::UniqueSurfaceKHR& surfaceKhr,
-            size_t bufferCount = 0);
+    void initSwapChain(const vk::SurfaceFormatKHR& surfaceFormat, size_t bufferCount = 0);
 
     /**
-     * Инициализировать кадровые буферы
-     * @param frameBuffers Указатель на массив кадровых буферов
-     * @param device Объект-обертка устройства
-     * @param surfaceKhr Поверхность отображения (для получения разрешения и прочего)
-     * @param swapChain Объект цепочки показа (swap-chain)
-     * @param renderPass Объект прохода рендеринга (каждый кадровый буфер связан с проходом)
-     * @param colorAttachmentFormat Формат цветовых вложений (соответствует тому, что был использован при создании прохода)
-     * @param depthStencilAttachmentFormat Формат вложений глубины трафарета (соответствует тому, что был использован при создании прохода)
+     * Де-инициализация swap-chain (цепочки показа)
      */
-    static void initFrameBuffers(std::vector<vk::tools::FrameBuffer>* frameBuffers,
-            const vk::tools::Device& device,
-            const vk::UniqueSurfaceKHR& surfaceKhr,
-            const vk::UniqueSwapchainKHR& swapChain,
-            const vk::UniqueRenderPass& renderPass,
-            const vk::Format& colorAttachmentFormat,
-            const vk::Format& depthStencilAttachmentFormat);
+    void deInitSwapChain();
+
+
+    /**
+     * Инициализация кадровых буферов
+     * @param colorAttachmentFormat Формат цветовых вложений
+     * @param depthStencilAttachmentFormat Формат вложений глубины
+     *
+     * @details Несмотря на то, что кадровые буферы чисто логически не обязательно должны быть связаны с изображениями swap-chain'а,
+     * если мы используем показ, то так или иначе, осуществляем запись в изображения swap-chain'а для последующего отображения.
+     * Поэтому предварительно необходимо инициализировать swap-chain, чтобы на основании изображений из него, подготовить кадр. буферы (цвет. вложения).
+     * При этом отдельные вложения кадрового буфера могут быть и вовсе не связаны со swap-chain (как, например, глубина), но быть использованы проходом
+     */
+    void initFrameBuffers(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
+
+    /**
+     * Де-инициализация кадровых буферов
+     */
+    void deInitFrameBuffers();
+
 
     /**
      * Инициализация UBO буферов
-     * @param device Объект-обертка устройства
-     * @param uboViewProjection Указатель на объект UBO буфера матриц вида-проекции
-     * @param uboModel Указатель на объект UBO буфера матриц модели (на каждый меш своя матрица)
-     * @param maxMeshes Максимальное кол-во возможных мешей
+     * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на размер буфера матриц моделей)
+     *
+     * @details UBO буферы используются для передачи информации в шейдер во время рендеринга.
+     * Например, матрицы (проекции, вида, модели), источники света и другое.
      */
-    static void initUboBuffers(const vk::tools::Device& device, vk::tools::Buffer* uboViewProjection, vk::tools::Buffer* uboModel, size_t maxMeshes);
+    void initUboBuffers(size_t maxMeshes);
 
     /**
-     * Создание дескрипторного пула, из которого будет выделены необходимые наборы
-     * @param device Объект-обертка устройства
-     * @param type Тип целевого набора, который будет выделятся из пула
-     * @param maxSets Максимальное кол-вао выделяемых наборов
-     * @return Объект дескрипторного пула (smart-pointer)
+     * Де-инициализация UBO буферов
      */
-    static vk::UniqueDescriptorPool createDescriptorPool(const vk::tools::Device& device, const vk::tools::DescriptorSetType& type, size_t maxSets);
+    void deInitUboBuffers();
+
 
     /**
-     * Создать макет размещения дескрипторного набора
-     * @param device Объект-обертка устройства
-     * @param type Тип дескрипторного набора
-     * @return Объект макета размещения набора дескрипторов (smart-pointer)
-    */
-    static vk::UniqueDescriptorSetLayout createDescriptorSetLayout(const vk::tools::Device& device, const vk::tools::DescriptorSetType& type);
+     * Инициализация дескрипторов (наборов дескрипторов)
+     * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
+     *
+     * @details Дескрипторы описывают правила доступа из шейдера к различным ресурсам (таким как UBO буферы, изображения, и прочее). Они объединены в наборы
+     * Наборы дескрипторов выделяются из дескрипторных пулов, а у пулов есть свой макет размещения, который описывает сколько наборов можно будет выделить
+     * из пула и какие конкретно дескрипторы в этих наборах (и сколько их) будут доступны
+     */
+    void initDescriptors(size_t maxMeshes);
 
     /**
-     * Создать дескрипторный набор для UBO буфера
-     * Несмотря на то, что у каждого меша может быть свое положение (своя матрица модели) можно использовать общий UBO набор с динамическим UBO дескриптором
-     * @param device Объект-обертка устройства
-     * @param layout Объект макета дескрипторного набора
-     * @param pool Объект дескрипторного пула
-     * @param uboViewProj Статический UBO буфер вида-проекции
-     * @param uboModel Динамический UBO для матриц модели мешей
-     * @return Объект набора дескрипторов (smart-pointer)
+     * Де-инициализация дескрипторов
      */
-    static vk::UniqueDescriptorSet allocateDescriptorSetUBO(
-            const vk::tools::Device& device,
-            const vk::UniqueDescriptorSetLayout& layout,
-            const vk::UniqueDescriptorPool& pool,
-            const vk::tools::Buffer& uboViewProj,
-            const vk::tools::Buffer& uboModel);
+    void deInitDescriptors();
+
 
     /**
-     * Создать графический конвейер
-     * @param device Объект-обертка устройства
-     * @param layout Объект макета размещения конвейера
-     * @param frameBufferExtent Размеры (разрешение) кадрового буфера
-     * @param renderPass Объект прохода рендеринга
-     * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
-     * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
-     * @return Объект графического конвейера (smart-pointer)
+     * Инициализация графического конвейера
+     * @param vertexShaderCodeBytes Код вершинного шейдера
+     * @param fragmentShaderCodeBytes Код фрагментного шейдера
      */
-    static vk::UniquePipeline createGraphicsPipeline(
-            const vk::tools::Device& device,
-            const vk::UniquePipelineLayout& layout,
-            const vk::Extent3D& frameBufferExtent,
-            const vk::UniqueRenderPass& renderPass,
-            const std::vector<unsigned char>& vertexShaderCodeBytes,
-            const std::vector<unsigned char>& fragmentShaderCodeBytes);
+    void initPipeline(const std::vector<unsigned char>& vertexShaderCodeBytes, const std::vector<unsigned char>& fragmentShaderCodeBytes);
+
+    /**
+     * Де-инициализация графического конвейера
+     */
+    void deInitPipeline();
 
 public:
     /**
@@ -233,9 +172,10 @@ public:
     ~VkRenderer();
 
     /**
-     * Остановка рендеринга
+     * Сменить статус рендеринга
+     * @param isEnabled Выполняется ли рендеринг
      */
-    void stopRendering();
+    void setRenderingStatus(bool isEnabled);
 
     /**
      * Рендеринг кадра

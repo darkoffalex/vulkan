@@ -15,6 +15,8 @@ namespace vk
         private:
             /// Готово ли изображение
             bool isReady_;
+            /// Владеет ли объект объектом изображения Vulkan (если да, его нужно уничтожить в деструкторе)
+            bool ownsImage_;
             /// Указатель на устройство владеющее изображением (создающее его)
             const vk::tools::Device* pDevice_;
             /// Изображение
@@ -56,7 +58,8 @@ namespace vk
              */
             Image():
             pDevice_(nullptr),
-            isReady_(false){};
+            isReady_(false),
+            ownsImage_(false){};
 
             /**
              * Запрет копирования через инициализацию
@@ -78,6 +81,7 @@ namespace vk
              */
             Image(Image&& other) noexcept:Image(){
                 std::swap(isReady_,other.isReady_);
+                std::swap(ownsImage_, other.ownsImage_);
                 std::swap(pDevice_,other.pDevice_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
@@ -94,9 +98,11 @@ namespace vk
 
                 this->destroyVulkanResources();
                 isReady_ = false;
+                ownsImage_ = false;
                 pDevice_ = nullptr;
 
                 std::swap(isReady_,other.isReady_);
+                std::swap(ownsImage_, other.ownsImage_);
                 std::swap(pDevice_,other.pDevice_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
@@ -128,7 +134,8 @@ namespace vk
                            const vk::SharingMode& sharingMode = vk::SharingMode::eExclusive,
                            const vk::ImageLayout& layout = vk::ImageLayout::eUndefined,
                            const vk::ImageTiling& imageTiling = vk::ImageTiling::eOptimal):
-                    isReady_(std::make_unique<bool>(false)),
+                    isReady_(false),
+                    ownsImage_(false),
                     pDevice_(pDevice)
             {
                 // Проверить устройство
@@ -149,6 +156,10 @@ namespace vk
                 imageCreateInfo.usage = usage;
                 imageCreateInfo.initialLayout = layout;
                 image_ = pDevice_->getLogicalDevice()->createImageUnique(imageCreateInfo);
+
+                // Этот объект теперь владеет изображением (оно было создано при создании объекта)
+                // Это означат его нужно будет уничтожить при уничтожении данного объекта
+                ownsImage_ = true;
 
                 // Получить требования к памяти, учитывая характеристики созданного объекта изображения
                 auto memRequirements = pDevice_->getLogicalDevice()->getImageMemoryRequirements(image_.get());
@@ -185,6 +196,50 @@ namespace vk
             }
 
             /**
+             * Альтернативная инициализация (с использованием готового объекта Image)
+             * @param pDevice Указатель на устройство
+             * @param image Готовый объект vk::Image с ассоциированной памятью
+             * @param type Тип изображения (1D, 2D, 3D)
+             * @param format Формат пикселей (цвета, их порядок, размер)
+             * @param subResourceRangeAspect Опция доступа к под-ресурсам (слоям) изображения
+             */
+            explicit Image(const vk::tools::Device* pDevice,
+                           const vk::Image& image,
+                           const vk::ImageType& type,
+                           const vk::Format& format,
+                           const vk::ImageAspectFlags& subResourceRangeAspect):
+                    isReady_(false),
+                    ownsImage_(false),
+                    pDevice_(pDevice)
+            {
+                // Проверить устройство
+                if(pDevice_ == nullptr || !pDevice_->isReady()){
+                    throw vk::DeviceLostError("Device is not available");
+                }
+
+                // Добавить ранее созданное изображение
+                image_ = vk::UniqueImage(image);
+
+                // Поскольку используем готовое изображение, предполагается что оно ассоциировано с памятью и ее не создаем
+                ownsImage_ = false;
+
+                // Создать image-view объект (связь с конкретным слоем/мип-уровнем) изображения
+                vk::ImageViewCreateInfo imageViewCreateInfo{};
+                imageViewCreateInfo.viewType = imageTypeToViewType(type, false);
+                imageViewCreateInfo.format = format;
+                imageViewCreateInfo.subresourceRange.levelCount = 1;
+                imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+                imageViewCreateInfo.subresourceRange.layerCount = 1;
+                imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+                imageViewCreateInfo.subresourceRange.aspectMask = subResourceRangeAspect;
+                imageViewCreateInfo.image = image_.get();
+                imageView_ = pDevice_->getLogicalDevice()->createImageViewUnique(imageViewCreateInfo);
+
+                // Изображение инициализировано
+                isReady_ = true;
+            }
+
+            /**
              * Де-инициализация ресурсов Vulkan
              */
             void destroyVulkanResources()
@@ -196,13 +251,19 @@ namespace vk
                     pDevice_->getLogicalDevice()->destroyImageView(imageView_.get());
                     imageView_.release();
 
-                    // Уничтожить изображение
-                    pDevice_->getLogicalDevice()->destroyImage(image_.get());
+                    // Если объект владеет изображением - уничтожить его
+                    // Иначе достаточно только освободить unique pointer объекта изображения
+                    if(ownsImage_){
+                        pDevice_->getLogicalDevice()->destroyImage(image_.get());
+                    }
                     image_.release();
 
                     // Освободить память изображения
-                    pDevice_->getLogicalDevice()->freeMemory(deviceMemory_.get());
-                    deviceMemory_.release();
+                    // Если объект владеет изображением, то память тоже выделялась при создании
+                    if(ownsImage_){
+                        pDevice_->getLogicalDevice()->freeMemory(deviceMemory_.get());
+                        deviceMemory_.release();
+                    }
 
                     isReady_ = false;
                 }
