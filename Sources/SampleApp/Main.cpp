@@ -116,7 +116,7 @@ int main(int argc, char* argv[])
 /**
  * Перед закрытием окна
  */
-void tools::beforeWindowClose()
+void tools::BeforeWindowClose()
 {
     if(_vkRenderer != nullptr){
         _vkRenderer->setRenderingStatus(false);
@@ -126,7 +126,7 @@ void tools::beforeWindowClose()
 /**
  * После изменения размера окна
  */
-void tools::onWindowResized()
+void tools::OnWindowResized()
 {
     if(_vkRenderer != nullptr){
         _vkRenderer->onSurfaceChanged();

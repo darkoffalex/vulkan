@@ -108,7 +108,8 @@ namespace vk
                             const vk::UniqueSurfaceKHR& surfaceKhr,
                             const std::vector<const char*>& requireExtensions = {},
                             const std::vector<const char*>& requireValidationLayers = {},
-                            bool allowIntegrated = false)
+                            bool allowIntegrated = false):
+        	isReady_(false)
             {
                 // Найти подходящее физ. устройство. Семейства очередей устройства должны поддерживать необходимые типы команд
                 auto physicalDevices = instance->enumeratePhysicalDevices();
@@ -123,7 +124,7 @@ namespace vk
                         int queueFamilyGraphicsIndex = -1;
 
                         // Найти семейства поддерживающие графику и представление
-                        for(int i = 0; i < queueFamilyProperties.size(); i++)
+                        for(size_t i = 0; i < queueFamilyProperties.size(); i++)
                         {
                             // Поддерживает ли семейство графические команды
                             if(queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics){
@@ -328,7 +329,7 @@ namespace vk
             template <typename T>
             vk::DeviceSize getDynamicallyAlignedUboBlockSize() const {
                 if(!isReady_) return 0;
-                auto minUboAlignment = physicalDevice_.getProperties().limits.minUniformBufferOffsetAlignment;
+                const auto minUboAlignment = physicalDevice_.getProperties().limits.minUniformBufferOffsetAlignment;
                 auto dynamicAlignment = static_cast<vk::DeviceSize>(sizeof(T));
 
                 if (minUboAlignment > 0) {
@@ -402,13 +403,8 @@ namespace vk
             bool isDepthStencilSupportedForFormat(const vk::Format& format) const
             {
                 if(!isReady_) return false;
-
-                auto formatProperties = this->physicalDevice_.getFormatProperties(format);
-                if(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment){
-                    return true;
-                }
-
-                return false;
+                const auto formatProperties = this->physicalDevice_.getFormatProperties(format);
+                return !!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment);
             }
 
             /**

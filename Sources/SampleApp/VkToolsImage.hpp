@@ -57,9 +57,9 @@ namespace vk
              * Конструктор по умолчанию
              */
             Image():
-            pDevice_(nullptr),
             isReady_(false),
-            ownsImage_(false){};
+            ownsImage_(false),
+            pDevice_(nullptr){}
 
             /**
              * Запрет копирования через инициализацию

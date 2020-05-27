@@ -11,12 +11,12 @@ namespace tools
     /**
      * Вызывается перед закрытием окна (должна быть реализована в .cpp)
      */
-    void beforeWindowClose();
+    void BeforeWindowClose();
 
     /**
      * Вызывается после изменения размеров окна (должна быть реализована в .cpp)
      */
-    void onWindowResized();
+    void OnWindowResized();
 
     /**
      * Обработчик оконных сообщений
@@ -39,7 +39,7 @@ namespace tools
 
             case WM_CLOSE:
             {
-                beforeWindowClose();
+                BeforeWindowClose();
                 return DefWindowProc(hWnd, message, wParam, lParam);
             }
 
@@ -76,7 +76,7 @@ namespace tools
             // Завершение изменения размера окна
             case WM_EXITSIZEMOVE:
             {
-                onWindowResized();
+                OnWindowResized();
                 return DefWindowProc(hWnd, message, wParam, lParam);
             }
 
@@ -118,7 +118,7 @@ namespace tools
      * Путь к рабочему каталогу
      * @return Строка содержащая путь к директории
      */
-    std::string WorkingDir()
+    inline std::string WorkingDir()
     {
         char path[MAX_PATH] = {};
         GetCurrentDirectoryA(MAX_PATH, path);
@@ -130,7 +130,7 @@ namespace tools
      * Путь к каталогу с исполняемым файлом (директория содержащая запущенный .exe)
      * @return Строка содержащая путь к директории
      */
-    std::string ExeDir()
+    inline std::string ExeDir()
     {
         char path[MAX_PATH] = {};
         GetModuleFileNameA(nullptr, path, MAX_PATH);
@@ -143,7 +143,7 @@ namespace tools
      * Абсолютный путь к папке с шейдерами
      * @return Строка содержащая путь к директории
      */
-    std::string ShaderDir()
+    inline std::string ShaderDir()
     {
         std::string exeDir = ExeDir();
         return exeDir.append("..\\Shaders\\");

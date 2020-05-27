@@ -1,5 +1,6 @@
 #include "VkRenderer.h"
 #include "ext_loader/vulkan_ext.h"
+#include <cassert>
 
 /**
  * Инициализация проходов рендеринга
@@ -15,7 +16,7 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
         throw vk::InitializationFailedError("Can't initialize render pass. Device not ready");
     }
     // Проверяем готовность поверхности
-    if(surface_.get() == nullptr){
+    if(!surface_.get()){
         throw vk::InitializationFailedError("Can't initialize render pass. Surface not ready");
     }
     // Проверяем поддержку формата цветового вложения
@@ -118,12 +119,10 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
 /**
  * Де-инициализация проходов рендеринга
  */
-void VkRenderer::deInitRenderPasses()
+void VkRenderer::deInitRenderPasses() noexcept
 {
     // Проверяем готовность устройства
-    if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't de-init render pass. Device not ready");
-    }
+    assert(device_.isReady());
 
     // Уничтожить проход и освободить smart-pointer
     device_.getLogicalDevice()->destroyRenderPass(mainRenderPass_.get());
@@ -143,7 +142,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
         throw vk::InitializationFailedError("Can't initialize swap-chain. Device not ready");
     }
     // Проверяем готовность поверхности
-    if(surface_.get() == nullptr){
+    if(!surface_.get()){
         throw vk::InitializationFailedError("Can't initialize swap-chain. Surface not ready");
     }
     // Проверить поддерживается ли формат поверхности
@@ -182,7 +181,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     }
 
     // Старый swap-chain
-    auto oldSwapChain = swapChainKhr_.get() != nullptr ? swapChainKhr_.get() : nullptr;
+    const auto oldSwapChain = swapChainKhr_.get() ? swapChainKhr_.get() : nullptr;
 
     // Конфигурация swap-chain
     vk::SwapchainCreateInfoKHR swapChainCreateInfo{};
@@ -209,7 +208,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     swapChainKhr_ = device_.getLogicalDevice()->createSwapchainKHRUnique(swapChainCreateInfo);
 
     // Уничтожить старый swap-chain если он был
-    if(oldSwapChain != nullptr){
+    if(!oldSwapChain){
         device_.getLogicalDevice()->destroySwapchainKHR(oldSwapChain);
     }
 }
@@ -217,12 +216,10 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
 /**
  * Де-инициализация swap-chain (цепочки показа)
  */
-void VkRenderer::deInitSwapChain()
+void VkRenderer::deInitSwapChain() noexcept
 {
     // Проверяем готовность устройства
-    if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't de-init swap-chain. Device not ready");
-    }
+    assert(device_.isReady());
 
     // Уничтожить swap-chain и освободить smart-pointer
     device_.getLogicalDevice()->destroySwapchainKHR(swapChainKhr_.get());
@@ -241,15 +238,15 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
         throw vk::InitializationFailedError("Can't initialize frame buffers. Device not ready");
     }
     // Проверяем готовность поверхности
-    if(surface_.get() == nullptr){
+    if(!surface_.get()){
         throw vk::InitializationFailedError("Can't initialize frame buffers. Surface not ready");
     }
     // Проверяем готовность swap-chain'а
-    if(swapChainKhr_.get() == nullptr){
+    if(!swapChainKhr_.get()){
         throw vk::InitializationFailedError("Can't initialize frame-buffers. Swap-chain not ready");
     }
     // Проверяем готовность прохода для которого создаются буферы
-    if(mainRenderPass_.get() == nullptr){
+    if(!mainRenderPass_.get()){
         throw vk::InitializationFailedError("Can't initialize frame-buffers. Required render pass not ready");
     }
 
@@ -297,7 +294,7 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
 /**
  * Де-инициализация кадровых буферов
  */
-void VkRenderer::deInitFrameBuffers()
+void VkRenderer::deInitFrameBuffers() noexcept
 {
     // Очистка всех ресурсов Vulkan происходит в деструкторе объекта frame-buffer'а
     // Достаточно вызвать очистку массива
@@ -334,7 +331,7 @@ void VkRenderer::initUboBuffers(size_t maxMeshes)
 /**
  * Де-инициализация UBO буферов
  */
-void VkRenderer::deInitUboBuffers()
+void VkRenderer::deInitUboBuffers() noexcept
 {
     // Уничтожаем ресурсы Vulkan
     uboBufferModel_.destroyVulkanResources();
@@ -519,16 +516,19 @@ void VkRenderer::initDescriptors(size_t maxMeshes)
 /**
  * Де-инициализация дескрипторов
  */
-void VkRenderer::deInitDescriptors()
+void VkRenderer::deInitDescriptors() noexcept
 {
     // Проверяем готовность устройства
-    if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't de-init descriptors. Device not ready");
-    }
+    assert(device_.isReady());
 
     // Уничтожить все выделенные наборы дескрипторов
-    device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolUBO_.get());
-    device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshMaterial_.get());
+    // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
+    try{
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolUBO_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshMaterial_.get());
+    }
+	catch(std::exception&){}
+
     descriptorSetUBO_.release();
 
     // Уничтожить размещения дескрипторов
@@ -556,7 +556,7 @@ void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCode
         throw vk::InitializationFailedError("Can't initialize pipeline. Device not ready");
     }
     // Проверяем готовность основного прохода рендеринга
-    if(mainRenderPass_.get() == nullptr){
+    if(!mainRenderPass_.get()){
         throw vk::InitializationFailedError("Can't initialize pipeline. Render pass not ready");
     }
 
@@ -766,12 +766,10 @@ void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCode
 /**
  * Де-инициализация графического конвейера
  */
-void VkRenderer::deInitPipeline()
+void VkRenderer::deInitPipeline() noexcept
 {
     // Проверяем готовность устройства
-    if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't de-init pipeline. Device not ready");
-    }
+    assert(device_.isReady());
 
     // Уничтожить конвейер
     device_.getLogicalDevice()->destroyPipeline(pipeline_.get());
@@ -936,12 +934,16 @@ VkRenderer::~VkRenderer()
  * Сменить статус рендеринга
  * @param isEnabled Выполняется ли рендеринг
  */
-void VkRenderer::setRenderingStatus(bool isEnabled)
+void VkRenderer::setRenderingStatus(bool isEnabled) noexcept
 {
     // Если мы выключаем рендеринг
-    if(!isEnabled && isEnabled_){
+    if (!isEnabled && isEnabled_) {
         // Ожидаем завершения всех команд
-        device_.getLogicalDevice()->waitIdle();
+        // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
+        try{
+	        device_.getLogicalDevice()->waitIdle();
+        }
+        catch (std::exception&) {}
     }
 
     // Сменить статус
@@ -1049,7 +1051,7 @@ void VkRenderer::draw()
     // О Т П Р А В К А  К О М А Н Д  И  П О К А З
 
     // Индекс доступного изображения
-    size_t availableImageIndex = 0;
+    uint32_t availableImageIndex = 0;
 
     // Получить индекс доступного для рендеринга изображения и взвести семафор готовности к рендерингу
     device_.getLogicalDevice()->acquireNextImageKHR(
@@ -1077,14 +1079,14 @@ void VkRenderer::draw()
     submitInfo.pWaitDstStageMask = waitStages.data();                        // Этапы конвейера, на которых будет ожидание
     submitInfo.signalSemaphoreCount = signalSemaphores.size();               // Кол-во семафоров, которые будут взведены после выполнения
     submitInfo.pSignalSemaphores = signalSemaphores.data();                  // Семафоры взведения
-    device_.getGraphicsQueue().submit({submitInfo}, nullptr); // Отправка командного буфера на выполнение
+    device_.getGraphicsQueue().submit({submitInfo}, nullptr);   // Отправка командного буфера на выполнение
 
     // Инициировать показ (когда картинка будет готова)
     vk::PresentInfoKHR presentInfoKhr{};
-    presentInfoKhr.waitSemaphoreCount = signalSemaphores.size();              // Кол-во семафоров, которые будут ожидаться
-    presentInfoKhr.pWaitSemaphores = signalSemaphores.data();                 // Семафоры, которые ожидаются
-    presentInfoKhr.swapchainCount = 1;                                        // Кол-во цепочек показа
-    presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                      // Цепочка показа
-    presentInfoKhr.pImageIndices = &availableImageIndex;                      // Индекс показываемого изображения
-    device_.getPresentQueue().presentKHR(presentInfoKhr);                     // Осуществить показ
+    presentInfoKhr.waitSemaphoreCount = signalSemaphores.size();             // Кол-во семафоров, которые будут ожидаться
+    presentInfoKhr.pWaitSemaphores = signalSemaphores.data();                // Семафоры, которые ожидаются
+    presentInfoKhr.swapchainCount = 1;                                       // Кол-во цепочек показа
+    presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
+    presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
+    device_.getPresentQueue().presentKHR(presentInfoKhr);                    // Осуществить показ
 }

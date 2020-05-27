@@ -73,7 +73,7 @@ private:
     /**
      * Де-инициализация проходов рендеринга
      */
-    void deInitRenderPasses();
+    void deInitRenderPasses() noexcept;
 
 
     /**
@@ -87,7 +87,7 @@ private:
     /**
      * Де-инициализация swap-chain (цепочки показа)
      */
-    void deInitSwapChain();
+    void deInitSwapChain() noexcept;
 
 
     /**
@@ -105,7 +105,7 @@ private:
     /**
      * Де-инициализация кадровых буферов
      */
-    void deInitFrameBuffers();
+    void deInitFrameBuffers() noexcept;
 
 
     /**
@@ -120,7 +120,7 @@ private:
     /**
      * Де-инициализация UBO буферов
      */
-    void deInitUboBuffers();
+    void deInitUboBuffers() noexcept;
 
 
     /**
@@ -136,7 +136,7 @@ private:
     /**
      * Де-инициализация дескрипторов
      */
-    void deInitDescriptors();
+    void deInitDescriptors() noexcept;
 
 
     /**
@@ -149,7 +149,7 @@ private:
     /**
      * Де-инициализация графического конвейера
      */
-    void deInitPipeline();
+    void deInitPipeline() noexcept;
 
 public:
     /**
@@ -175,7 +175,7 @@ public:
      * Сменить статус рендеринга
      * @param isEnabled Выполняется ли рендеринг
      */
-    void setRenderingStatus(bool isEnabled);
+    void setRenderingStatus(bool isEnabled) noexcept;
 
     /**
      * Вызывается когда поверхность отображения изменилась

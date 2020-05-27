@@ -107,13 +107,13 @@ namespace vk
              * @param attachmentsInfo Массив структур описывающих вложения
              */
             explicit FrameBuffer(
-                    const vk::tools::Device* pDevice,
-                    const vk::UniqueRenderPass& renderPass,
-                    const vk::Extent3D& extent,
-                    const std::vector<vk::tools::FrameBufferAttachmentInfo>& attachmentsInfo):
-                    pDevice_(pDevice),
-                    isReady_(false),
-                    extent_(extent)
+                const vk::tools::Device* pDevice,
+                const vk::UniqueRenderPass& renderPass,
+                const vk::Extent3D& extent,
+                const std::vector<vk::tools::FrameBufferAttachmentInfo>& attachmentsInfo):
+        	isReady_(false),
+        	pDevice_(pDevice),
+        	extent_(extent)
             {
                 // Проверить устройство
                 if(pDevice_ == nullptr || !pDevice_->isReady()){

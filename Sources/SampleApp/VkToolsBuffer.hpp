@@ -99,17 +99,17 @@ namespace vk
                 vk::BufferCreateInfo bufferCreateInfo{};
                 bufferCreateInfo.size = size_;
                 bufferCreateInfo.usage = usageFlags;
-                bufferCreateInfo.sharingMode = vk::SharingMode::eExclusive; //TODO: добавить параметр
-                bufferCreateInfo.queueFamilyIndexCount = 0; //TODO: добавить параметр
-                bufferCreateInfo.pQueueFamilyIndices = nullptr; //TODO: добавить параметр
+                bufferCreateInfo.sharingMode = vk::SharingMode::eExclusive;    //TODO: добавить параметр
+                bufferCreateInfo.queueFamilyIndexCount = 0;                    //TODO: добавить параметр
+                bufferCreateInfo.pQueueFamilyIndices = nullptr;                //TODO: добавить параметр
                 bufferCreateInfo.flags = {};
                 buffer_ = pDevice->getLogicalDevice()->createBufferUnique(bufferCreateInfo);
 
                 // Получить требования к памяти для данного буфера
-                auto memRequirements = pDevice->getLogicalDevice()->getBufferMemoryRequirements(buffer_.get());
+                const auto memRequirements = pDevice->getLogicalDevice()->getBufferMemoryRequirements(buffer_.get());
 
                 // Получить индекс типа памяти
-                auto memoryTypeIndex = pDevice->getMemoryTypeIndex(memRequirements.memoryTypeBits,memoryPropertyFlags);
+                const auto memoryTypeIndex = pDevice->getMemoryTypeIndex(memRequirements.memoryTypeBits,memoryPropertyFlags);
                 if(memoryTypeIndex == -1) throw vk::FeatureNotPresentError("Can't use required memory type");
 
                 // Выделить память для буфера
@@ -191,7 +191,7 @@ namespace vk
             }
 
             /**
-             * Получить ресрус памяти Vulkan
+             * Получить ресурс памяти Vulkan
              * @return ссылка на smart-pointer
              */
             const vk::UniqueDeviceMemory& getMemory() const
