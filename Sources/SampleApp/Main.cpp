@@ -118,7 +118,17 @@ int main(int argc, char* argv[])
  */
 void tools::beforeWindowClose()
 {
-    // Поскольку при закрытии окно меняет размеры и уничтожается, это может вызвать ошибку поверхности.
-    // Чтобы этого не произошло - останавливаем рендеринг
-    _vkRenderer->setRenderingStatus(false);
+    if(_vkRenderer != nullptr){
+        _vkRenderer->setRenderingStatus(false);
+    }
+}
+
+/**
+ * После изменения размера окна
+ */
+void tools::onWindowResized()
+{
+    if(_vkRenderer != nullptr){
+        _vkRenderer->onSurfaceChanged();
+    }
 }

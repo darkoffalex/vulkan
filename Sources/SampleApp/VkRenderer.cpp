@@ -184,7 +184,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     // Старый swap-chain
     auto oldSwapChain = swapChainKhr_.get() != nullptr ? swapChainKhr_.get() : nullptr;
 
-    // Создать swap-chain
+    // Конфигурация swap-chain
     vk::SwapchainCreateInfoKHR swapChainCreateInfo{};
     swapChainCreateInfo.surface = surface_.get();
     swapChainCreateInfo.minImageCount = bufferCount;
@@ -201,6 +201,11 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     swapChainCreateInfo.presentMode = presentMode;
     swapChainCreateInfo.clipped = true;
     swapChainCreateInfo.oldSwapchain = oldSwapChain;
+
+    // Если у unique-pointer'а есть какой-то объект во владении - освобожаем его (это может быит старый swap-chain)
+    swapChainKhr_.release();
+
+    // Создаем swap-chain
     swapChainKhr_ = device_.getLogicalDevice()->createSwapchainKHRUnique(swapChainCreateInfo);
 
     // Уничтожить старый swap-chain если он был
@@ -826,7 +831,7 @@ isCommandsReady_(false)
 
     // Создание кадровых буферов
     this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
-    std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ")." << std::endl;
+    std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
 
     // Выделение командных буферов
     // Командный буфер может быть и один, но в таком случае придется ожидать его выполнения перед тем, как начинать запись
@@ -941,6 +946,44 @@ void VkRenderer::setRenderingStatus(bool isEnabled)
 
     // Сменить статус
     isEnabled_ = isEnabled;
+}
+
+/**
+ * Вызывается когда поверхность отображения изменилась
+ */
+void VkRenderer::onSurfaceChanged()
+{
+    // Приостановить рендеринг
+    this->setRenderingStatus(false);
+
+    // Командные буферы чисто логически не зависят от swap-chain, но их кол-во определяется кол-вом изображений swap-chain
+    // Кол-во изображений swap-chain может зависеть от особенностей поверхности
+    device_.getLogicalDevice()->freeCommandBuffers(device_.getCommandGfxPool().get(),commandBuffers_);
+    commandBuffers_.clear();
+    std::cout << "Command-buffers freed." << std::endl;
+
+    // Де-инициализация кадровых буферов
+    this->deInitFrameBuffers();
+    std::cout << "Frame-buffers destroyed." << std::endl;
+
+    // Ре-инициализация swap-chain (старый swap-chain уничтожается)
+    this->initSwapChain({vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear});
+    std::cout << "Swap-chain re-created." << std::endl;
+
+    // Инициализация кадровых буферов
+    this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
+    std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
+
+    // Инициализация командных буферов
+    auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
+    commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
+    std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
+
+    // Командные буферы нужно обновить
+    isCommandsReady_ = false;
+
+    // Возобновить рендеринг
+    this->setRenderingStatus(true);
 }
 
 /**

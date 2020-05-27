@@ -14,6 +14,11 @@ namespace tools
     void beforeWindowClose();
 
     /**
+     * Вызывается после изменения размеров окна (должна быть реализована в .cpp)
+     */
+    void onWindowResized();
+
+    /**
      * Обработчик оконных сообщений
      * @param hWnd Дескриптор окна
      * @param message Сообщение
@@ -71,7 +76,8 @@ namespace tools
             // Завершение изменения размера окна
             case WM_EXITSIZEMOVE:
             {
-                break;
+                onWindowResized();
+                return DefWindowProc(hWnd, message, wParam, lParam);
             }
 
             default:
