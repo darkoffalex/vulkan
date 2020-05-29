@@ -8,8 +8,9 @@ set(TARGET_BIN_NAME "SampleApp")
 # Добавляем .exe (проект в Visual Studio)
 add_executable(${TARGET_NAME}
         "Main.cpp" "Tools.hpp"
-        "ext_loader/vulkan_ext.h" "ext_loader/vulkan_ext.c"
-        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp"
+        "VkExtLoader/ExtLoader.h" "VkExtLoader/ExtLoader.c"
+        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp" "VkToolsGeometryBuffer.hpp"
+        "Scene/SceneElement.h" "Scene/SceneElement.cpp" "Scene/Mesh.h" "Scene/Mesh.cpp"
         "VkRenderer.h" "VkRenderer.cpp")
 
 # Директории с библиотеками (.lib)

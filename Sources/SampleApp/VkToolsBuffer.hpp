@@ -12,7 +12,7 @@ namespace vk
         private:
             /// Готово ли изображение
             bool isReady_;
-            /// Указатель на устройство владеющее изображением (создающее его)
+            /// Указатель на устройство владеющее буфером (создающее его)
             const vk::tools::Device* pDevice_;
             /// Буфер Vulkan (smart-pointer)
             vk::UniqueBuffer buffer_;

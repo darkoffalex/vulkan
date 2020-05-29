@@ -63,11 +63,31 @@ int main(int argc, char* argv[])
 
         /** Рендерер - загрузка ресурсов **/
 
-        //TODO: Здесь будет загрузка ресурсов (текстуры, геометрия)
+        // Загрузить геометрический буфер для треугольника
+        auto triangleGeometry = _vkRenderer->createGeometryBuffer({
+                {
+                        {-1.0f,-1.0f,0.0f},
+                        {1.0f,0.0f,0.0f},
+                        {0.0f,0.0f},
+                        {0.0f,0.0f,1.0f}
+                },
+                {
+                        {0.0f,1.0f,0.0f},
+                        {0.0f,1.0f,0.0f},
+                        {0.5f,1.0f},
+                        {0.0f,0.0f,1.0f}
+                },
+                {
+                        {1.0f,-1.0f,0.0f},
+                        {0.0f,0.0f,1.0f},
+                        {1.0f,1.0f},
+                        {0.0f,0.0f,1.0f}
+                },
+            },{0,1,2});
 
         /** Рендерер - инициализация сцены **/
 
-        //TODO: Построение начальной сцены (объекты, источники света, камера и прочее)
+        auto triangleMesh = _vkRenderer->addMeshToScene(triangleGeometry);
 
         /** MAIN LOOP **/
 
@@ -91,6 +111,8 @@ int main(int argc, char* argv[])
             }
         }
 
+        // Уничтожение рендерера
+        delete _vkRenderer;
     }
     catch(vk::Error& error){
         std::cout << "vk::error: " << error.what() << std::endl;
@@ -100,9 +122,6 @@ int main(int argc, char* argv[])
         std::cout << "app::error: " << error.what() << std::endl;
         system("pause");
     }
-
-    // Уничтожение рендерера
-    delete _vkRenderer;
 
     // Уничтожение окна
     DestroyWindow(_hwnd);

@@ -4,6 +4,9 @@
 #include "VkToolsDevice.hpp"
 #include "VkToolsFrameBuffer.hpp"
 #include "VkToolsBuffer.hpp"
+#include "VkToolsGeometryBuffer.hpp"
+
+#include "Scene/Mesh.h"
 
 class VkRenderer
 {
@@ -12,6 +15,8 @@ private:
     bool isEnabled_;
     /// Готовы ли командные буферы
     bool isCommandsReady_;
+    /// Данные на вход (о вершинах) подаются в стиле OpenGL (считая что начало view-port'а в нижнем левом углу)
+    bool inputDataInOpenGlStyle_;
 
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
@@ -60,6 +65,10 @@ private:
     /// Примитивы синхронизации - семафор сигнализирующий о готовности к показу отрендереной картинки
     vk::UniqueSemaphore semaphoreReadyToPresent_;
 
+    /// Массив указателей на выделенные геометрические буферы
+    std::vector<vk::tools::GeometryBufferPtr> geometryBuffers_;
+    /// Массив указателей мешей сцены
+    std::vector<vk::scene::MeshPtr> sceneMeshes_;
 
     /**
      * Инициализация проходов рендеринга
@@ -138,18 +147,27 @@ private:
      */
     void deInitDescriptors() noexcept;
 
-
     /**
      * Инициализация графического конвейера
      * @param vertexShaderCodeBytes Код вершинного шейдера
      * @param fragmentShaderCodeBytes Код фрагментного шейдера
      */
-    void initPipeline(const std::vector<unsigned char>& vertexShaderCodeBytes, const std::vector<unsigned char>& fragmentShaderCodeBytes);
+    void initPipeline(
+            const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& fragmentShaderCodeBytes);
 
     /**
      * Де-инициализация графического конвейера
      */
     void deInitPipeline() noexcept;
+
+    /**
+     * Освобождение геометрических буферов
+     *
+     * @details Перед де-инициализацией объекта рендерера, перед уничтожением устройства, будет правильным очистить все
+     * геометрические буферы которые когда либо выделялись.
+     */
+    void freeGeometryBuffers();
 
 public:
     /**
@@ -184,6 +202,27 @@ public:
      * Также необходимо пересоздать кадровые буферы и прочие компоненты которые зависят от swap-chain
      */
     void onSurfaceChanged();
+
+    /**
+     * Создание геометрического буфера
+     * @param vertices Массив вершин
+     * @param indices Массив индексов
+     * @return Shared smart pointer на объект буфера
+     */
+    vk::tools::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices);
+
+    /**
+     * Добавление меша на сцену
+     * @param geometryBuffer Геометрический буфер
+     * @return Shared smart pointer на объект меша
+     */
+    vk::scene::MeshPtr addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer);
+
+    /**
+     * Удалить меш со сцены
+     * @param meshPtr Shared smart pointer на объект меша
+     */
+    void removeMeshFromScene(const vk::scene::MeshPtr& meshPtr);
 
     /**
      * Рендеринг кадра

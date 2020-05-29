@@ -36,7 +36,8 @@ layout(set = 0, binding = 1) uniform UniformModel {
 void main()
 {
     // Координаты вершины после всех преобразований
-    gl_Position =  _proj * _view * _model * vec4(position, 1.0);
+//    gl_Position =  _proj * _view * _model * vec4(position, 1.0);
+    gl_Position = vec4(position, 1.0);
 
     // Матрица преобразования нормалей
     // Учитывает только поворот, без искажения нормалей в процессе масштабирования

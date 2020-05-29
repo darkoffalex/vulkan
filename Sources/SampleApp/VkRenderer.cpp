@@ -1,6 +1,5 @@
 #include "VkRenderer.h"
-#include "ext_loader/vulkan_ext.h"
-#include <cassert>
+#include "VkExtLoader/ExtLoader.h"
 
 /**
  * Инициализация проходов рендеринга
@@ -201,7 +200,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     swapChainCreateInfo.clipped = true;
     swapChainCreateInfo.oldSwapchain = oldSwapChain;
 
-    // Если у unique-pointer'а есть какой-то объект во владении - освобожаем его (это может быит старый swap-chain)
+    // Если у unique-pointer'а есть какой-то объект во владении - освобождаем его (это может быть старый swap-chain)
     swapChainKhr_.release();
 
     // Создаем swap-chain
@@ -549,7 +548,9 @@ void VkRenderer::deInitDescriptors() noexcept
  * @param vertexShaderCodeBytes Код вершинного шейдера
  * @param fragmentShaderCodeBytes Код фрагментного шейдера
  */
-void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCodeBytes, const std::vector<unsigned char> &fragmentShaderCodeBytes)
+void VkRenderer::initPipeline(
+        const std::vector<unsigned char> &vertexShaderCodeBytes,
+        const std::vector<unsigned char> &fragmentShaderCodeBytes)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -656,28 +657,31 @@ void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCode
     // Получить разрешение view-port'а
     auto viewPortExtent = frameBuffers_[0].getExtent();
 
-    // Настройки области отображения
+    // Настройки области отображения (статическая настройка, на случай отключения динамического состояния)
     vk::Viewport viewport{};
     viewport.setX(0.0f);
-    viewport.setY(0.0f);
-    viewport.setWidth(viewPortExtent.width);
-    viewport.setHeight(viewPortExtent.height);
+    viewport.setWidth(static_cast<float>(viewPortExtent.width));
+    viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
+    viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
+
     viewport.setMinDepth(0.0f);
     viewport.setMaxDepth(1.0f);
 
     // Настройки обрезки
-    vk::Rect2D scissors{};
-    scissors.offset.x = 0;
-    scissors.offset.y = 0;
-    scissors.extent.width = viewPortExtent.width;
-    scissors.extent.height = viewPortExtent.height;
+//    vk::Rect2D scissors{};
+//    scissors.offset.x = 0;
+//    scissors.offset.y = 0;
+//    scissors.extent.width = viewPortExtent.width;
+//    scissors.extent.height = viewPortExtent.height;
 
     // Описываем кол-во областей вида и обрезки
     vk::PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{};
     pipelineViewportStateCreateInfo.viewportCount = 1;
     pipelineViewportStateCreateInfo.pViewports = &viewport;
-    pipelineViewportStateCreateInfo.scissorCount = 1;
-    pipelineViewportStateCreateInfo.pScissors = &scissors;
+//    pipelineViewportStateCreateInfo.scissorCount = 1;
+//    pipelineViewportStateCreateInfo.pScissors = &scissors;
+    pipelineViewportStateCreateInfo.scissorCount = 0;
+    pipelineViewportStateCreateInfo.pScissors = nullptr;
 
     // Р А С Т Е Р И З А Ц И Я
 
@@ -737,6 +741,18 @@ void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCode
     pipelineColorBlendStateCreateInfo.attachmentCount = 1;
     pipelineColorBlendStateCreateInfo.pAttachments = &pipelineColorBlendAttachmentState;
 
+    // Д И Н А М И Ч. С О С Т О Я Н И Я
+
+    // Динамически (при помощи команд) будет изменяться пока-что только view-port
+    std::vector<vk::DynamicState> dynamicStates = {
+            vk::DynamicState::eViewport
+    };
+
+    // Конфигурация динамических состояний
+    vk::PipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo{};
+    pipelineDynamicStateCreateInfo.dynamicStateCount = dynamicStates.size();
+    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStates.data();
+
     // К О Н В Е Й Е Р
 
     // Создать объект конвейера
@@ -750,6 +766,7 @@ void VkRenderer::initPipeline(const std::vector<unsigned char> &vertexShaderCode
     graphicsPipelineCreateInfo.pDepthStencilState = &pipelineDepthStencilStateCreateInfo;
     graphicsPipelineCreateInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
     graphicsPipelineCreateInfo.pColorBlendState = &pipelineColorBlendStateCreateInfo;
+    graphicsPipelineCreateInfo.pDynamicState = &pipelineDynamicStateCreateInfo;
     graphicsPipelineCreateInfo.layout = pipelineLayout_.get();
     graphicsPipelineCreateInfo.renderPass = mainRenderPass_.get();
     graphicsPipelineCreateInfo.subpass = 0;
@@ -780,6 +797,19 @@ void VkRenderer::deInitPipeline() noexcept
     pipelineLayout_.release();
 }
 
+/**
+ * Освобождение геометрических буферов
+ */
+void VkRenderer::freeGeometryBuffers()
+{
+    // Пройтись по всем буферам и уничтожить выделенные ресурсы
+    // Объекты без ресурсов Vulkan могут быть корректно уничтожены
+    for(const auto& bufferPtrEntry : geometryBuffers_)
+    {
+        bufferPtrEntry->destroyVulkanResources();
+    }
+}
+
 /** C O N S T R U C T O R - D E S T R U C T O R **/
 
 /**
@@ -794,7 +824,8 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
         size_t maxMeshes):
 isEnabled_(true),
-isCommandsReady_(false)
+isCommandsReady_(false),
+inputDataInOpenGlStyle_(true)
 {
     // Инициализация экземпляра Vulkan
     this->vulkanInstance_ = vk::tools::CreateVulkanInstance("My Application",
@@ -910,6 +941,10 @@ VkRenderer::~VkRenderer()
     this->deInitRenderPasses();
     std::cout << "Render pass destroyed." << std::endl;
 
+    // Очистить все выделенные буферы геометрии
+    this->freeGeometryBuffers();
+    std::cout << "All allocated geometry buffers freed." << std::endl;
+
     // Уничтожение устройства
     device_.destroyVulkanResources();
     std::cout << "Device destroyed." << std::endl;
@@ -989,6 +1024,88 @@ void VkRenderer::onSurfaceChanged()
 }
 
 /**
+ * Создание геометрического буфера
+ * @param vertices Массив вершин
+ * @param indices Массив индексов
+ * @return Shared smart pointer на объект буфера
+ */
+vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<size_t> &indices)
+{
+    // Инициализировать
+    auto buffer = std::make_shared<vk::tools::GeometryBuffer>(&device_,vertices,indices);
+
+    // Добавить в массив
+    geometryBuffers_.push_back(buffer);
+
+    // Вернуть указатель
+    return buffer;
+}
+
+/**
+ * Добавление меша на сцену
+ * @param geometryBuffer Геометрический буфер
+ * @return Shared smart pointer на объект меша
+ */
+vk::scene::MeshPtr VkRenderer::addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer)
+{
+    // Создание меша
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,geometryBuffer);
+
+    // Добавляем в список мешей сцены
+    sceneMeshes_.push_back(mesh);
+
+    // Необходимо обновить командные буферы (изменились отображаемые меши)
+    // Для этого ставим рендеринг на паузу и дожидаемся исполнения всех команд в очередях
+    this->isEnabled_ = false;
+    device_.getGraphicsQueue().waitIdle();
+    device_.getPresentQueue().waitIdle();
+
+    // Очищаем командные буферы от старых команд
+    for(auto& cmdBuffer : commandBuffers_){
+        cmdBuffer.reset({});
+    }
+
+    // Даем знать что командные буферы нужно обновить при следующем вызове draw
+    isCommandsReady_ = false;
+
+    // Возобновляем рендеринг
+    this->isEnabled_ = true;
+
+    return mesh;
+}
+
+/**
+ * Удалить меш со сцены
+ * @param meshPtr Shared smart pointer на объект меша
+ */
+void VkRenderer::removeMeshFromScene(const vk::scene::MeshPtr& meshPtr)
+{
+    // Приостановить рендеринг
+    this->isEnabled_ = false;
+    device_.getGraphicsQueue().waitIdle();
+    device_.getPresentQueue().waitIdle();
+
+    // Удалям меш из списка
+    sceneMeshes_.erase(std::remove_if(sceneMeshes_.begin(), sceneMeshes_.end(), [&](const vk::scene::MeshPtr& meshEntryPtr){
+        return meshPtr.get() == meshEntryPtr.get();
+    }), sceneMeshes_.end());
+
+    // Очищаем командные буферы от старых команд
+    for(auto& cmdBuffer : commandBuffers_){
+        cmdBuffer.reset({});
+    }
+
+    // Даем знать что командные буферы нужно обновить при следующем вызове draw
+    isCommandsReady_ = false;
+
+    // Возобновляем рендеринг
+    this->isEnabled_ = true;
+
+    // Очищаем выделенные ресурсы меша
+    meshPtr->destroyVulkanResources();
+}
+
+/**
  * Рендеринг кадра
  */
 void VkRenderer::draw()
@@ -1005,7 +1122,7 @@ void VkRenderer::draw()
     {
         // Описываем очистку вложений
         std::vector<vk::ClearValue> clearValues(2);
-        clearValues[0].color = vk::ClearColorValue( std::array<float, 4>({ 1.0f, 0.0f, 0.0f, 1.0f }));
+        clearValues[0].color = vk::ClearColorValue( std::array<float, 4>({ 0.0f, 0.0f, 0.0f, 1.0f }));
         clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
 
         // Описываем начало прохода
@@ -1035,7 +1152,35 @@ void VkRenderer::draw()
             // Привязать графический конвейер
             commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline_.get());
 
-            //TODO: привязка наборов дескрипторов и вершинных буферов
+            // Настройка view-port'а через команду (смена динамического состояния конвейера)
+            auto viewPortExtent = frameBuffers_[0].getExtent();
+            vk::Viewport viewport{};
+            viewport.setX(0.0f);
+            viewport.setWidth(static_cast<float>(viewPortExtent.width));
+            viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
+            viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
+            commandBuffers_[i].setViewport(0,1,&viewport);
+
+            //TODO: привязка наборов дескрипторов
+
+            for(const auto& meshPtr : sceneMeshes_)
+            {
+                if(meshPtr->isReady() && meshPtr->getGeometryBuffer()->isReady())
+                {
+                    vk::DeviceSize offsets[1] = {0};
+                    auto vBuffer = meshPtr->getGeometryBuffer()->getVertexBuffer().getBuffer().get();
+                    auto iBuffer = meshPtr->getGeometryBuffer()->getIndexBuffer().getBuffer().get();
+
+                    if(meshPtr->getGeometryBuffer()->isIndexed()) {
+                        commandBuffers_[i].bindVertexBuffers(0,1,&vBuffer,offsets);
+                        commandBuffers_[i].bindIndexBuffer(iBuffer,{},vk::IndexType::eUint32);
+                        commandBuffers_[i].drawIndexed(meshPtr->getGeometryBuffer()->getIndexCount(),1,0,0,0);
+                    } else {
+                        commandBuffers_[i].bindVertexBuffers(0,1,&vBuffer,offsets);
+                        commandBuffers_[i].draw(meshPtr->getGeometryBuffer()->getVertexCount(),1,0,0);
+                    }
+                }
+            }
 
             // Завершение прохода добавит неявное преобразование памяти кадрового буфера в VK_IMAGE_LAYOUT_PRESENT_SRC_KHR для представления содержимого
             commandBuffers_[i].endRenderPass();
@@ -1088,5 +1233,5 @@ void VkRenderer::draw()
     presentInfoKhr.swapchainCount = 1;                                       // Кол-во цепочек показа
     presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
     presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
-    device_.getPresentQueue().presentKHR(presentInfoKhr);                    // Осуществить показ
+    (void)device_.getPresentQueue().presentKHR(presentInfoKhr);              // Осуществить показ
 }
