@@ -12,6 +12,13 @@ namespace vk
 {
     namespace scene
     {
+        enum Axis
+        {
+            eX,
+            eY,
+            eZ
+        };
+
         class SceneElement
         {
         private:
@@ -42,7 +49,7 @@ namespace vk
              * @param r2 Порядок вращения - третья ось
              * @return Матрица 4*4
              */
-            [[nodiscard]] glm::mat4 makeRotationMatrix(const tools::Axis& r0, const tools::Axis& r1, const tools::Axis& r2) const;
+            [[nodiscard]] glm::mat4 makeRotationMatrix(const Axis& r0, const Axis& r1, const Axis& r2) const;
 
             /**
              * Построить матрицу поворота (кватернионы)

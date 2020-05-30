@@ -7,6 +7,7 @@
 #include "VkToolsGeometryBuffer.hpp"
 
 #include "Scene/Mesh.h"
+#include "Scene/Camera.h"
 
 class VkRenderer
 {
@@ -37,23 +38,18 @@ private:
 
     /// UBO буфер для матриц вида и проекции
     vk::tools::Buffer uboBufferViewProjection_;
-    /// UBO буфер для матриц модели (для каждого меша свой регион буфера)
-    vk::tools::Buffer uboBufferModel_;
     /// Текстурный семплер по умолчанию, используемый для всех создаваемых текстур
     vk::UniqueSampler textureSamplerDefault_;
 
-    /// Объект дескрипторного пула для выделения наборов UBO
-    vk::UniqueDescriptorPool descriptorPoolUBO_;
-    /// Объект дескрипторного пула для выделения наборов материала меша
-    vk::UniqueDescriptorPool descriptorPoolMeshMaterial_;
+    /// Объект дескрипторного пула для выделения набора для камеры (матрицы)
+    vk::UniqueDescriptorPool descriptorPoolCamera_;
+    /// Объект дескрипторного пула для выделения наборов мешей (матрицы, материалы)
+    vk::UniqueDescriptorPool descriptorPoolMeshes_;
 
-    /// Макет размещения дескрипторного набора для UBO буфера
-    vk::UniqueDescriptorSetLayout descriptorSetLayoutUBO_;
-    /// Макет размещения дескрипторного набора для описания материала меша
-    vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshMaterial_;
-
-    /// Дескрипторный набор для UBO
-    vk::UniqueDescriptorSet descriptorSetUBO_;
+    /// Макет размещения дескрипторного набора для камеры (матрицы)
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
+    /// Макет размещения дескрипторного набора для меша (матрицы, материалы)
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshes_;
 
     /// Макет размещения графического конвейера
     vk::UniquePipelineLayout pipelineLayout_;
@@ -69,6 +65,8 @@ private:
     std::vector<vk::tools::GeometryBufferPtr> geometryBuffers_;
     /// Массив указателей мешей сцены
     std::vector<vk::scene::MeshPtr> sceneMeshes_;
+    /// Камера (матрицы, UBO)
+    vk::scene::Camera camera_;
 
     /**
      * Инициализация проходов рендеринга
@@ -133,19 +131,19 @@ private:
 
 
     /**
-     * Инициализация дескрипторов (наборов дескрипторов)
+     * Инициализация дескрипторных пулов и макетов размещения дескрипторов
      * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
      *
      * @details Дескрипторы описывают правила доступа из шейдера к различным ресурсам (таким как UBO буферы, изображения, и прочее). Они объединены в наборы
      * Наборы дескрипторов выделяются из дескрипторных пулов, а у пулов есть свой макет размещения, который описывает сколько наборов можно будет выделить
      * из пула и какие конкретно дескрипторы в этих наборах (и сколько их) будут доступны
      */
-    void initDescriptors(size_t maxMeshes);
+    void initDescriptorPoolsAndLayouts(size_t maxMeshes);
 
     /**
      * Де-инициализация дескрипторов
      */
-    void deInitDescriptors() noexcept;
+    void deInitDescriptorPoolsAndLayouts() noexcept;
 
     /**
      * Инициализация графического конвейера
@@ -168,6 +166,14 @@ private:
      * геометрические буферы которые когда либо выделялись.
      */
     void freeGeometryBuffers();
+
+    /**
+     * Очистка ресурсов мешей
+     *
+     * @details Поскольку каждый объект меша содержит набор дескрипторов и свои UBO буферы, перед уничтожением устройства
+     * будет корректным очистить их ресурсы
+     */
+    void freeMeshes();
 
 public:
     /**
@@ -225,7 +231,15 @@ public:
     void removeMeshFromScene(const vk::scene::MeshPtr& meshPtr);
 
     /**
+     * Доступ к камере
+     * @return Константный указатель на объект камеры
+     */
+    vk::scene::Camera* getCameraPtr();
+
+    /**
      * Рендеринг кадра
      */
     void draw();
+
+//    void initTmpShit();
 };

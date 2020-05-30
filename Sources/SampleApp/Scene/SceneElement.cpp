@@ -67,7 +67,7 @@ namespace vk
          * @param r2 Порядок вращения - третья ось
          * @return Матрица 4*4
          */
-        glm::mat4 SceneElement::makeRotationMatrix(const tools::Axis& r0, const tools::Axis& r1, const tools::Axis& r2) const
+        glm::mat4 SceneElement::makeRotationMatrix(const Axis& r0, const Axis& r1, const Axis& r2) const
         {
             glm::float32 angles[3] = { glm::radians(this->orientation_.x), glm::radians(this->orientation_.y), glm::radians(this->orientation_.z) };
             glm::vec3 vectors[3] = { glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f) };

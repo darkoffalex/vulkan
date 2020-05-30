@@ -317,14 +317,6 @@ void VkRenderer::initUboBuffers(size_t maxMeshes)
             sizeof(glm::mat4)*2,
             vk::BufferUsageFlagBits::eUniformBuffer,
             vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    // Создаем UBO буферы для матриц модели (на каждый меш своя матрица)
-    // В связи с тем что тип дескриптора предполагается как "динамический буфер", используем динамическое выравнивание для выяснения размеров буфера
-    uboBufferModel_ = vk::tools::Buffer(
-            &device_,
-            device_.getDynamicallyAlignedUboBlockSize<glm::mat4>() * maxMeshes,
-            vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible);
 }
 
 /**
@@ -333,7 +325,6 @@ void VkRenderer::initUboBuffers(size_t maxMeshes)
 void VkRenderer::deInitUboBuffers() noexcept
 {
     // Уничтожаем ресурсы Vulkan
-    uboBufferModel_.destroyVulkanResources();
     uboBufferViewProjection_.destroyVulkanResources();
 }
 
@@ -341,14 +332,14 @@ void VkRenderer::deInitUboBuffers() noexcept
  * Инициализация дескрипторов (наборов дескрипторов)
  * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
  */
-void VkRenderer::initDescriptors(size_t maxMeshes)
+void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
         throw vk::InitializationFailedError("Can't initialize descriptors. Device not ready");
     }
     // Проверить готовность буферов UBO
-    if(!uboBufferModel_.isReady() || !uboBufferViewProjection_.isReady()){
+    if(!uboBufferViewProjection_.isReady()){
         throw vk::InitializationFailedError("Can't initialize descriptors. UBO buffers not ready");
     }
 
@@ -356,48 +347,45 @@ void VkRenderer::initDescriptors(size_t maxMeshes)
     // Наборы дескрипторов выделяются из пулов. При создании пула, необходимо знать какие дескрипторы и сколько их
     // будут в наборах, которые будут выделяться из пула, а так же сколько таких наборов всего будет
 
-    // Создать пул для наборов типа "UBO"
+    // Создать пул для набора камеры
     {
         // Размеры пула для наборов типа "UBO"
         std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
                 // Один дескриптор в наборе отвечает за обычный UBO буфер (привязывается единожды за кадр)
                 {vk::DescriptorType::eUniformBuffer, 1},
-                // Один дескриптор в наборе отвечает за динамический UBO буфер (может привязываться несколько раз за кадр со смещением в буфере)
-                {vk::DescriptorType::eUniformBufferDynamic, 1},
         };
 
-
-        // У набора UBO есть динамический дескриптор для матриц модели, что позволяет многократно привязывать один набор
-        // с динамическим смещением. Это позволяет использовать только один набор для всех матриц мешей
+        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр (камера, вид, проекция)
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
         descriptorPoolCreateInfo.maxSets = 1;
-        descriptorPoolUBO_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+        descriptorPoolCamera_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
-    // Создать для наборов типа "материал меша"
+    // Создать пул для наборов мешей
     {
         // Размеры пула для наборов типа "материал меша"
         std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
-                // Один дескриптор в наборе отвечает за текстуру совмещенную с текстурным семплером
+                // Дескрипторы для буферов UBO (матрица модели + параметры материала)
+                {vk::DescriptorType::eUniformBuffer,2},
+                // Дескрипторы для текстур (пока-что одна albedo/diffuse текстура)
                 {vk::DescriptorType::eCombinedImageSampler, 1}
         };
 
-        // У данного набора нет динамических дескрипторов, и для данного набора нельзя использовать динамическое смещение,
-        // соответственно у каждого меша должен быть свой набор дескрипторов отвечающий за метериал (текстуры и прочее)
+        // Поскольку у каждого меша есть свой набор, то кол-во таких наборов ограничено кол-вом мешей
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
         descriptorPoolCreateInfo.maxSets = maxMeshes;
-        descriptorPoolMeshMaterial_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+        descriptorPoolMeshes_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
     // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
     // Макет размещения набора подробно описывает какие конкретно типы дескрипторов будут в наборе, сколько их, на каком
     // этапе конвейера они доступы, а так же какой у них индекс привязки (binding) в шейдере
 
-    // Макет размещения набора UBO
+    // Макет размещения набора камеры
     {
         // Описание привязок
         std::vector<vk::DescriptorSetLayoutBinding> bindings = {
@@ -409,31 +397,38 @@ void VkRenderer::initDescriptors(size_t maxMeshes)
                         vk::ShaderStageFlagBits::eVertex,
                         nullptr,
                 },
-                // Динамический UBO буфер (для матриц модели)
-                // Привязывая набор с этим буфером можно указать динамическое смещение
-                {
-                        1,
-                        vk::DescriptorType::eUniformBufferDynamic,
-                        1,
-                        vk::ShaderStageFlagBits::eVertex,
-                        nullptr,
-                },
         };
 
         // Создать макет размещения дескрипторного набора
         vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
         descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
-        descriptorSetLayoutUBO_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+        descriptorSetLayoutCamera_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
 
     // Макет размещения материала меша
     {
         // Описание привязок
         std::vector<vk::DescriptorSetLayoutBinding> bindings = {
-                // Текстурный семплер
+                // UBO буфер для матриц
                 {
                         0,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eVertex,
+                        nullptr,
+                },
+                // UBO буфер для параметров материала
+                {
+                        1,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                },
+                // Текстурный семплер
+                {
+                        2,
                         vk::DescriptorType::eCombinedImageSampler,
                         1,
                         vk::ShaderStageFlagBits::eFragment,
@@ -445,77 +440,14 @@ void VkRenderer::initDescriptors(size_t maxMeshes)
         vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
         descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
-        descriptorSetLayoutMeshMaterial_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+        descriptorSetLayoutMeshes_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
-
-    // U B O  Н А Б О Р
-    // В отличии от набора материала меша, который будет выделяться отдельно для каждого меше, набор UBO можно
-    // выделить уже сейчас, ибо это единственный набор.
-
-    // Выделить из пула набор дескрипторов
-    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-    descriptorSetAllocateInfo.descriptorPool = descriptorPoolUBO_.get(),
-    descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutUBO_.get());
-    descriptorSetAllocateInfo.descriptorSetCount = 1;
-    auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
-
-    // Информация о буферах
-    std::vector<vk::DescriptorBufferInfo> bufferInfos = {
-            {uboBufferViewProjection_.getBuffer().get(),0,VK_WHOLE_SIZE},
-            {uboBufferModel_.getBuffer().get(),0,VK_WHOLE_SIZE}
-    };
-
-    // Описываем связи дескрипторов с буферами (описание "записей")
-    std::vector<vk::WriteDescriptorSet> writes = {
-            {
-                    // Целевой набор
-                    allocatedSets[0],
-                    // Индекс привязки
-                    0,
-                    // Элемент массива (не используется)
-                    0,
-                    // Кол-во дескрипторов
-                    1,
-                    // Тип дескриптора (обычный UBO буфер)
-                    vk::DescriptorType::eUniformBuffer,
-                    // Изображение (не используется)
-                    nullptr,
-                    // Буфер (используется)
-                    bufferInfos.data() + 0,
-                    // Тексель-буфер (не используется)
-                    nullptr
-            },
-            {
-                    // Целевой набор
-                    allocatedSets[0],
-                    // Индекс привязки
-                    1,
-                    // Элемент массива (не используется)
-                    0,
-                    // Кол-во дескрипторов
-                    1,
-                    // Тип дескриптора (динамический UBO буфер со смещением)
-                    vk::DescriptorType::eUniformBufferDynamic,
-                    // Изображение (не используется)
-                    nullptr,
-                    // Буфер (используется)
-                    bufferInfos.data() + 1,
-                    // Тексель-буфер (не используется)
-                    nullptr
-            }
-    };
-
-    // Связываем дескрипторы с ресурсами (буферами)
-    device_.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
-
-    // Сохранить созданный набор
-    descriptorSetUBO_ = vk::UniqueDescriptorSet(allocatedSets[0]);
 }
 
 /**
  * Де-инициализация дескрипторов
  */
-void VkRenderer::deInitDescriptors() noexcept
+void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
 {
     // Проверяем готовность устройства
     assert(device_.isReady());
@@ -523,24 +455,22 @@ void VkRenderer::deInitDescriptors() noexcept
     // Уничтожить все выделенные наборы дескрипторов
     // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
     try{
-        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolUBO_.get());
-        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshMaterial_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolCamera_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshes_.get());
     }
 	catch(std::exception&){}
 
-    descriptorSetUBO_.release();
-
     // Уничтожить размещения дескрипторов
-    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutUBO_.get());
-    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshMaterial_.get());
-    descriptorSetLayoutUBO_.release();
-    descriptorSetLayoutMeshMaterial_.release();
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutCamera_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshes_.get());
+    descriptorSetLayoutCamera_.release();
+    descriptorSetLayoutMeshes_.release();
 
     // Уничтожить пулы дескрипторов
-    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolUBO_.get());
-    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshMaterial_.get());
-    descriptorPoolUBO_.release();
-    descriptorPoolMeshMaterial_.release();
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshes_.get());
+    descriptorPoolCamera_.release();
+    descriptorPoolMeshes_.release();
 }
 
 /**
@@ -565,8 +495,8 @@ void VkRenderer::initPipeline(
 
     // Массив макетов размещения дескрипторов
     std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
-            descriptorSetLayoutUBO_.get(),
-            descriptorSetLayoutMeshMaterial_.get()
+            descriptorSetLayoutCamera_.get(),
+            descriptorSetLayoutMeshes_.get()
     };
 
     // Создать макет размещения конвейера
@@ -810,6 +740,19 @@ void VkRenderer::freeGeometryBuffers()
     }
 }
 
+/**
+ * Очистка ресурсов мешей
+ */
+void VkRenderer::freeMeshes()
+{
+    // Пройтись по всем мешам и уничтожить выделенные ресурсы
+    // Объекты без ресурсов Vulkan могут быть корректно уничтожены
+    for(const auto& meshPtrEntry : sceneMeshes_)
+    {
+        meshPtrEntry->destroyVulkanResources();
+    }
+}
+
 /** C O N S T R U C T O R - D E S T R U C T O R **/
 
 /**
@@ -872,15 +815,27 @@ inputDataInOpenGlStyle_(true)
 
     // Выделение UBO буферов
     this->initUboBuffers(maxMeshes);
-    std::cout << "UBO-buffers allocated (" << uboBufferViewProjection_.getSize() << " and " << uboBufferModel_.getSize() << ")." << std::endl;
+    std::cout << "UBO-buffer allocated (" << uboBufferViewProjection_.getSize() << ")." << std::endl;
 
     // Создать текстурный семплер по умолчанию
     textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 4);
     std::cout << "Default texture sampler created." << std::endl;
 
     // Инициализация дескрипторных пулов и наборов
-    this->initDescriptors(maxMeshes);
-    std::cout << "Descriptors initialized." << std::endl;
+    this->initDescriptorPoolsAndLayouts(maxMeshes);
+    std::cout << "Descriptor pool and layouts initialized." << std::endl;
+
+    // Создание камеры (UBO буферов и дескрипторных наборов)
+    glm::float32 aspectRatio = static_cast<glm::float32>(frameBuffers_[0].getExtent().width) / static_cast<glm::float32>(frameBuffers_[0].getExtent().height);
+    camera_ = vk::scene::Camera(
+            &device_,
+            descriptorPoolCamera_,
+            descriptorSetLayoutCamera_,
+            glm::vec3(0.0f,0.0f,0.0f),
+            glm::vec3(0.0f,0.0f,0.0f),
+            aspectRatio,
+            vk::scene::CameraProjectionType::ePerspective);
+    std::cout << "Camera created." << std::endl;
 
     // Создать проход рендеринга
     this->initPipeline(vertexShaderCodeBytes,fragmentShaderCodeBytes);
@@ -911,9 +866,17 @@ VkRenderer::~VkRenderer()
     this->deInitPipeline();
     std::cout << "Graphics pipeline destroyed." << std::endl;
 
+    // Очистить все ресурсы мешей
+    this->freeMeshes();
+    std::cout << "All allocated meshes data freed." << std::endl;
+
+    // Очистить ресурсы камеры
+    this->camera_.destroyVulkanResources();
+    std::cout << "Camera destroyed." << std::endl;
+
     // Де-инициализация дескрипторов
-    this->deInitDescriptors();
-    std::cout << "Descriptors de-initialized" << std::endl;
+    this->deInitDescriptorPoolsAndLayouts();
+    std::cout << "Descriptor pool and layouts de-initialized" << std::endl;
 
     // Уничтожение текстурного семплера по умолчанию
     device_.getLogicalDevice()->destroySampler(textureSamplerDefault_.get());
@@ -1011,6 +974,9 @@ void VkRenderer::onSurfaceChanged()
     this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
     std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
 
+    // Изменить пропорции камеры
+    camera_.setAspectRatio(static_cast<glm::float32>(frameBuffers_[0].getExtent().width)/static_cast<glm::float32>(frameBuffers_[0].getExtent().height));
+
     // Инициализация командных буферов
     auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
@@ -1049,7 +1015,7 @@ vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<
 vk::scene::MeshPtr VkRenderer::addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,geometryBuffer);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);
@@ -1103,6 +1069,14 @@ void VkRenderer::removeMeshFromScene(const vk::scene::MeshPtr& meshPtr)
 
     // Очищаем выделенные ресурсы меша
     meshPtr->destroyVulkanResources();
+}
+
+/**
+ * Доступ к камере
+ * @return Константный указатель на объект камеры
+ */
+vk::scene::Camera* VkRenderer::getCameraPtr(){
+    return &camera_;
 }
 
 /**
@@ -1161,12 +1135,25 @@ void VkRenderer::draw()
             viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
             commandBuffers_[i].setViewport(0,1,&viewport);
 
-            //TODO: привязка наборов дескрипторов
+            // Привязать набор дескрипторов камеры (матрицы вида и проекции)
+            commandBuffers_[i].bindDescriptorSets(
+                    vk::PipelineBindPoint::eGraphics,
+                    pipelineLayout_.get(),
+                    0,
+                    {getCameraPtr()->getDescriptorSet()},{});
 
             for(const auto& meshPtr : sceneMeshes_)
             {
                 if(meshPtr->isReady() && meshPtr->getGeometryBuffer()->isReady())
                 {
+                    // Привязать наборы дескрипторов меша (матрица модели, свойства материала, текстуры и прочее)
+                    commandBuffers_[i].bindDescriptorSets(
+                            vk::PipelineBindPoint::eGraphics,
+                            pipelineLayout_.get(),
+                            1,
+                            {meshPtr->getDescriptorSet()},{});
+
+                    // Буферы вершин и индексов
                     vk::DeviceSize offsets[1] = {0};
                     auto vBuffer = meshPtr->getGeometryBuffer()->getVertexBuffer().getBuffer().get();
                     auto iBuffer = meshPtr->getGeometryBuffer()->getIndexBuffer().getBuffer().get();

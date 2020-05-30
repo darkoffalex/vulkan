@@ -25,25 +25,6 @@ namespace vk
             glm::vec3 normal;
         };
 
-        /// П Е Р Е Ч И С Л Я Е М Ы Е
-
-        /**
-         * Оси координат
-         * Используется при указании порядка во время поворотом на углы Эйлера
-         */
-        enum Axis { AXIS_X, AXIS_Y, AXIS_Z };
-
-        /**
-         * Тип проекции
-         * Используется в классе камеры при построении матрицы проекции
-         */
-        enum ProjectionType { PROJ_PERSPECTIVE, PROJ_ORTHOGRAPHIC };
-
-        /**
-         * Типы источников света
-         * Используется для указания типа при добавлении источника на сцену
-         */
-        enum LightSourceType { LIGHT_POINT, LIGHT_SPOT, LIGHT_DIRECTIONAL };
 
         /// В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы
 

@@ -17,7 +17,7 @@ layout (location = 0) in VS_OUT
 
 /*Uniform*/
 
-layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
+//layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
 
 /*Функции*/
 

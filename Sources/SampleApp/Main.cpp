@@ -72,22 +72,33 @@ int main(int argc, char* argv[])
                         {0.0f,0.0f,1.0f}
                 },
                 {
-                        {0.0f,1.0f,0.0f},
+                        {-1.0f,1.0f,0.0f},
                         {0.0f,1.0f,0.0f},
                         {0.5f,1.0f},
                         {0.0f,0.0f,1.0f}
                 },
                 {
-                        {1.0f,-1.0f,0.0f},
+                        {1.0f,1.0f,0.0f},
                         {0.0f,0.0f,1.0f},
                         {1.0f,1.0f},
                         {0.0f,0.0f,1.0f}
                 },
-            },{0,1,2});
+                {
+                        {1.0f,-1.0f,0.0f},
+                        {1.0f,1.0f,0.0f},
+                        {1.0f,1.0f},
+                        {0.0f,0.0f,1.0f}
+                },
+            },{0,1,2, 2,3,0});
 
         /** Рендерер - инициализация сцены **/
 
+        // Камера
+        _vkRenderer->getCameraPtr()->setPosition({0.0f,0.0f,0.0f});
+
+        // Меш (квадрат)
         auto triangleMesh = _vkRenderer->addMeshToScene(triangleGeometry);
+        triangleMesh->setPosition({0.0f,0.0f,-3.0f});
 
         /** MAIN LOOP **/
 
