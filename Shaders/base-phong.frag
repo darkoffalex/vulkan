@@ -15,9 +15,22 @@ layout (location = 0) in VS_OUT
     mat3 normalMatrix;     // Матрица преобразования нормалей
 } fs_in;
 
+/*Вспомогательные типы*/
+
+struct MaterialSettings
+{
+    vec3 albedo;
+    float metallic;
+    float roughness;
+};
+
 /*Uniform*/
 
-//layout(set = 1, binding = 0) uniform sampler2D diffuseTexture;
+layout(set = 1, binding = 1) uniform UniformModel {
+    MaterialSettings _materialSettings;
+};
+
+layout(set = 1, binding = 2) uniform sampler2D texture;
 
 /*Функции*/
 
@@ -28,5 +41,5 @@ void main() {
     //TODO: Сделать базовое фонговое освещение
 
     // Пока-что просто отдаем интерполированный цвет
-    outColor = vec4(fs_in.color, 1.0f);
+    outColor = vec4(_materialSettings.albedo, 1.0f);
 }

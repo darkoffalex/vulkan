@@ -29,6 +29,7 @@ namespace vk
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboModelMatrixData_, other.pUboModelMatrixData_);
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
+            std::swap(materialSettings_,other.materialSettings_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
@@ -50,12 +51,14 @@ namespace vk
             pDescriptorPool_ = nullptr;
             pUboModelMatrixData_ = nullptr;
             pUboMaterialData_ = nullptr;
+            materialSettings_ = {};
 
             std::swap(isReady_,other.isReady_);
             std::swap(pDevice_,other.pDevice_);
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboModelMatrixData_, other.pUboModelMatrixData_);
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
+            std::swap(materialSettings_,other.materialSettings_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
@@ -78,15 +81,18 @@ namespace vk
          * @param descriptorPool Unique smart pointer объекта дескрипторного пула
          * @param descriptorSetLayout Макет размещения дескрипторного набора меша
          * @param geometryBufferPtr Smart-pointer на объект геом. буфера
+         * @param materialSettings Параметры материала
          */
         Mesh::Mesh(const vk::tools::Device* pDevice,
                    const vk::UniqueDescriptorPool& descriptorPool,
                    const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
-                   vk::tools::GeometryBufferPtr geometryBufferPtr):SceneElement(),
+                   vk::tools::GeometryBufferPtr geometryBufferPtr,
+                   const vk::scene::MeshMaterialSettings& materialSettings):SceneElement(),
         isReady_(false),
         pDevice_(pDevice),
         pDescriptorPool_(&(descriptorPool.get())),
-        geometryBufferPtr_(std::move(geometryBufferPtr))
+        geometryBufferPtr_(std::move(geometryBufferPtr)),
+        materialSettings_(materialSettings)
         {
             // Проверить устройство
             if(pDevice_ == nullptr || !pDevice_->isReady()){
@@ -101,7 +107,7 @@ namespace vk
 
             // Выделить буфер для параметров материала
             uboMaterial_ = vk::tools::Buffer(pDevice_,
-                    sizeof(vk::scene::MeshMaterial),
+                    sizeof(vk::scene::MeshMaterialSettings),
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
@@ -154,6 +160,7 @@ namespace vk
 
             // Обновить UBO буферы
             this->updateMatrixBuffers();
+            this->updateMaterialSettingsBuffers();
 
             // Инициализация завершена
             isReady_ = true;
@@ -225,9 +232,35 @@ namespace vk
         void Mesh::updateMatrixBuffers()
         {
             if(uboModelMatrix_.isReady()){
-                auto modelMatrix = this->getModelMatrix();
-                memcpy(pUboModelMatrixData_,&modelMatrix, sizeof(glm::mat4));
+                memcpy(pUboModelMatrixData_,&(this->getModelMatrix()), sizeof(glm::mat4));
             }
+        }
+
+        /**
+         * Обновление UBO буферов параметров материала меша
+         */
+        void Mesh::updateMaterialSettingsBuffers()
+        {
+            if(uboMaterial_.isReady()){
+                memcpy(pUboMaterialData_,&materialSettings_, sizeof(vk::scene::MeshMaterialSettings));
+            }
+        }
+
+        /**
+         * Установить параметры материала
+         * @param settings Параметры материала
+         */
+        void Mesh::setMaterialSettings(const MeshMaterialSettings &settings) {
+            materialSettings_ = settings;
+            this->updateMaterialSettingsBuffers();
+        }
+
+        /**
+         * Получить параметры материала
+         * @return Структура описывающая материал
+         */
+        MeshMaterialSettings Mesh::getMaterialSettings() const {
+            return materialSettings_;
         }
     }
 }

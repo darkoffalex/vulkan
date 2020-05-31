@@ -220,9 +220,11 @@ public:
     /**
      * Добавление меша на сцену
      * @param geometryBuffer Геометрический буфер
+     * @param materialSettings Параметры материала меша
      * @return Shared smart pointer на объект меша
      */
-    vk::scene::MeshPtr addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer);
+    vk::scene::MeshPtr addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer,
+            const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
     /**
      * Удалить меш со сцены
@@ -240,6 +242,4 @@ public:
      * Рендеринг кадра
      */
     void draw();
-
-//    void initTmpShit();
 };

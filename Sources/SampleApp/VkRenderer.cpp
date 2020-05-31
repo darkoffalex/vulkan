@@ -1010,12 +1010,13 @@ vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<
 /**
  * Добавление меша на сцену
  * @param geometryBuffer Геометрический буфер
+ * @param materialSettings Параметры материала меша
  * @return Shared smart pointer на объект меша
  */
-vk::scene::MeshPtr VkRenderer::addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer)
+vk::scene::MeshPtr VkRenderer::addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer, const vk::scene::MeshMaterialSettings& materialSettings)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer,materialSettings);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);

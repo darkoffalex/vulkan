@@ -63,8 +63,8 @@ int main(int argc, char* argv[])
 
         /** Рендерер - загрузка ресурсов **/
 
-        // Загрузить геометрический буфер для треугольника
-        auto triangleGeometry = _vkRenderer->createGeometryBuffer({
+        // Загрузить геометрический буфер
+        auto quadBuffer = _vkRenderer->createGeometryBuffer({
                 {
                         {-1.0f,-1.0f,0.0f},
                         {1.0f,0.0f,0.0f},
@@ -96,9 +96,14 @@ int main(int argc, char* argv[])
         // Камера
         _vkRenderer->getCameraPtr()->setPosition({0.0f,0.0f,0.0f});
 
-        // Меш (квадрат)
-        auto triangleMesh = _vkRenderer->addMeshToScene(triangleGeometry);
-        triangleMesh->setPosition({0.0f,0.0f,-3.0f});
+        // Меши
+        auto mesh0 = _vkRenderer->addMeshToScene(quadBuffer,{{1.0f,0.0f,0.0f},0.0f,1.0f});
+        mesh0->setPosition({-1.0f,0.0f,-4.0f}, false);
+        mesh0->setScale({0.8,0.8f,0.8f});
+
+        auto mesh1 = _vkRenderer->addMeshToScene(quadBuffer, {{0.0f,1.0f,0.0f},0.0f,1.0f});
+        mesh1->setPosition({1.0f,0.0f,-4.0f}, false);
+        mesh1->setScale({0.8f,0.8f,0.8f});
 
         /** MAIN LOOP **/
 

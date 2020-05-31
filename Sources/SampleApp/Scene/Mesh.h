@@ -7,9 +7,9 @@ namespace vk
 {
     namespace scene
     {
-        struct MeshMaterial
+        struct MeshMaterialSettings
         {
-            glm::vec3 albedo;
+            glm::vec3 albedo = {1.0f,1.0f,1.0f};
             glm::float32 metallic = 0.0f;
             glm::float32 roughness = 1.0f;
         };
@@ -23,6 +23,8 @@ namespace vk
             const vk::tools::Device* pDevice_;
             /// Указатель на геометрический буфер
             vk::tools::GeometryBufferPtr geometryBufferPtr_;
+            /// Параметры материала меша
+            vk::scene::MeshMaterialSettings materialSettings_;
 
             /// UBO буфер для матрицы модели
             vk::tools::Buffer uboModelMatrix_;
@@ -45,6 +47,11 @@ namespace vk
             void updateMatrixBuffers();
 
             /**
+             * Обновление UBO буферов параметров материала меша
+             */
+            void updateMaterialSettingsBuffers();
+
+            /**
              * Обработка события обновления матриц
              */
             void onMatricesUpdated() override;
@@ -61,11 +68,13 @@ namespace vk
              * @param descriptorPool Unique smart pointer объекта дескрипторного пула
              * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
              * @param geometryBufferPtr Smart-pointer на объект геом. буфера
+             * @param materialSettings Параметры материала
              */
             explicit Mesh(const vk::tools::Device* pDevice,
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
-                    vk::tools::GeometryBufferPtr geometryBufferPtr);
+                    vk::tools::GeometryBufferPtr geometryBufferPtr,
+                    const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
             /**
              * Запрет копирования через инициализацию
@@ -121,6 +130,18 @@ namespace vk
              * @return Константная ссылка на объект дескрипторного набора
              */
             const vk::DescriptorSet& getDescriptorSet() const;
+
+            /**
+             * Установить параметры материала
+             * @param settings Параметры материала
+             */
+            void setMaterialSettings(const MeshMaterialSettings& settings);
+
+            /**
+             * Получить параметры материала
+             * @return Структура описывающая материал
+             */
+            MeshMaterialSettings getMaterialSettings() const;
         };
 
         /**
