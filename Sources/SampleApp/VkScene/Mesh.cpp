@@ -88,8 +88,8 @@ namespace vk
         Mesh::Mesh(const vk::tools::Device* pDevice,
                    const vk::UniqueDescriptorPool& descriptorPool,
                    const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
-                   vk::tools::GeometryBufferPtr geometryBufferPtr,
-                   vk::tools::TextureBufferPtr textureBufferPtr,
+                   vk::resources::GeometryBufferPtr geometryBufferPtr,
+                   vk::resources::TextureBufferPtr textureBufferPtr,
                    const vk::scene::MeshMaterialSettings& materialSettings):SceneElement(),
         isReady_(false),
         pDevice_(pDevice),
@@ -234,7 +234,7 @@ namespace vk
          * Получить буфер геометрии
          * @return Константная ссылка на smart-pointer объекта буфера
          */
-        const vk::tools::GeometryBufferPtr &Mesh::getGeometryBuffer() const {
+        const vk::resources::GeometryBufferPtr &Mesh::getGeometryBuffer() const {
             return geometryBufferPtr_;
         }
 

@@ -1,11 +1,11 @@
 #pragma once
 
-#include "VkTools.h"
-#include "VkToolsImage.hpp"
+#include "../VkTools/Tools.h"
+#include "../VkTools/Image.hpp"
 
 namespace vk
 {
-    namespace tools
+    namespace resources
     {
         enum TextureBufferType
         {
@@ -37,10 +37,10 @@ namespace vk
             /**
              * Получить формат текстуры
              * @param bpp Байт на пиксель
-             * @param sRGB Использовать sRGB пространство
+             * @param sRgb Использовать sRGB пространство
              * @return Формат изображения
              */
-            static vk::Format getImageFormat(size_t bpp, bool sRGB = false)
+            static vk::Format getImageFormat(size_t bpp, bool sRgb = false)
             {
                 switch (bpp)
                 {
@@ -50,9 +50,9 @@ namespace vk
                         return vk::Format::eR8G8Unorm;
                     case 3:
                     default:
-                        return sRGB ? vk::Format::eR8G8B8Srgb : vk::Format::eR8G8B8Unorm;
+                        return sRgb ? vk::Format::eR8G8B8Srgb : vk::Format::eR8G8B8Unorm;
                     case 4:
-                        return sRGB ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
+                        return sRgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
                 }
             }
 
@@ -61,6 +61,10 @@ namespace vk
              * @param srcImage Исходное изображение (временное)
              * @param dstImage Целевое изображение (основное)
              * @param extent Разрешение изображения
+             *
+             * @details Как и в случае с копированием буферов, копирование данных изображения также производится
+             * через команды устройству. Но перед копированием важно также привести изображения к необходимому макету
+             * размещения, что тоже делается при помощи команд
              */
             void copyTmpToDst(const vk::Image& srcImage, const vk::Image& dstImage, const vk::Extent3D& extent)
             {
@@ -108,24 +112,22 @@ namespace vk
 
                 // К О П И Р О В А Н И Е
 
-                // Описание параметров под-ресурса
-                vk::ImageSubresourceLayers subResourceLayers{};
-                subResourceLayers.aspectMask = vk::ImageAspectFlagBits::eColor;
-                subResourceLayers.baseArrayLayer = 0;
-                subResourceLayers.mipLevel = 0;
-                subResourceLayers.layerCount = 1;
-
-                // Параметры копирования
-                vk::ImageCopy imageCopy{};
-                imageCopy.srcSubresource = subResourceLayers;
-                imageCopy.dstSubresource = subResourceLayers;
-                imageCopy.srcOffset = vk::Offset3D(0,0,0);
-                imageCopy.dstOffset = vk::Offset3D(0,0,0);
-                imageCopy.extent = extent;
+                // Области копирования текстуры
+                // Каждый элемент массива описывает из какой области исходного изображения в какую область целевого копировать
+                // На данный момент используем только одну основную область
+                std::vector<vk::ImageCopy> copyRegions = {
+                        {
+                                {vk::ImageAspectFlagBits::eColor,0,0,1},
+                                vk::Offset3D(0,0,0),
+                                {vk::ImageAspectFlagBits::eColor,0,0,1},
+                                vk::Offset3D(0,0,0),
+                                extent
+                        }
+                };
 
                 // Запись команд в буфер
                 cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-                cmdBuffers[0].copyImage(srcImage,vk::ImageLayout::eTransferSrcOptimal,dstImage,vk::ImageLayout::eTransferDstOptimal,imageCopy);
+                cmdBuffers[0].copyImage(srcImage,vk::ImageLayout::eTransferSrcOptimal,dstImage,vk::ImageLayout::eTransferDstOptimal,copyRegions);
                 cmdBuffers[0].end();
 
                 // Отправить команду в очередь и подождать выполнения
@@ -241,7 +243,7 @@ namespace vk
              * @param width Ширина изображения
              * @param height Высота изображения
              * @param bpp Байт на пиксель
-             * @param sRGB Цветовое пространство sRGB
+             * @param sRgb Цветовое пространство sRGB
              */
             TextureBuffer(
                     const vk::tools::Device* pDevice,
@@ -250,7 +252,7 @@ namespace vk
                     size_t width,
                     size_t height,
                     size_t bpp,
-                    bool sRGB = false):
+                    bool sRgb = false):
                     pDevice_(pDevice),
                     pSampler_(pSampler),
                     isReady_(false),
@@ -273,7 +275,7 @@ namespace vk
                 vk::tools::Image stagingImage(
                         pDevice_,
                         vk::ImageType::e2D,                       //TODO: добавить зависимость от типа
-                        this->getImageFormat(bpp_,sRGB),
+                        this->getImageFormat(bpp_,sRgb),
                         {width_,height_,1},
                         vk::ImageUsageFlagBits::eTransferSrc,
                         vk::ImageAspectFlagBits::eColor,
@@ -285,7 +287,7 @@ namespace vk
                 // Создать итоговое изображение (память устройства)
                 image_ = vk::tools::Image(pDevice_,
                         vk::ImageType::e2D,                       //TODO: добавить зависимость от типа
-                        this->getImageFormat(bpp_,sRGB),
+                        this->getImageFormat(bpp_,sRgb),
                         {width_,height_,1},
                         vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eSampled,
                         vk::ImageAspectFlagBits::eColor,

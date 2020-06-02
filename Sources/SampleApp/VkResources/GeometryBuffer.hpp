@@ -1,11 +1,11 @@
 #pragma once
 
-#include "VkTools.h"
-#include "VkToolsBuffer.hpp"
+#include "../VkTools/Tools.h"
+#include "../VkTools/Buffer.hpp"
 
 namespace vk
 {
-    namespace tools
+    namespace resources
     {
         class GeometryBuffer
         {
@@ -26,7 +26,7 @@ namespace vk
             size_t indexCount_;
 
             /**
-             * Копирование содержимого из одного буфера в другой
+             * Копирование содержимого из временного буфера в основной
              * @param srcBuffer Исходный буфер
              * @param dstBuffer Целевой буфер
              * @param size Размер
@@ -35,7 +35,7 @@ namespace vk
              * и отправить его в очередь. Очередь должна поддерживать команды копирования данных, благо семейство команд рисования
              * по умолчанию поддерживает копирование данных, и нет нужны в отдельном семействе
              */
-            void copyBuffer(const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, vk::DeviceSize size)
+            void copyTmpToDst(const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, vk::DeviceSize size)
             {
                 // Выделить командный буфер для исполнения команды копирования
                 vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
@@ -175,7 +175,7 @@ namespace vk
                     stagingVertexBuffer.unmapMemory();
 
                     // Копировать из временного буфера в основной
-                    this->copyBuffer(
+                    this->copyTmpToDst(
                             stagingVertexBuffer.getBuffer().get(),
                             vertexBuffer_.getBuffer().get(),
                             stagingVertexBuffer.getSize());
@@ -206,7 +206,7 @@ namespace vk
                     stagingIndexBuffer.unmapMemory();
 
                     // Копировать из временного буфера в основной
-                    this->copyBuffer(
+                    this->copyTmpToDst(
                             stagingIndexBuffer.getBuffer().get(),
                             indexBuffer_.getBuffer().get(),
                             stagingIndexBuffer.getSize());

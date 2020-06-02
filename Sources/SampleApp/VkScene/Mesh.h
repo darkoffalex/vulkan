@@ -1,8 +1,8 @@
 #pragma once
 
 #include "SceneElement.h"
-#include "../VkToolsGeometryBuffer.hpp"
-#include "../VkToolsTextureBuffer.hpp"
+#include "../VkResources/GeometryBuffer.hpp"
+#include "../VkResources/TextureBuffer.hpp"
 
 namespace vk
 {
@@ -23,9 +23,9 @@ namespace vk
             /// Указатель на устройство
             const vk::tools::Device* pDevice_;
             /// Указатель на геометрический буфер
-            vk::tools::GeometryBufferPtr geometryBufferPtr_;
+            vk::resources::GeometryBufferPtr geometryBufferPtr_;
             /// Указатель на текстурный буфер
-            vk::tools::TextureBufferPtr textureBufferPtr_;
+            vk::resources::TextureBufferPtr textureBufferPtr_;
             /// Параметры материала меша
             vk::scene::MeshMaterialSettings materialSettings_;
 
@@ -76,8 +76,8 @@ namespace vk
             explicit Mesh(const vk::tools::Device* pDevice,
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
-                    vk::tools::GeometryBufferPtr geometryBufferPtr,
-                    vk::tools::TextureBufferPtr textureBufferPtr = nullptr,
+                    vk::resources::GeometryBufferPtr geometryBufferPtr,
+                    vk::resources::TextureBufferPtr textureBufferPtr = nullptr,
                     const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
             /**
@@ -127,7 +127,7 @@ namespace vk
              * Получить буфер геометрии
              * @return Константная ссылка на smart-pointer объекта буфера
              */
-            const vk::tools::GeometryBufferPtr& getGeometryBuffer() const;
+            const vk::resources::GeometryBufferPtr& getGeometryBuffer() const;
 
             /**
              * Получить дескрипторный набор

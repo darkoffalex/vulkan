@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SceneElement.h"
-#include "../VkToolsBuffer.hpp"
+#include "../VkTools/Buffer.hpp"
 
 namespace vk
 {

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "../VkTools.h"
+#include "../VkTools/Tools.h"
 #include <glm/glm.hpp>
 
 namespace vk

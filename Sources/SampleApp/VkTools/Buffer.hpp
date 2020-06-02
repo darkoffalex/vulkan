@@ -1,7 +1,7 @@
 #pragma once
 
-#include "VkTools.h"
-#include "VkToolsDevice.hpp"
+#include "Tools.h"
+#include "Device.hpp"
 
 namespace vk
 {

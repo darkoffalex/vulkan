@@ -1,5 +1,5 @@
 #include "VkRenderer.h"
-#include "VkExtLoader/ExtLoader.h"
+#include "VkExtensionLoader/ExtensionLoader.h"
 
 /**
  * Инициализация проходов рендеринга
@@ -260,7 +260,7 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
     {
         // Описываем вложения кадрового буфера
         // Порядок вложений должен совпадать с порядком вложений в описании прохода рендеринга
-        std::vector<vk::tools::FrameBufferAttachmentInfo> attachmentsInfo = {
+        std::vector<vk::resources::FrameBufferAttachmentInfo> attachmentsInfo = {
                 // Для цветового вложения уже существует изображение swap-chain
                 // По этой причине не нужно создавать его и выделять память, достаточно передать указатель на него
                 {
@@ -282,7 +282,7 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
         };
 
         // Создаем кадровый буфер со всеми необходимыми вложениями и добавляем его в массив
-        frameBuffers_.emplace_back(vk::tools::FrameBuffer(
+        frameBuffers_.emplace_back(vk::resources::FrameBuffer(
                 &device_,
                 mainRenderPass_,
                 {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
@@ -567,21 +567,21 @@ void VkRenderer::initPipeline(
     }
 
     // Вершинный шейдер
-    vk::ShaderModule shaderModuleVS = device_.getLogicalDevice()->createShaderModule({
+    vk::ShaderModule shaderModuleVs = device_.getLogicalDevice()->createShaderModule({
         {},
         vertexShaderCodeBytes.size(),
         reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
 
     // Фрагментный шейдер
-    vk::ShaderModule shaderModuleFS = device_.getLogicalDevice()->createShaderModule({
+    vk::ShaderModule shaderModuleFs = device_.getLogicalDevice()->createShaderModule({
         {},
         fragmentShaderCodeBytes.size(),
         reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
 
     // Описываем стадии
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
-            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eVertex,shaderModuleVS,"main"),
-            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFS,"main")
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eVertex,shaderModuleVs,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFs,"main")
     };
 
     // V I E W  P O R T  &  S C I S S O R S
@@ -705,8 +705,8 @@ void VkRenderer::initPipeline(
     auto pipeline = device_.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
 
     // Уничтожить шейдерные модули (конвейер создан, они не нужны)
-    device_.getLogicalDevice()->destroyShaderModule(shaderModuleVS);
-    device_.getLogicalDevice()->destroyShaderModule(shaderModuleFS);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleVs);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleFs);
 
     // Вернуть unique smart pointer
     pipeline_ = vk::UniquePipeline(pipeline);
@@ -1016,9 +1016,9 @@ void VkRenderer::onSurfaceChanged()
  * @param indices Массив индексов
  * @return Shared smart pointer на объект буфера
  */
-vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<size_t> &indices)
+vk::resources::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<size_t> &indices)
 {
-    auto buffer = std::make_shared<vk::tools::GeometryBuffer>(&device_,vertices,indices);
+    auto buffer = std::make_shared<vk::resources::GeometryBuffer>(&device_,vertices,indices);
     geometryBuffers_.push_back(buffer);
     return buffer;
 }
@@ -1029,12 +1029,12 @@ vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<
  * @param width Ширина изображения
  * @param height Высота изображения
  * @param bpp Байт на пиксель
- * @param sRGB Использовать цветовое пространство sRGB (гамма-коррекция)
+ * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
  * @return Shared smart pointer на объект буфера
  */
-vk::tools::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool sRGB)
+vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool sRgb)
 {
-    auto buffer = std::make_shared<vk::tools::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,sRGB);
+    auto buffer = std::make_shared<vk::resources::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,sRgb);
     textureBuffers_.push_back(buffer);
     return buffer;
 }
@@ -1046,8 +1046,8 @@ vk::tools::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char 
  * @return Shared smart pointer на объект меша
  */
 vk::scene::MeshPtr VkRenderer::addMeshToScene(
-        const vk::tools::GeometryBufferPtr& geometryBuffer,
-        const vk::tools::TextureBufferPtr& textureBuffer,
+        const vk::resources::GeometryBufferPtr& geometryBuffer,
+        const vk::resources::TextureBufferPtr& textureBuffer,
         const vk::scene::MeshMaterialSettings& materialSettings)
 {
     // Создание меша

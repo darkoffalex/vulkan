@@ -1,13 +1,14 @@
 #pragma once
 
-#include "VkTools.h"
-#include "VkToolsDevice.hpp"
-#include "VkToolsFrameBuffer.hpp"
-#include "VkToolsBuffer.hpp"
-#include "VkToolsGeometryBuffer.hpp"
+#include "VkTools/Tools.h"
+#include "VkTools/Device.hpp"
+#include "VkTools/Buffer.hpp"
 
-#include "Scene/Mesh.h"
-#include "Scene/Camera.h"
+#include "VkResources/FrameBuffer.hpp"
+#include "VkResources/GeometryBuffer.hpp"
+
+#include "VkScene/Mesh.h"
+#include "VkScene/Camera.h"
 
 class VkRenderer
 {
@@ -32,7 +33,7 @@ private:
     /// Объект очереди показа (swap-chain)
     vk::UniqueSwapchainKHR swapChainKhr_;
     /// Кадровые буферы
-    std::vector<vk::tools::FrameBuffer> frameBuffers_;
+    std::vector<vk::resources::FrameBuffer> frameBuffers_;
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
 
@@ -62,9 +63,9 @@ private:
     vk::UniqueSemaphore semaphoreReadyToPresent_;
 
     /// Массив указателей на выделенные геометрические буферы
-    std::vector<vk::tools::GeometryBufferPtr> geometryBuffers_;
+    std::vector<vk::resources::GeometryBufferPtr> geometryBuffers_;
     /// Массив указателей на выделенные текстурные буферы
-    std::vector<vk::tools::TextureBufferPtr> textureBuffers_;
+    std::vector<vk::resources::TextureBufferPtr> textureBuffers_;
     /// Массив указателей мешей сцены
     std::vector<vk::scene::MeshPtr> sceneMeshes_;
     /// Камера (матрицы, UBO)
@@ -226,7 +227,7 @@ public:
      * @param indices Массив индексов
      * @return Shared smart pointer на объект буфера
      */
-    vk::tools::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices);
+    vk::resources::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices);
 
     /**
      * Создать текстурный буфер
@@ -234,10 +235,10 @@ public:
      * @param width Ширина изображения
      * @param height Высота изображения
      * @param bpp Байт на пиксель
-     * @param sRGB Использовать цветовое пространство sRGB (гамма-коррекция)
+     * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
      * @return Shared smart pointer на объект буфера
      */
-    vk::tools::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool sRGB = false);
+    vk::resources::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool sRgb = false);
 
     /**
      * Добавление меша на сцену
@@ -246,8 +247,8 @@ public:
      * @param materialSettings Параметры материала меша
      * @return Shared smart pointer на объект меша
      */
-    vk::scene::MeshPtr addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer,
-            const vk::tools::TextureBufferPtr& textureBuffer = nullptr,
+    vk::scene::MeshPtr addMeshToScene(const vk::resources::GeometryBufferPtr& geometryBuffer,
+            const vk::resources::TextureBufferPtr& textureBuffer = nullptr,
             const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
     /**

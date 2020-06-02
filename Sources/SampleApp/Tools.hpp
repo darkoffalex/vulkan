@@ -7,7 +7,7 @@
 #include <fstream>
 
 #include "VkRenderer.h"
-#include "VkToolsTextureBuffer.hpp"
+#include "VkResources/TextureBuffer.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <STB/stb_image.h>
@@ -183,9 +183,9 @@ namespace tools
      * Загрузка текстуры Vulkan из файла
      * @param pRenderer Указатель на рендерер
      * @param filename Имя файла в папке Textures
-     * @return Smart pointer объекта буфра текстуры
+     * @return Smart pointer объекта буфера текстуры
      */
-    inline vk::tools::TextureBufferPtr LoadVulkanTexture(VkRenderer* pRenderer, const std::string &filename)
+    inline vk::resources::TextureBufferPtr LoadVulkanTexture(VkRenderer* pRenderer, const std::string &filename)
     {
         // Полный путь к файлу
         auto path = tools::ExeDir().append("..\\Textures\\").append(filename);

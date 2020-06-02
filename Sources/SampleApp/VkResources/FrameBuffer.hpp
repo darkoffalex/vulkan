@@ -1,11 +1,11 @@
 #pragma once
 
-#include "VkTools.h"
-#include "VkToolsImage.hpp"
+#include "../VkTools/Tools.h"
+#include "../VkTools/Image.hpp"
 
 namespace vk
 {
-    namespace tools
+    namespace resources
     {
         /**
          * Инициализирующая структура описывающая вложение кадрового буфера
@@ -110,7 +110,7 @@ namespace vk
                 const vk::tools::Device* pDevice,
                 const vk::UniqueRenderPass& renderPass,
                 const vk::Extent3D& extent,
-                const std::vector<vk::tools::FrameBufferAttachmentInfo>& attachmentsInfo):
+                const std::vector<vk::resources::FrameBufferAttachmentInfo>& attachmentsInfo):
         	isReady_(false),
         	pDevice_(pDevice),
         	extent_(extent)

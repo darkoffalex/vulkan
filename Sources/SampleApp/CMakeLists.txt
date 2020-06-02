@@ -8,10 +8,28 @@ set(TARGET_BIN_NAME "SampleApp")
 # Добавляем .exe (проект в Visual Studio)
 add_executable(${TARGET_NAME}
         "Main.cpp" "Tools.hpp"
-        "VkExtLoader/ExtLoader.h" "VkExtLoader/ExtLoader.c"
-        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp" "VkToolsGeometryBuffer.hpp" "VkToolsTextureBuffer.hpp"
-        "Scene/SceneElement.h" "Scene/SceneElement.cpp" "Scene/Mesh.h" "Scene/Mesh.cpp" "Scene/Camera.h" "Scene/Camera.cpp"
-        "VkRenderer.h" "VkRenderer.cpp")
+
+        "VkExtensionLoader/ExtensionLoader.h" "VkExtensionLoader/ExtensionLoader.c"
+
+        "VkTools/Tools.h" "VkTools/Tools.cpp"
+        "VkTools/Device.hpp"
+        "VkTools/Buffer.hpp"
+        "VkTools/Image.hpp"
+
+        "VkResources/FrameBuffer.hpp"
+        "VkResources/GeometryBuffer.hpp"
+        "VkResources/TextureBuffer.hpp"
+
+        "VkScene/SceneElement.h"
+        "VkScene/SceneElement.cpp"
+
+        "VkScene/Mesh.h"
+        "VkScene/Mesh.cpp"
+        "VkScene/Camera.h"
+        "VkScene/Camera.cpp"
+
+        "VkRenderer.h"
+        "VkRenderer.cpp")
 
 # Директории с библиотеками (.lib)
 if(${PLATFORM_BIT_SUFFIX} STREQUAL "x86")
