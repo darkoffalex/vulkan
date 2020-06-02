@@ -220,6 +220,15 @@ namespace vk
             {
                 return attachments_;
             }
+
+            /**
+             * Получить указатель на владеющее устройство
+             * @return Константный указатель
+             */
+            const vk::tools::Device* getOwnerDevice() const
+            {
+                return pDevice_;
+            }
         };
     }
 }

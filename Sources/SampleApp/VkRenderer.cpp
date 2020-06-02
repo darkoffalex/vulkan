@@ -367,8 +367,10 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
     {
         // Размеры пула для наборов типа "материал меша"
         std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
-                // Дескрипторы для буферов UBO (матрица модели + параметры материала)
-                {vk::DescriptorType::eUniformBuffer,2},
+                // Дескрипторы для буферов UBO (матрица модели)
+                {vk::DescriptorType::eUniformBuffer,1},
+                // Дескрипторы для буферов UBO (параметры материала)
+                {vk::DescriptorType::eUniformBuffer,1},
                 // Дескрипторы для текстур (пока-что одна albedo/diffuse текстура)
                 {vk::DescriptorType::eCombinedImageSampler, 1}
         };
@@ -741,6 +743,22 @@ void VkRenderer::freeGeometryBuffers()
 }
 
 /**
+ * Освобождение текстурных буферов
+ *
+ * @details Перед де-инициализацией объекта рендерера, перед уничтожением устройства, будет правильным очистить все
+ * текстурные буферы которые когда либо выделялись.
+ */
+void VkRenderer::freeTextureBuffers()
+{
+    // Пройтись по всем буферам и уничтожить выделенные ресурсы
+    // Объекты без ресурсов Vulkan могут быть корректно уничтожены
+    for(const auto& bufferPtrEntry : textureBuffers_)
+    {
+        bufferPtrEntry->destroyVulkanResources();
+    }
+}
+
+/**
  * Очистка ресурсов мешей
  */
 void VkRenderer::freeMeshes()
@@ -818,7 +836,7 @@ inputDataInOpenGlStyle_(true)
     std::cout << "UBO-buffer allocated (" << uboBufferViewProjection_.getSize() << ")." << std::endl;
 
     // Создать текстурный семплер по умолчанию
-    textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 4);
+    textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 2);
     std::cout << "Default texture sampler created." << std::endl;
 
     // Инициализация дескрипторных пулов и наборов
@@ -903,6 +921,9 @@ VkRenderer::~VkRenderer()
     // Де-инициализация прохода
     this->deInitRenderPasses();
     std::cout << "Render pass destroyed." << std::endl;
+
+    this->freeTextureBuffers();
+    std::cout << "All allocated texture buffers freed." << std::endl;
 
     // Очистить все выделенные буферы геометрии
     this->freeGeometryBuffers();
@@ -997,13 +1018,24 @@ void VkRenderer::onSurfaceChanged()
  */
 vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<size_t> &indices)
 {
-    // Инициализировать
     auto buffer = std::make_shared<vk::tools::GeometryBuffer>(&device_,vertices,indices);
-
-    // Добавить в массив
     geometryBuffers_.push_back(buffer);
+    return buffer;
+}
 
-    // Вернуть указатель
+/**
+ * Создать текстурный буфер
+ * @param imageBytes Байты изображения
+ * @param width Ширина изображения
+ * @param height Высота изображения
+ * @param bpp Байт на пиксель
+ * @param sRGB Использовать цветовое пространство sRGB (гамма-коррекция)
+ * @return Shared smart pointer на объект буфера
+ */
+vk::tools::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool sRGB)
+{
+    auto buffer = std::make_shared<vk::tools::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,sRGB);
+    textureBuffers_.push_back(buffer);
     return buffer;
 }
 
@@ -1013,10 +1045,13 @@ vk::tools::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<
  * @param materialSettings Параметры материала меша
  * @return Shared smart pointer на объект меша
  */
-vk::scene::MeshPtr VkRenderer::addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer, const vk::scene::MeshMaterialSettings& materialSettings)
+vk::scene::MeshPtr VkRenderer::addMeshToScene(
+        const vk::tools::GeometryBufferPtr& geometryBuffer,
+        const vk::tools::TextureBufferPtr& textureBuffer,
+        const vk::scene::MeshMaterialSettings& materialSettings)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer,materialSettings);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureBuffer, materialSettings);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);

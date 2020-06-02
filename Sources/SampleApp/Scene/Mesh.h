@@ -2,6 +2,7 @@
 
 #include "SceneElement.h"
 #include "../VkToolsGeometryBuffer.hpp"
+#include "../VkToolsTextureBuffer.hpp"
 
 namespace vk
 {
@@ -23,6 +24,8 @@ namespace vk
             const vk::tools::Device* pDevice_;
             /// Указатель на геометрический буфер
             vk::tools::GeometryBufferPtr geometryBufferPtr_;
+            /// Указатель на текстурный буфер
+            vk::tools::TextureBufferPtr textureBufferPtr_;
             /// Параметры материала меша
             vk::scene::MeshMaterialSettings materialSettings_;
 
@@ -74,6 +77,7 @@ namespace vk
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                     vk::tools::GeometryBufferPtr geometryBufferPtr,
+                    vk::tools::TextureBufferPtr textureBufferPtr = nullptr,
                     const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
             /**

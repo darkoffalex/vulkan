@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
                 {
                         {-1.0f,1.0f,0.0f},
                         {0.0f,1.0f,0.0f},
-                        {0.5f,1.0f},
+                        {0.0f,1.0f},
                         {0.0f,0.0f,1.0f}
                 },
                 {
@@ -86,10 +86,14 @@ int main(int argc, char* argv[])
                 {
                         {1.0f,-1.0f,0.0f},
                         {1.0f,1.0f,0.0f},
-                        {1.0f,1.0f},
+                        {1.0f,0.0f},
                         {0.0f,0.0f,1.0f}
                 },
             },{0,1,2, 2,3,0});
+
+
+        // Загрузить текстуру
+        auto textureBuffer = tools::LoadVulkanTexture(_vkRenderer,"crate.png");
 
         /** Рендерер - инициализация сцены **/
 
@@ -97,11 +101,11 @@ int main(int argc, char* argv[])
         _vkRenderer->getCameraPtr()->setPosition({0.0f,0.0f,0.0f});
 
         // Меши
-        auto mesh0 = _vkRenderer->addMeshToScene(quadBuffer,{{1.0f,0.0f,0.0f},0.0f,1.0f});
+        auto mesh0 = _vkRenderer->addMeshToScene(quadBuffer, textureBuffer);
         mesh0->setPosition({-1.0f,0.0f,-4.0f}, false);
         mesh0->setScale({0.8,0.8f,0.8f});
 
-        auto mesh1 = _vkRenderer->addMeshToScene(quadBuffer, {{0.0f,1.0f,0.0f},0.0f,1.0f});
+        auto mesh1 = _vkRenderer->addMeshToScene(quadBuffer, nullptr, {{0.0f,1.0f,0.0f},0.0f,1.0f});
         mesh1->setPosition({1.0f,0.0f,-4.0f}, false);
         mesh1->setScale({0.8f,0.8f,0.8f});
 

@@ -63,6 +63,8 @@ private:
 
     /// Массив указателей на выделенные геометрические буферы
     std::vector<vk::tools::GeometryBufferPtr> geometryBuffers_;
+    /// Массив указателей на выделенные текстурные буферы
+    std::vector<vk::tools::TextureBufferPtr> textureBuffers_;
     /// Массив указателей мешей сцены
     std::vector<vk::scene::MeshPtr> sceneMeshes_;
     /// Камера (матрицы, UBO)
@@ -159,6 +161,7 @@ private:
      */
     void deInitPipeline() noexcept;
 
+
     /**
      * Освобождение геометрических буферов
      *
@@ -166,6 +169,14 @@ private:
      * геометрические буферы которые когда либо выделялись.
      */
     void freeGeometryBuffers();
+
+    /**
+     * Освобождение текстурных буферов
+     *
+     * @details Перед де-инициализацией объекта рендерера, перед уничтожением устройства, будет правильным очистить все
+     * текстурные буферы которые когда либо выделялись.
+     */
+    void freeTextureBuffers();
 
     /**
      * Очистка ресурсов мешей
@@ -218,12 +229,25 @@ public:
     vk::tools::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices);
 
     /**
+     * Создать текстурный буфер
+     * @param imageBytes Байты изображения
+     * @param width Ширина изображения
+     * @param height Высота изображения
+     * @param bpp Байт на пиксель
+     * @param sRGB Использовать цветовое пространство sRGB (гамма-коррекция)
+     * @return Shared smart pointer на объект буфера
+     */
+    vk::tools::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool sRGB = false);
+
+    /**
      * Добавление меша на сцену
      * @param geometryBuffer Геометрический буфер
+     * @param textureBuffer Текстурный буфер
      * @param materialSettings Параметры материала меша
      * @return Shared smart pointer на объект меша
      */
     vk::scene::MeshPtr addMeshToScene(const vk::tools::GeometryBufferPtr& geometryBuffer,
+            const vk::tools::TextureBufferPtr& textureBuffer = nullptr,
             const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
 
     /**

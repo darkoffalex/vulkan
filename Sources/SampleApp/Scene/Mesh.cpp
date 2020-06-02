@@ -31,6 +31,7 @@ namespace vk
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
             std::swap(materialSettings_,other.materialSettings_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
+            textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
@@ -60,6 +61,7 @@ namespace vk
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
             std::swap(materialSettings_,other.materialSettings_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
+            textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
@@ -87,11 +89,13 @@ namespace vk
                    const vk::UniqueDescriptorPool& descriptorPool,
                    const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                    vk::tools::GeometryBufferPtr geometryBufferPtr,
+                   vk::tools::TextureBufferPtr textureBufferPtr,
                    const vk::scene::MeshMaterialSettings& materialSettings):SceneElement(),
         isReady_(false),
         pDevice_(pDevice),
         pDescriptorPool_(&(descriptorPool.get())),
         geometryBufferPtr_(std::move(geometryBufferPtr)),
+        textureBufferPtr_(std::move(textureBufferPtr)),
         materialSettings_(materialSettings)
         {
             // Проверить устройство
@@ -131,6 +135,9 @@ namespace vk
                     {uboMaterial_.getBuffer().get(),0,VK_WHOLE_SIZE}
             };
 
+            // Информация об изображении (изначально пуста)
+            vk::DescriptorImageInfo descriptorImageInfo{};
+
             // Описываем связи дескрипторов с буферами (описание "записей")
             std::vector<vk::WriteDescriptorSet> writes = {
                     {
@@ -155,7 +162,28 @@ namespace vk
                     },
             };
 
-            // Связываем дескрипторы с ресурсами (буферами)
+            // Если есть текстура
+            if(textureBufferPtr_.get() != nullptr)
+            {
+                // Заполнить информацию об изображении
+                descriptorImageInfo.sampler = textureBufferPtr_->getSampler()->get();
+                descriptorImageInfo.imageView = textureBufferPtr_->getImage().getImageView().get();
+                descriptorImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+                // Связь дескриптора с изображением
+                writes.emplace_back(vk::WriteDescriptorSet(
+                        descriptorSet_.get(),
+                        2,
+                        0,
+                        1,
+                        vk::DescriptorType::eCombinedImageSampler,
+                        &descriptorImageInfo,
+                        nullptr,
+                        nullptr
+                        ));
+            }
+
+            // Связываем дескрипторы с ресурсами (буферами и изображениями)
             pDevice_->getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
 
             // Обновить UBO буферы

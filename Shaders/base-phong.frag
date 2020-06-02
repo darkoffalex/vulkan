@@ -30,7 +30,7 @@ layout(set = 1, binding = 1) uniform UniformModel {
     MaterialSettings _materialSettings;
 };
 
-layout(set = 1, binding = 2) uniform sampler2D texture;
+layout(set = 1, binding = 2) uniform sampler2D _texture;
 
 /*Функции*/
 
@@ -40,6 +40,9 @@ void main() {
 
     //TODO: Сделать базовое фонговое освещение
 
-    // Пока-что просто отдаем интерполированный цвет
-    outColor = vec4(_materialSettings.albedo, 1.0f);
+    // Получить размер текстуры
+    ivec2 texSize = textureSize(_texture,0);
+
+    // Отдаем либо цвет материала либо цвет текстуры (если она есть)
+    outColor = texSize.x > 1 ? vec4(texture(_texture,fs_in.uv).rgb, 1.0f) : vec4(_materialSettings.albedo, 1.0f);
 }

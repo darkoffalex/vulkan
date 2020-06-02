@@ -24,7 +24,7 @@ namespace vk
             /// Объект для доступа к изображению
             vk::UniqueImageView imageView_;
             /// Память изображения
-            vk::UniqueDeviceMemory deviceMemory_;
+            vk::UniqueDeviceMemory memory_;
 
         public:
             /**
@@ -85,7 +85,7 @@ namespace vk
                 std::swap(pDevice_,other.pDevice_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
-                deviceMemory_.swap(other.deviceMemory_);
+                memory_.swap(other.memory_);
             }
 
             /**
@@ -106,7 +106,7 @@ namespace vk
                 std::swap(pDevice_,other.pDevice_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
-                deviceMemory_.swap(other.deviceMemory_);
+                memory_.swap(other.memory_);
 
                 return *this;
             }
@@ -174,10 +174,10 @@ namespace vk
                 vk::MemoryAllocateInfo memoryAllocateInfo{};
                 memoryAllocateInfo.allocationSize = memRequirements.size;
                 memoryAllocateInfo.memoryTypeIndex = static_cast<uint32_t>(memTypeIndex);
-                deviceMemory_ = pDevice_->getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
+                memory_ = pDevice_->getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
 
                 // Связать память и объект изображения
-                pDevice_->getLogicalDevice()->bindImageMemory(image_.get(),deviceMemory_.get(),0);
+                pDevice_->getLogicalDevice()->bindImageMemory(image_.get(),memory_.get(),0);
 
                 // Создать image-view объект (связь с конкретным слоем/мип-уровнем) изображения
                 vk::ImageViewCreateInfo imageViewCreateInfo{};
@@ -261,8 +261,8 @@ namespace vk
                     // Освободить память изображения
                     // Если объект владеет изображением, то память тоже выделялась при создании
                     if(ownsImage_){
-                        pDevice_->getLogicalDevice()->freeMemory(deviceMemory_.get());
-                        deviceMemory_.release();
+                        pDevice_->getLogicalDevice()->freeMemory(memory_.get());
+                        memory_.release();
                     }
 
                     isReady_ = false;
@@ -289,7 +289,7 @@ namespace vk
              * Получить объект изображения Vulkan
              * @return ссылка на smart-pointer
              */
-            vk::UniqueImage& getImage()
+            const vk::UniqueImage& getVulkanImage() const
             {
                 return image_;
             }
@@ -298,7 +298,7 @@ namespace vk
              * Получить объект image-view
              * @return ссылка на smart-pointer
              */
-            vk::UniqueImageView& getImageView()
+            const vk::UniqueImageView& getImageView() const
             {
                 return imageView_;
             }
@@ -307,9 +307,38 @@ namespace vk
              * Получить объект памяти устройства
              * @return ссылка на smart-pointer
              */
-            vk::UniqueDeviceMemory& getDeviceMemory()
+            const vk::UniqueDeviceMemory& getMemory() const
             {
-                return deviceMemory_;
+                return memory_;
+            }
+
+            /**
+             * Разметить память и получить указатель на размеченную область
+             * @param offset Сдвиг в байтах
+             * @param size Размер в байтах
+             * @return Указатель на область
+             */
+            void* mapMemory(VkDeviceSize offset = 0, vk::DeviceSize size = VK_WHOLE_SIZE)
+            {
+                if(pDevice_ == nullptr || !pDevice_->isReady()) return nullptr;
+                return pDevice_->getLogicalDevice()->mapMemory(memory_.get(),offset,size);
+            }
+
+            /**
+             * Отменить разметку памяти
+             */
+            void unmapMemory()
+            {
+                pDevice_->getLogicalDevice()->unmapMemory(memory_.get());
+            }
+
+            /**
+             * Получить указатель на владеющее устройство
+             * @return Константный указатель
+             */
+            const vk::tools::Device* getOwnerDevice() const
+            {
+                return pDevice_;
             }
         };
     }

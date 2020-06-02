@@ -9,7 +9,7 @@ set(TARGET_BIN_NAME "SampleApp")
 add_executable(${TARGET_NAME}
         "Main.cpp" "Tools.hpp"
         "VkExtLoader/ExtLoader.h" "VkExtLoader/ExtLoader.c"
-        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp" "VkToolsGeometryBuffer.hpp"
+        "VkTools.h" "VkTools.cpp" "VkToolsDevice.hpp" "VkToolsImage.hpp" "VkToolsFrameBuffer.hpp" "VkToolsBuffer.hpp" "VkToolsGeometryBuffer.hpp" "VkToolsTextureBuffer.hpp"
         "Scene/SceneElement.h" "Scene/SceneElement.cpp" "Scene/Mesh.h" "Scene/Mesh.cpp" "Scene/Camera.h" "Scene/Camera.cpp"
         "VkRenderer.h" "VkRenderer.cpp")
 

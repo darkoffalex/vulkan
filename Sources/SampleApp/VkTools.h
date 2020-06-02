@@ -25,7 +25,6 @@ namespace vk
             glm::vec3 normal;
         };
 
-
         /// В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы
 
         /**

@@ -6,6 +6,12 @@
 #include <shlwapi.h>
 #include <fstream>
 
+#include "VkRenderer.h"
+#include "VkToolsTextureBuffer.hpp"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <STB/stb_image.h>
+
 namespace tools
 {
     /**
@@ -171,5 +177,44 @@ namespace tools
         }
 
         return {};
+    }
+
+    /**
+     * Загрузка текстуры Vulkan из файла
+     * @param pRenderer Указатель на рендерер
+     * @param filename Имя файла в папке Textures
+     * @return Smart pointer объекта буфра текстуры
+     */
+    inline vk::tools::TextureBufferPtr LoadVulkanTexture(VkRenderer* pRenderer, const std::string &filename)
+    {
+        // Полный путь к файлу
+        auto path = tools::ExeDir().append("..\\Textures\\").append(filename);
+
+        // Параметры изображения
+        int width, height, channels;
+        // Включить вертикальный flip
+        stbi_set_flip_vertically_on_load(true);
+        // Загрузить
+        unsigned char* bytes = stbi_load(path.c_str(),&width,&height,&channels,STBI_rgb_alpha);
+
+        // Если не удалось загрузит
+        if(bytes == nullptr){
+            throw std::runtime_error(std::string("Can't load texture (").append(path).append(")").c_str());
+        }
+
+        // Создать ресурс текстуры
+        // Для простоты пока будем считать что кол-вао байт на пиксель равно кол-ву каналов
+        auto texture = pRenderer->createTextureBuffer(
+                bytes,
+                static_cast<size_t>(width),
+                static_cast<size_t>(height),
+                static_cast<size_t>(channels),
+                false);
+
+        // Очистить память
+        stbi_image_free(bytes);
+
+        // Отдать smart-pointer объекта ресурса текстуры
+        return texture;
     }
 }

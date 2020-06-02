@@ -1,7 +1,6 @@
 #pragma once
 
 #include "SceneElement.h"
-#include "../Tools.hpp"
 #include "../VkToolsBuffer.hpp"
 
 namespace vk
