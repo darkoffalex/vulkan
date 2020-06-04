@@ -1029,12 +1029,13 @@ vk::resources::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vec
  * @param width Ширина изображения
  * @param height Высота изображения
  * @param bpp Байт на пиксель
+ * @param generateMip Генерация мип-уровней текстуры
  * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
  * @return Shared smart pointer на объект буфера
  */
-vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool sRgb)
+vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool generateMip, bool sRgb)
 {
-    auto buffer = std::make_shared<vk::resources::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,sRgb);
+    auto buffer = std::make_shared<vk::resources::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,generateMip,sRgb);
     textureBuffers_.push_back(buffer);
     return buffer;
 }

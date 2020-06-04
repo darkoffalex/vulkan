@@ -25,6 +25,8 @@ namespace vk
             vk::UniqueImageView imageView_;
             /// Память изображения
             vk::UniqueDeviceMemory memory_;
+            /// Кол-во мип-уровней изображения
+            size_t mipLevels_;
 
         public:
             /**
@@ -59,7 +61,8 @@ namespace vk
             Image():
             isReady_(false),
             ownsImage_(false),
-            pDevice_(nullptr){}
+            pDevice_(nullptr),
+            mipLevels_(0){}
 
             /**
              * Запрет копирования через инициализацию
@@ -83,6 +86,7 @@ namespace vk
                 std::swap(isReady_,other.isReady_);
                 std::swap(ownsImage_, other.ownsImage_);
                 std::swap(pDevice_,other.pDevice_);
+                std::swap(mipLevels_,other.mipLevels_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
                 memory_.swap(other.memory_);
@@ -100,10 +104,12 @@ namespace vk
                 isReady_ = false;
                 ownsImage_ = false;
                 pDevice_ = nullptr;
+                mipLevels_ = 0;
 
                 std::swap(isReady_,other.isReady_);
                 std::swap(ownsImage_, other.ownsImage_);
                 std::swap(pDevice_,other.pDevice_);
+                std::swap(mipLevels_,other.mipLevels_);
                 image_.swap(other.image_);
                 imageView_.swap(other.imageView_);
                 memory_.swap(other.memory_);
@@ -123,6 +129,7 @@ namespace vk
              * @param sharingMode Память используется одним семейством (exclusive) или несколькими (concurrent)
              * @param layout Изначальный макет размещения данных в памяти
              * @param imageTiling Упаковка данных текселей изображения в памяти
+             * @param useMipLevels Использовать мип-уровни
              */
             explicit Image(const vk::tools::Device* pDevice,
                            const vk::ImageType& type,
@@ -133,14 +140,24 @@ namespace vk
                            const vk::MemoryPropertyFlags& memoryProperties,
                            const vk::SharingMode& sharingMode = vk::SharingMode::eExclusive,
                            const vk::ImageLayout& layout = vk::ImageLayout::eUndefined,
-                           const vk::ImageTiling& imageTiling = vk::ImageTiling::eOptimal):
+                           const vk::ImageTiling& imageTiling = vk::ImageTiling::eOptimal,
+                           bool useMipLevels = false):
                     isReady_(false),
                     ownsImage_(false),
-                    pDevice_(pDevice)
+                    pDevice_(pDevice),
+                    mipLevels_(1)
             {
                 // Проверить устройство
                 if(pDevice_ == nullptr || !pDevice_->isReady()){
                     throw vk::DeviceLostError("Device is not available");
+                }
+
+                // Если необходимо использовать мип-уровни - вычисляем их кол-во
+                // Размеры каждого мип-уровня в 2 раза меньше предыдущего. Для этого выясняем как много раз большее
+                // измерение (ширина или высота) могут быть поделены на 2 (std::log2). На случай если размер не кратен 2
+                // используем округление вниз (std::floor). Добавляем 1, так как у оригинального изображения тоже есть уровень.
+                if(useMipLevels){
+                    mipLevels_ = static_cast<uint32_t>(std::floor(std::log2(std::max(extent.width, extent.height)))) + 1;
                 }
 
                 // Создать изображение
@@ -148,7 +165,7 @@ namespace vk
                 imageCreateInfo.imageType = type;
                 imageCreateInfo.extent = extent;
                 imageCreateInfo.format = format;
-                imageCreateInfo.mipLevels = 1; // TODO: добавить параметр
+                imageCreateInfo.mipLevels = mipLevels_;
                 imageCreateInfo.arrayLayers = 1;
                 imageCreateInfo.samples = vk::SampleCountFlagBits::e1; // TODO: добавить параметр
                 imageCreateInfo.tiling = imageTiling;
@@ -183,7 +200,7 @@ namespace vk
                 vk::ImageViewCreateInfo imageViewCreateInfo{};
                 imageViewCreateInfo.viewType = imageTypeToViewType(imageCreateInfo.imageType, false);
                 imageViewCreateInfo.format = format;
-                imageViewCreateInfo.subresourceRange.levelCount = 1;
+                imageViewCreateInfo.subresourceRange.levelCount = mipLevels_;
                 imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
                 imageViewCreateInfo.subresourceRange.layerCount = 1;
                 imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
@@ -210,7 +227,8 @@ namespace vk
                            const vk::ImageAspectFlags& subResourceRangeAspect):
                     isReady_(false),
                     ownsImage_(false),
-                    pDevice_(pDevice)
+                    pDevice_(pDevice),
+                    mipLevels_(1)
             {
                 // Проверить устройство
                 if(pDevice_ == nullptr || !pDevice_->isReady()){
@@ -227,7 +245,7 @@ namespace vk
                 vk::ImageViewCreateInfo imageViewCreateInfo{};
                 imageViewCreateInfo.viewType = imageTypeToViewType(type, false);
                 imageViewCreateInfo.format = format;
-                imageViewCreateInfo.subresourceRange.levelCount = 1;
+                imageViewCreateInfo.subresourceRange.levelCount = mipLevels_;
                 imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
                 imageViewCreateInfo.subresourceRange.layerCount = 1;
                 imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
@@ -339,6 +357,15 @@ namespace vk
             const vk::tools::Device* getOwnerDevice() const
             {
                 return pDevice_;
+            }
+
+            /**
+             * Получить кол-вл мип-уровней изображения
+             * @return Целое положительное число
+             */
+            size_t getMipLevelCount() const
+            {
+                return mipLevels_;
             }
         };
     }

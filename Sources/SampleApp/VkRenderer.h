@@ -44,12 +44,12 @@ private:
 
     /// Объект дескрипторного пула для выделения набора для камеры (матрицы)
     vk::UniqueDescriptorPool descriptorPoolCamera_;
-    /// Объект дескрипторного пула для выделения наборов мешей (матрицы, материалы)
+    /// Объект дескрипторного пула для выделения наборов мешей (матрицы, материалы, текстуры)
     vk::UniqueDescriptorPool descriptorPoolMeshes_;
 
     /// Макет размещения дескрипторного набора для камеры (матрицы)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
-    /// Макет размещения дескрипторного набора для меша (матрицы, материалы)
+    /// Макет размещения дескрипторного набора для меша (матрицы, материалы, текстуры)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshes_;
 
     /// Макет размещения графического конвейера
@@ -235,10 +235,11 @@ public:
      * @param width Ширина изображения
      * @param height Высота изображения
      * @param bpp Байт на пиксель
+     * @param generateMip Генерация мип-уровней текстуры
      * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
      * @return Shared smart pointer на объект буфера
      */
-    vk::resources::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool sRgb = false);
+    vk::resources::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool generateMip = false, bool sRgb = false);
 
     /**
      * Добавление меша на сцену

@@ -205,6 +205,9 @@ namespace vk
             samplerCreateInfo.minFilter = filtering;
             // Тип фильтрации для mip уровней
             samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+            // Настройки mip-уровней
+            samplerCreateInfo.minLod = 0.0f;
+            samplerCreateInfo.maxLod = 8.0f;
             // Как обрабатывать координаты оказавшиеся за пределами изображения
             samplerCreateInfo.addressModeU = addressMode;
             samplerCreateInfo.addressModeV = addressMode;

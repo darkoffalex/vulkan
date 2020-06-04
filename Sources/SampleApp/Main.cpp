@@ -64,36 +64,10 @@ int main(int argc, char* argv[])
         /** Рендерер - загрузка ресурсов **/
 
         // Загрузить геометрический буфер
-        auto quadBuffer = _vkRenderer->createGeometryBuffer({
-                {
-                        {-1.0f,-1.0f,0.0f},
-                        {1.0f,0.0f,0.0f},
-                        {0.0f,0.0f},
-                        {0.0f,0.0f,1.0f}
-                },
-                {
-                        {-1.0f,1.0f,0.0f},
-                        {0.0f,1.0f,0.0f},
-                        {0.0f,1.0f},
-                        {0.0f,0.0f,1.0f}
-                },
-                {
-                        {1.0f,1.0f,0.0f},
-                        {0.0f,0.0f,1.0f},
-                        {1.0f,1.0f},
-                        {0.0f,0.0f,1.0f}
-                },
-                {
-                        {1.0f,-1.0f,0.0f},
-                        {1.0f,1.0f,0.0f},
-                        {1.0f,0.0f},
-                        {0.0f,0.0f,1.0f}
-                },
-            },{0,1,2, 2,3,0});
-
+        auto quadBuffer = tools::GenerateQuadGeometry(_vkRenderer,1.0f);
 
         // Загрузить текстуру
-        auto textureBuffer = tools::LoadVulkanTexture(_vkRenderer,"crate.png");
+        auto textureBuffer = tools::LoadVulkanTexture(_vkRenderer,"crate.png",true);
 
         /** Рендерер - инициализация сцены **/
 
@@ -102,12 +76,10 @@ int main(int argc, char* argv[])
 
         // Меши
         auto mesh0 = _vkRenderer->addMeshToScene(quadBuffer, textureBuffer);
-        mesh0->setPosition({-1.0f,0.0f,-4.0f}, false);
-        mesh0->setScale({0.8,0.8f,0.8f});
-
+        mesh0->setPosition({-1.0f,0.0f,-4.0f});
         auto mesh1 = _vkRenderer->addMeshToScene(quadBuffer, nullptr, {{0.0f,1.0f,0.0f},0.0f,1.0f});
-        mesh1->setPosition({1.0f,0.0f,-4.0f}, false);
-        mesh1->setScale({0.8f,0.8f,0.8f});
+        mesh1->setPosition({1.0f,0.0f,-4.0f});
+
 
         /** MAIN LOOP **/
 

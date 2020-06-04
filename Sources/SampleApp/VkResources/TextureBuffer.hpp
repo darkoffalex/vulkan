@@ -57,16 +57,96 @@ namespace vk
             }
 
             /**
+             * Генерация мип-уровней изображения (не для промежуточного изображения)
+             * @param image Изображение
+             * @param mipLevelsCount Кол-во мип-уровней
+             * @param extent Размер изображения
+             *
+             * @details Изображение уже должно быть создано с mip-уровнями (пустыми), функция просто заполняет их
+             * проходя по каждому уровню и копируя в него содержимое из предыдущего уменьшенное по размерам вдвое
+             */
+            void generateMipLevels(const vk::Image& image, size_t mipLevelsCount, const vk::Extent3D& extent)
+            {
+                // Выделить командный буфер для исполнения команд копирования измененного в размере изображения (blit)
+                vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
+                commandBufferAllocateInfo.commandBufferCount = 1;
+                commandBufferAllocateInfo.commandPool = pDevice_->getCommandGfxPool().get();
+                commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+                auto cmdBuffers = pDevice_->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
+
+                // Начать запись в командный буфер
+                cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+                // Изначальные размеры мип-уровня
+                int32_t mipWidth = extent.width;
+                int32_t mipHeight = extent.height;
+
+                // Пройтись по всем мип-уровням кроме нулевого (ибо это и есть основное изображение)
+                for(size_t i = 1; i < mipLevelsCount; i++)
+                {
+                    // Перед копированием информации нужно подготовить макет размещения конкретного мип уровня
+                    // Макет ПРЕДЫДУЩЕГО мип-уровня должен быть переведен в состояние vk::AccessFlagBits::eTransferRead
+                    vk::ImageMemoryBarrier imageMemoryBarrierTransfer{};
+                    imageMemoryBarrierTransfer.image = image;
+                    imageMemoryBarrierTransfer.subresourceRange = {vk::ImageAspectFlagBits::eColor, i - 1, 1};
+                    imageMemoryBarrierTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrierTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrierTransfer.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                    imageMemoryBarrierTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+                    imageMemoryBarrierTransfer.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                    imageMemoryBarrierTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+
+                    // Описываем параметры команды blit (команда копирует изображение, меняет его размер и вставляет)
+                    vk::ImageBlit imageBlit{};
+                    imageBlit.srcOffsets[0] = vk::Offset3D(0,0,0);
+                    imageBlit.srcOffsets[1] = vk::Offset3D(mipWidth,mipHeight,1);
+                    imageBlit.srcSubresource = {vk::ImageAspectFlagBits::eColor,i-1,0,1};
+                    imageBlit.dstOffsets[0] = vk::Offset3D(0,0,0);
+                    imageBlit.dstOffsets[1] = vk::Offset3D( mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1,1);
+                    imageBlit.dstSubresource = {vk::ImageAspectFlagBits::eColor,i,0,1};
+
+                    // Запись команд в буфер
+                    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierTransfer);
+                    cmdBuffers[0].blitImage(image,vk::ImageLayout::eTransferSrcOptimal,image,vk::ImageLayout::eTransferDstOptimal,{imageBlit},vk::Filter::eLinear);
+
+                    // Уменьшить размер мип-уровня в 2 раза
+                    if (mipWidth > 1) mipWidth /= 2;
+                    if (mipHeight > 1) mipHeight /= 2;
+                }
+
+                // Барьер памяти для смены размещения всех мип-уровней изображения (подготовка к использованию в шейдере)
+                vk::ImageMemoryBarrier imageMemoryBarrierFinalize{};
+                imageMemoryBarrierFinalize.image = image;
+                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, mipLevelsCount};
+                imageMemoryBarrierFinalize.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierFinalize.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierFinalize.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                imageMemoryBarrierFinalize.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                imageMemoryBarrierFinalize.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                imageMemoryBarrierFinalize.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+                // Записать команду смены размещения и завершить работу с буфером
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eFragmentShader,{},{},{},imageMemoryBarrierFinalize);
+                cmdBuffers[0].end();
+
+                // Отправить команду в очередь и подождать выполнения, затем очистить буфер
+                pDevice_->getGraphicsQueue().submit({vk::SubmitInfo(0, nullptr, nullptr,cmdBuffers.size(),cmdBuffers.data())},{});
+                pDevice_->getGraphicsQueue().waitIdle();
+                pDevice_->getLogicalDevice()->freeCommandBuffers(pDevice_->getCommandGfxPool().get(),cmdBuffers);
+            }
+
+            /**
              * Копировать изображение из временного в основное
              * @param srcImage Исходное изображение (временное)
              * @param dstImage Целевое изображение (основное)
              * @param extent Разрешение изображения
+             * @param prepareForShaderSampling Перевести макет размещения в состояние оптимальное для чтения из шейдера
              *
              * @details Как и в случае с копированием буферов, копирование данных изображения также производится
              * через команды устройству. Но перед копированием важно также привести изображения к необходимому макету
              * размещения, что тоже делается при помощи команд
              */
-            void copyTmpToDst(const vk::Image& srcImage, const vk::Image& dstImage, const vk::Extent3D& extent)
+            void copyTmpToDst(const vk::Image& srcImage, const vk::Image& dstImage, const vk::Extent3D& extent, bool prepareForShaderSampling = true)
             {
                 // Выделить командный буфер для исполнения команды копирования
                 vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
@@ -75,12 +155,10 @@ namespace vk
                 commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
                 auto cmdBuffers = pDevice_->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
 
-                // П О Д Г О Т О В К А  Р А З М Е Щ Е Н И Я  П А М Я Т И
-
                 // Барьер памяти для смены размещения исходного (временного) изображения
                 vk::ImageMemoryBarrier imageMemoryBarrierSrc{};
                 imageMemoryBarrierSrc.image = srcImage;
-                imageMemoryBarrierSrc.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,0};
+                imageMemoryBarrierSrc.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,1};
                 imageMemoryBarrierSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierSrc.oldLayout = vk::ImageLayout::ePreinitialized;
@@ -91,26 +169,13 @@ namespace vk
                 // Барьер памяти для смены размещения целевого изображения
                 vk::ImageMemoryBarrier imageMemoryBarrierDst{};
                 imageMemoryBarrierDst.image = dstImage;
-                imageMemoryBarrierDst.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,0};
+                imageMemoryBarrierDst.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,1};
                 imageMemoryBarrierDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierDst.oldLayout = vk::ImageLayout::ePreinitialized;
                 imageMemoryBarrierDst.newLayout = vk::ImageLayout::eTransferDstOptimal;
-                imageMemoryBarrierDst.srcAccessMask = vk::AccessFlagBits::eHostWrite;
+                imageMemoryBarrierDst.srcAccessMask = vk::AccessFlagBits::eTransferRead;
                 imageMemoryBarrierDst.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-
-                // Запись команд в буфер
-                cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTopOfPipe,{},{},{},imageMemoryBarrierSrc);
-                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTopOfPipe,{},{},{},imageMemoryBarrierDst);
-                cmdBuffers[0].end();
-
-                // Отправить команду в очередь и подождать выполнения, затем очистить буфер
-                pDevice_->getGraphicsQueue().submit({vk::SubmitInfo(0, nullptr, nullptr,cmdBuffers.size(),cmdBuffers.data())},{});
-                pDevice_->getGraphicsQueue().waitIdle();
-                pDevice_->getLogicalDevice()->freeCommandBuffers(pDevice_->getCommandGfxPool().get(),cmdBuffers);
-
-                // К О П И Р О В А Н И Е
 
                 // Области копирования текстуры
                 // Каждый элемент массива описывает из какой области исходного изображения в какую область целевого копировать
@@ -125,16 +190,36 @@ namespace vk
                         }
                 };
 
-                // Запись команд в буфер
+                // Барьер памяти для смены размещения целевого изображения (подготовка к использованию в шейдере)
+                vk::ImageMemoryBarrier imageMemoryBarrierFinalize{};
+                imageMemoryBarrierFinalize.image = dstImage;
+                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1};
+                imageMemoryBarrierFinalize.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierFinalize.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierFinalize.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                imageMemoryBarrierFinalize.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                imageMemoryBarrierFinalize.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                imageMemoryBarrierFinalize.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+                // Начало работу с буфером команд
                 cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+                // Запись команд
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierSrc);
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierDst);
                 cmdBuffers[0].copyImage(srcImage,vk::ImageLayout::eTransferSrcOptimal,dstImage,vk::ImageLayout::eTransferDstOptimal,copyRegions);
+
+                // Если нужно подготовить макет размещения к использованию
+                if(prepareForShaderSampling){
+                    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eFragmentShader,{},{},{},imageMemoryBarrierFinalize);
+                }
+
+                // Завершить работу с буфером команд
                 cmdBuffers[0].end();
 
-                // Отправить команду в очередь и подождать выполнения
+                // Отправить команду в очередь и подождать выполнения, затем очистить буфер
                 pDevice_->getGraphicsQueue().submit({vk::SubmitInfo(0, nullptr, nullptr,cmdBuffers.size(),cmdBuffers.data())},{});
                 pDevice_->getGraphicsQueue().waitIdle();
-
-                // Очищаем буфер команд
                 pDevice_->getLogicalDevice()->freeCommandBuffers(pDevice_->getCommandGfxPool().get(),cmdBuffers);
             }
 
@@ -243,6 +328,7 @@ namespace vk
              * @param width Ширина изображения
              * @param height Высота изображения
              * @param bpp Байт на пиксель
+             * @param generateMip Генерировать mip-уровни
              * @param sRgb Цветовое пространство sRGB
              */
             TextureBuffer(
@@ -252,6 +338,7 @@ namespace vk
                     size_t width,
                     size_t height,
                     size_t bpp,
+                    bool generateMip = false,
                     bool sRgb = false):
                     pDevice_(pDevice),
                     pSampler_(pSampler),
@@ -277,7 +364,7 @@ namespace vk
                         vk::ImageType::e2D,                       //TODO: добавить зависимость от типа
                         this->getImageFormat(bpp_,sRgb),
                         {width_,height_,1},
-                        vk::ImageUsageFlagBits::eTransferSrc,
+                        vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst,
                         vk::ImageAspectFlagBits::eColor,
                         vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent,
                         vk::SharingMode::eExclusive,
@@ -294,7 +381,8 @@ namespace vk
                         vk::MemoryPropertyFlagBits::eDeviceLocal,
                         vk::SharingMode::eExclusive,
                         vk::ImageLayout::ePreinitialized,
-                        vk::ImageTiling::eOptimal);
+                        vk::ImageTiling::eOptimal,
+                        generateMip);
 
                 // Как и в случае с геометрическим буфером, данные текстур более оптимально хранить в памяти устройства,
                 // но доступ к ней на прямую закрыт. Нужен промежуточный буфер (stagingImage)
@@ -313,7 +401,21 @@ namespace vk
                 stagingImage.unmapMemory();
 
                 // Копировать из временного изображения в целевое
-                this->copyTmpToDst(stagingImage.getVulkanImage().get(), image_.getVulkanImage().get(), {width, height, 1});
+                this->copyTmpToDst(stagingImage.getVulkanImage().get(), image_.getVulkanImage().get(), {width, height, 1}, !generateMip);
+
+                // Если нужно генерировать mip-уровни
+                if(generateMip){
+
+                    // Проверить поддержку линейного blit'а, который используется при генерации мип-уровней
+                    auto formatProperties = pDevice_->getPhysicalDevice().getFormatProperties(this->getImageFormat(bpp_,sRgb));
+                    if(!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear)){
+                        //TODO: сделать выбор другого типа blit'а
+                        throw vk::FormatNotSupportedError("Can't use eSampledImageFilterLinear for generating mip maps");
+                    }
+
+                    // Генерировать мип-уровни
+                    this->generateMipLevels(image_.getVulkanImage().get(),image_.getMipLevelCount(),{width, height, 1});
+                }
 
                 // Очищаем временное изображение
                 stagingImage.destroyVulkanResources();
