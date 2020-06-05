@@ -157,7 +157,7 @@ namespace vk
                 // измерение (ширина или высота) могут быть поделены на 2 (std::log2). На случай если размер не кратен 2
                 // используем округление вниз (std::floor). Добавляем 1, так как у оригинального изображения тоже есть уровень.
                 if(useMipLevels){
-                    mipLevels_ = static_cast<uint32_t>(std::floor(std::log2(std::max(extent.width, extent.height)))) + 1;
+                    mipLevels_ = static_cast<uint32_t>(std::floor(std::log2((std::max)(extent.width, extent.height)))) + 1;
                 }
 
                 // Создать изображение

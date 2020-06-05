@@ -7,7 +7,6 @@
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
-
 namespace vk
 {
     namespace tools

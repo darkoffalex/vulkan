@@ -7,29 +7,14 @@ set(TARGET_BIN_NAME "SampleApp")
 
 # Добавляем .exe (проект в Visual Studio)
 add_executable(${TARGET_NAME}
-        "Main.cpp" "Tools.hpp"
-
+        "Main.cpp"
+        "Tools/Tools.hpp" "Tools/Timer.hpp" "Tools/Camera.hpp"
+        "VkRenderer.h" "VkRenderer.cpp"
+        "VkHelpers.h" "VkHelpers.cpp"
         "VkExtensionLoader/ExtensionLoader.h" "VkExtensionLoader/ExtensionLoader.c"
-
-        "VkTools/Tools.h" "VkTools/Tools.cpp"
-        "VkTools/Device.hpp"
-        "VkTools/Buffer.hpp"
-        "VkTools/Image.hpp"
-
-        "VkResources/FrameBuffer.hpp"
-        "VkResources/GeometryBuffer.hpp"
-        "VkResources/TextureBuffer.hpp"
-
-        "VkScene/SceneElement.h"
-        "VkScene/SceneElement.cpp"
-
-        "VkScene/Mesh.h"
-        "VkScene/Mesh.cpp"
-        "VkScene/Camera.h"
-        "VkScene/Camera.cpp"
-
-        "VkRenderer.h"
-        "VkRenderer.cpp")
+        "VkTools/Tools.h" "VkTools/Tools.cpp" "VkTools/Device.hpp" "VkTools/Buffer.hpp" "VkTools/Image.hpp"
+        "VkResources/FrameBuffer.hpp" "VkResources/GeometryBuffer.hpp" "VkResources/TextureBuffer.hpp"
+        "VkScene/SceneElement.h" "VkScene/SceneElement.cpp" "VkScene/Mesh.h" "VkScene/Mesh.cpp" "VkScene/Camera.h" "VkScene/Camera.cpp")
 
 # Директории с библиотеками (.lib)
 if(${PLATFORM_BIT_SUFFIX} STREQUAL "x86")
