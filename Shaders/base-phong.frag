@@ -17,6 +17,7 @@ layout (location = 0) in VS_OUT
 
 /*Вспомогательные типы*/
 
+// Параметры материала
 struct MaterialSettings
 {
     vec3 albedo;
@@ -26,11 +27,11 @@ struct MaterialSettings
 
 /*Uniform*/
 
-layout(set = 1, binding = 1) uniform UniformModel {
+layout(set = 1, binding = 2) uniform UniformModel {
     MaterialSettings _materialSettings;
 };
 
-layout(set = 1, binding = 2) uniform sampler2D _texture;
+layout(set = 1, binding = 3) uniform sampler2D _texture;
 
 /*Функции*/
 

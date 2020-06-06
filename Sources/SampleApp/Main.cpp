@@ -92,27 +92,34 @@ int main(int argc, char* argv[])
 
         /** Рендерер - загрузка ресурсов **/
 
-        // Загрузить геометрический буфер
-        auto quadBuffer = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
+        // Геометрия
+        auto quadGeometry = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
+        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
 
-        // Загрузить текстуру
-        auto textureBuffer = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png",true);
+        // Текстуры
+        auto floorTexture = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
+        auto cubeTexture = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
 
         /** Рендерер - инициализация сцены **/
 
-        // Меши
-        auto mesh0 = _vkRenderer->addMeshToScene(quadBuffer, textureBuffer);
-        mesh0->setPosition({-1.0f,0.0f,-4.0f});
-        auto mesh1 = _vkRenderer->addMeshToScene(quadBuffer, nullptr, {{0.0f,1.0f,0.0f},0.0f,1.0f});
-        mesh1->setPosition({1.0f,0.0f,-4.0f});
+        // Пол
+        auto floor = _vkRenderer->addMeshToScene(quadGeometry, floorTexture);
+        floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
+        floor->setPosition({0.0f,0.0f,0.0f}, false);
+        floor->setScale({10.0f,10.0f,0.0f}, false);
+        floor->setOrientation({-90.0f,0.0f,0.0f});
+
+        // Куб
+        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,cubeTexture);
+        cube->setScale({0.5f,0.5f,0.5f});
+        cube->setPosition({0.0f,0.25f,0.0f});
 
         /** MAIN LOOP **/
 
         // Управляемая камера
         _camera = new tools::Camera();
-        _camera->position = {0.0f,0.0f,0.0f};
+        _camera->position = {0.0f,2.0f,0.0f};
         _camera->orientation = {0.0f,0.0f,0.0f};
-//        _camera->setTranslation({0.001f,0.0f,0.001f});
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
         _timer = new tools::Timer();

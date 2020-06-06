@@ -28,7 +28,7 @@ namespace vk
             // Загрузить
             unsigned char* bytes = stbi_load(path.c_str(),&width,&height,&channels,STBI_rgb_alpha);
 
-            // Если не удалось загрузит
+            // Если не удалось загрузить
             if(bytes == nullptr){
                 throw std::runtime_error(std::string("Can't load texture (").append(path).append(")").c_str());
             }
@@ -39,7 +39,7 @@ namespace vk
                     bytes,
                     static_cast<size_t>(width),
                     static_cast<size_t>(height),
-                    static_cast<size_t>(channels),
+                    static_cast<size_t>(channels > 2 ? 4 : channels),
                     mip,
                     sRgb);
 

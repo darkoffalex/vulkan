@@ -15,7 +15,8 @@ namespace vk
         pDevice_(nullptr),
         pDescriptorPool_(nullptr),
         pUboModelMatrixData_(nullptr),
-        pUboMaterialData_(nullptr){}
+        pUboMaterialData_(nullptr),
+        pUboTextureMappingData_(nullptr){}
 
         /**
          * Конструктор перемещения
@@ -29,12 +30,15 @@ namespace vk
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboModelMatrixData_, other.pUboModelMatrixData_);
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
+            std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(materialSettings_,other.materialSettings_);
+            std::swap(textureMapping_,other.textureMapping_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
+            uboTextureMapping_ = std::move(other.uboTextureMapping_);
         }
 
         /**
@@ -52,19 +56,24 @@ namespace vk
             pDescriptorPool_ = nullptr;
             pUboModelMatrixData_ = nullptr;
             pUboMaterialData_ = nullptr;
+            pUboTextureMappingData_ = nullptr;
             materialSettings_ = {};
+            textureMapping_ = {};
 
             std::swap(isReady_,other.isReady_);
             std::swap(pDevice_,other.pDevice_);
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboModelMatrixData_, other.pUboModelMatrixData_);
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
+            std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(materialSettings_,other.materialSettings_);
+            std::swap(textureMapping_,other.textureMapping_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
+            uboTextureMapping_ = std::move(other.uboTextureMapping_);
 
             return *this;
         }
@@ -84,13 +93,15 @@ namespace vk
          * @param descriptorSetLayout Макет размещения дескрипторного набора меша
          * @param geometryBufferPtr Smart-pointer на объект геом. буфера
          * @param materialSettings Параметры материала
+         * @param textureMappingSettings Параметры отображения текстуры
          */
         Mesh::Mesh(const vk::tools::Device* pDevice,
                    const vk::UniqueDescriptorPool& descriptorPool,
                    const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                    vk::resources::GeometryBufferPtr geometryBufferPtr,
                    vk::resources::TextureBufferPtr textureBufferPtr,
-                   const vk::scene::MeshMaterialSettings& materialSettings):SceneElement(),
+                   const vk::scene::MeshMaterialSettings& materialSettings,
+                   const vk::scene::MeshTextureMapping& textureMappingSettings): SceneElement(),
         isReady_(false),
         pDevice_(pDevice),
         pDescriptorPool_(&(descriptorPool.get())),
@@ -115,9 +126,16 @@ namespace vk
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
+            // Выделить буфер для параметров отображения текстуры
+            uboTextureMapping_ = vk::tools::Buffer(pDevice_,
+                    sizeof(vk::scene::MeshTextureMapping),
+                    vk::BufferUsageFlagBits::eUniformBuffer,
+                    vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
             // Разметить память буферов, получив указатели
             pUboModelMatrixData_ = uboModelMatrix_.mapMemory();
             pUboMaterialData_ = uboMaterial_.mapMemory();
+            pUboTextureMappingData_ = uboTextureMapping_.mapMemory();
 
             // Выделить дескрипторный набор
             vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
@@ -132,6 +150,7 @@ namespace vk
             // Информация о буферах
             std::vector<vk::DescriptorBufferInfo> bufferInfos = {
                     {uboModelMatrix_.getBuffer().get(),0,VK_WHOLE_SIZE},
+                    {uboTextureMapping_.getBuffer().get(),0,VK_WHOLE_SIZE},
                     {uboMaterial_.getBuffer().get(),0,VK_WHOLE_SIZE}
             };
 
@@ -160,6 +179,16 @@ namespace vk
                             bufferInfos.data() + 1,
                             nullptr
                     },
+                    {
+                            descriptorSet_.get(),
+                            2,
+                            0,
+                            1,
+                            vk::DescriptorType::eUniformBuffer,
+                            nullptr,
+                            bufferInfos.data() + 2,
+                            nullptr
+                    },
             };
 
             // Если есть текстура
@@ -173,7 +202,7 @@ namespace vk
                 // Связь дескриптора с изображением
                 writes.emplace_back(vk::WriteDescriptorSet(
                         descriptorSet_.get(),
-                        2,
+                        3,
                         0,
                         1,
                         vk::DescriptorType::eCombinedImageSampler,
@@ -189,6 +218,7 @@ namespace vk
             // Обновить UBO буферы
             this->updateMatrixBuffers();
             this->updateMaterialSettingsBuffers();
+            this->updateTextureMappingBuffers();
 
             // Инициализация завершена
             isReady_ = true;
@@ -208,14 +238,19 @@ namespace vk
                 // Очистить UBO буферы
                 uboModelMatrix_.unmapMemory();
                 uboModelMatrix_.destroyVulkanResources();
+                
                 uboMaterial_.unmapMemory();
                 uboMaterial_.destroyVulkanResources();
+
+                uboTextureMapping_.unmapMemory();
+                uboTextureMapping_.destroyVulkanResources();
 
                 // Обнулить указатели
                 pDevice_ = nullptr;
                 pDescriptorPool_ = nullptr;
                 pUboModelMatrixData_ = nullptr;
                 pUboMaterialData_ = nullptr;
+                pUboTextureMappingData_ = nullptr;
 
                 // Объект де-инициализирован
                 isReady_ = false;
@@ -275,6 +310,16 @@ namespace vk
         }
 
         /**
+         * Обновление UBO буферов параметров отображения текстуры меша
+         */
+        void Mesh::updateTextureMappingBuffers()
+        {
+            if(uboTextureMapping_.isReady()){
+                memcpy(pUboTextureMappingData_,&textureMapping_, sizeof(vk::scene::MeshTextureMapping));
+            }
+        }
+
+        /**
          * Установить параметры материала
          * @param settings Параметры материала
          */
@@ -289,6 +334,24 @@ namespace vk
          */
         MeshMaterialSettings Mesh::getMaterialSettings() const {
             return materialSettings_;
+        }
+
+        /**
+         * Установить параметры отображения текстуры
+         * @param textureMapping Параметры отображения текстуры
+         */
+        void Mesh::setTextureMapping(const MeshTextureMapping &textureMapping)
+        {
+            textureMapping_ = textureMapping;
+            this->updateTextureMappingBuffers();
+        }
+
+        /**
+         * Получить параметры отображения текстуры
+         * @return Структура описывающая параметры отображения текстуры
+         */
+        MeshTextureMapping Mesh::getTextureMapping() const {
+            return textureMapping_;
         }
     }
 }

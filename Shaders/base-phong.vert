@@ -18,6 +18,17 @@ layout (location = 0) out VS_OUT
     mat3 normalMatrix;     // Матрица преобразования нормалей (не интерполируется, наверное)
 } vs_out;
 
+/*Вспомогательные типы*/
+
+// Параметры отображения текстуры
+struct TextureMapping
+{
+    vec2 offset;
+    vec2 origin;
+    vec2 scale;
+    float angle;
+};
+
 /*Uniform*/
 
 layout(set = 0, binding = 0) uniform UniformViewProjection {
@@ -29,7 +40,27 @@ layout(set = 1, binding = 0) uniform UniformModel {
     mat4 _model;
 };
 
+layout(set = 1, binding = 1) uniform UniformTextureMapping {
+    TextureMapping _textureMapping;
+};
+
 /*Функции*/
+
+// Получить матрицу поворота 2x2 на заданный угол
+// Используется для вращения UV координат (для разворота текстуры)
+mat2 rotate2D(float angle)
+{
+    return mat2(
+        cos(angle),-sin(angle),
+        sin(angle),cos(angle)
+    );
+}
+
+// Подсчет UV координат с учетом параметров текстурирования
+vec2 calcUV(vec2 uv, TextureMapping mapping)
+{
+    return ((rotate2D(mapping.angle) * (uv - mapping.origin)) + mapping.origin)*mapping.scale - mapping.offset;
+}
 
 // Основная функция вершинного шейдера
 // Преобразование координат (и прочих параметров) вершины и передача их следующим этапам
@@ -52,7 +83,7 @@ void main()
     vs_out.positionLocal = position;
 
     // UV координаты текстуры для вершины
-    vs_out.uv = uv;
+    vs_out.uv = calcUV(uv, _textureMapping);
 
     // Нормаль вершины - используем матрицу нормалей для корректной передачи
     vs_out.normal = normalize(vs_out.normalMatrix * normal);

@@ -48,10 +48,10 @@ namespace vk
                         return vk::Format::eR8Unorm;
                     case 2:
                         return vk::Format::eR8G8Unorm;
-                    case 3:
-                    default:
-                        return sRgb ? vk::Format::eR8G8B8Srgb : vk::Format::eR8G8B8Unorm;
+//                    case 3:
+//                        return sRgb ? vk::Format::eR8G8B8Srgb : vk::Format::eR8G8B8Unorm;
                     case 4:
+                    default:
                         return sRgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
                 }
             }

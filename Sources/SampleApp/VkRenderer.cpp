@@ -367,11 +367,13 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
     {
         // Размеры пула для наборов типа "материал меша"
         std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
-                // Дескрипторы для буферов UBO (матрица модели)
+                // Дескриптор матрицы модели
                 {vk::DescriptorType::eUniformBuffer,1},
-                // Дескрипторы для буферов UBO (параметры материала)
+                // Дескриптор параметров отображения текстуры
                 {vk::DescriptorType::eUniformBuffer,1},
-                // Дескрипторы для текстур (пока-что одна albedo/diffuse текстура)
+                // Дескриптор для параметров материала
+                {vk::DescriptorType::eUniformBuffer,1},
+                // Дескриптор для текстуры/семплера
                 {vk::DescriptorType::eCombinedImageSampler, 1}
         };
 
@@ -420,9 +422,17 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         vk::ShaderStageFlagBits::eVertex,
                         nullptr,
                 },
-                // UBO буфер для параметров материала
+                // UBO буфер для параметров отображения текстуры
                 {
                         1,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eVertex,
+                        nullptr,
+                },
+                // UBO буфер для параметров материала
+                {
+                        2,
                         vk::DescriptorType::eUniformBuffer,
                         1,
                         vk::ShaderStageFlagBits::eFragment,
@@ -430,7 +440,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 },
                 // Текстурный семплер
                 {
-                        2,
+                        3,
                         vk::DescriptorType::eCombinedImageSampler,
                         1,
                         vk::ShaderStageFlagBits::eFragment,
@@ -1049,10 +1059,11 @@ vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned c
 vk::scene::MeshPtr VkRenderer::addMeshToScene(
         const vk::resources::GeometryBufferPtr& geometryBuffer,
         const vk::resources::TextureBufferPtr& textureBuffer,
-        const vk::scene::MeshMaterialSettings& materialSettings)
+        const vk::scene::MeshMaterialSettings& materialSettings,
+        const vk::scene::MeshTextureMapping& textureMapping)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureBuffer, materialSettings);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureBuffer, materialSettings, textureMapping);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);
@@ -1088,7 +1099,7 @@ void VkRenderer::removeMeshFromScene(const vk::scene::MeshPtr& meshPtr)
     device_.getGraphicsQueue().waitIdle();
     device_.getPresentQueue().waitIdle();
 
-    // Удалям меш из списка
+    // Удаляем меш из списка
     sceneMeshes_.erase(std::remove_if(sceneMeshes_.begin(), sceneMeshes_.end(), [&](const vk::scene::MeshPtr& meshEntryPtr){
         return meshPtr.get() == meshEntryPtr.get();
     }), sceneMeshes_.end());

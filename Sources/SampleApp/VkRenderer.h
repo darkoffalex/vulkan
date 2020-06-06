@@ -246,11 +246,13 @@ public:
      * @param geometryBuffer Геометрический буфер
      * @param textureBuffer Текстурный буфер
      * @param materialSettings Параметры материала меша
+     * @param textureMapping Параметры отображения текстуры
      * @return Shared smart pointer на объект меша
      */
     vk::scene::MeshPtr addMeshToScene(const vk::resources::GeometryBufferPtr& geometryBuffer,
             const vk::resources::TextureBufferPtr& textureBuffer = nullptr,
-            const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
+            const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f},
+            const vk::scene::MeshTextureMapping& textureMapping = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
     /**
      * Удалить меш со сцены

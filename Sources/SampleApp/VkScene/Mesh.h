@@ -15,6 +15,14 @@ namespace vk
             glm::float32 roughness = 1.0f;
         };
 
+        struct MeshTextureMapping
+        {
+            glm::vec2 offset = {0.0f,0.0f};
+            glm::vec2 origin = {0.0f,0.0f};
+            glm::vec2 scale = {1.0f,1.0f};
+            glm::float32 angle = 0.0f;
+        };
+
         class Mesh : public SceneElement
         {
         private:
@@ -28,6 +36,8 @@ namespace vk
             vk::resources::TextureBufferPtr textureBufferPtr_;
             /// Параметры материала меша
             vk::scene::MeshMaterialSettings materialSettings_;
+            /// Параметры отображения текстуры меша
+            vk::scene::MeshTextureMapping textureMapping_;
 
             /// UBO буфер для матрицы модели
             vk::tools::Buffer uboModelMatrix_;
@@ -38,6 +48,11 @@ namespace vk
             vk::tools::Buffer uboMaterial_;
             /// Указатель на размеченную область буфера UBO материала
             void* pUboMaterialData_;
+
+            /// UBO буфер для параметров материала меша
+            vk::tools::Buffer uboTextureMapping_;
+            /// Указатель на размеченную область буфера UBO параметров материала
+            void* pUboTextureMappingData_;
 
             /// Указатель на пул дескрипторов, из которого выделяется набор дескрипторов меша
             const vk::DescriptorPool *pDescriptorPool_;
@@ -53,6 +68,11 @@ namespace vk
              * Обновление UBO буферов параметров материала меша
              */
             void updateMaterialSettingsBuffers();
+
+            /**
+             * Обновление UBO буферов параметров отображения текстуры меша
+             */
+            void updateTextureMappingBuffers();
 
             /**
              * Обработка события обновления матриц
@@ -72,13 +92,15 @@ namespace vk
              * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
              * @param geometryBufferPtr Smart-pointer на объект геом. буфера
              * @param materialSettings Параметры материала
+             * @param textureMappingSettings Параметры отображения текстуры
              */
             explicit Mesh(const vk::tools::Device* pDevice,
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                     vk::resources::GeometryBufferPtr geometryBufferPtr,
                     vk::resources::TextureBufferPtr textureBufferPtr = nullptr,
-                    const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f});
+                    const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f},
+                    const vk::scene::MeshTextureMapping& textureMappingSettings = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
             /**
              * Запрет копирования через инициализацию
@@ -146,6 +168,18 @@ namespace vk
              * @return Структура описывающая материал
              */
             MeshMaterialSettings getMaterialSettings() const;
+
+            /**
+             * Установить параметры отображения текстуры
+             * @param textureMapping Параметры отображения текстуры
+             */
+            void setTextureMapping(const MeshTextureMapping& textureMapping);
+
+            /**
+             * Получить параметры отображения текстуры
+             * @return Структура описывающая параметры отображения текстуры
+             */
+            MeshTextureMapping getTextureMapping() const;
         };
 
         /**
