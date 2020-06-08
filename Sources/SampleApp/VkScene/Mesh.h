@@ -14,11 +14,19 @@ namespace vk
          */
         const size_t MATERIAL_UBO_SIZE = 56;
 
+        struct MeshTextureSet
+        {
+            vk::resources::TextureBufferPtr color;
+            vk::resources::TextureBufferPtr normal;
+            vk::resources::TextureBufferPtr specular;
+            vk::resources::TextureBufferPtr displace;
+        };
+
         struct MeshMaterialSettings
         {
             glm::vec3 ambientColor = {0.05f, 0.05f, 0.05f};
             glm::vec3 diffuseColor = {0.8f, 0.8f, 0.8f};
-            glm::vec3 specularColor = {0.4f, 0.4f, 0.4f};
+            glm::vec3 specularColor = {0.6f, 0.6f, 0.6f};
             glm::float32 shininess = 16.0f;
         };
 
@@ -39,8 +47,8 @@ namespace vk
             const vk::tools::Device* pDevice_;
             /// Указатель на геометрический буфер
             vk::resources::GeometryBufferPtr geometryBufferPtr_;
-            /// Указатель на текстурный буфер
-            vk::resources::TextureBufferPtr textureBufferPtr_;
+            /// Набор указателей текстурных буферов
+            vk::scene::MeshTextureSet textureSet_;
             /// Параметры материала меша
             vk::scene::MeshMaterialSettings materialSettings_;
             /// Параметры отображения текстуры меша
@@ -99,6 +107,7 @@ namespace vk
              * @param descriptorPool Unique smart pointer объекта дескрипторного пула
              * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
              * @param geometryBufferPtr Smart-pointer на объект геом. буфера
+             * @param textureSet Набор текстур меша
              * @param materialSettings Параметры материала
              * @param textureMappingSettings Параметры отображения текстуры
              */
@@ -106,8 +115,8 @@ namespace vk
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                     vk::resources::GeometryBufferPtr geometryBufferPtr,
-                    vk::resources::TextureBufferPtr textureBufferPtr = nullptr,
-                    const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.4f, 0.4f, 0.4f},16.0f},
+                    vk::scene::MeshTextureSet textureSet = {},
+                    const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.6f, 0.6f, 0.6f},16.0f},
                     const vk::scene::MeshTextureMapping& textureMappingSettings = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
             /**

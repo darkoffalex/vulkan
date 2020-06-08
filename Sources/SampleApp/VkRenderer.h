@@ -159,10 +159,12 @@ private:
     /**
      * Инициализация графического конвейера
      * @param vertexShaderCodeBytes Код вершинного шейдера
+     * @param geometryShaderCodeBytes Код геометрического шейдера
      * @param fragmentShaderCodeBytes Код фрагментного шейдера
      */
     void initPipeline(
             const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& geometryShaderCodeBytes,
             const std::vector<unsigned char>& fragmentShaderCodeBytes);
 
     /**
@@ -201,12 +203,14 @@ public:
      * @param hInstance Экземпляр WinApi приложения
      * @param hWnd Дескриптор окна WinApi
      * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
+     * @param geometryShaderCodeBytes Код геометрического шейдера (байты)
      * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
      * @param maxMeshes Максимальное кол-во мешей
      */
     VkRenderer(HINSTANCE hInstance,
             HWND hWnd,
             const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& geometryShaderCodeBytes,
             const std::vector<unsigned char>& fragmentShaderCodeBytes,
             size_t maxMeshes = 1000);
 
@@ -252,14 +256,14 @@ public:
     /**
      * Добавление меша на сцену
      * @param geometryBuffer Геометрический буфер
-     * @param textureBuffer Текстурный буфер
+     * @param textureSet Текстурный набор
      * @param materialSettings Параметры материала меша
      * @param textureMapping Параметры отображения текстуры
      * @return Shared smart pointer на объект меша
      */
     vk::scene::MeshPtr addMeshToScene(const vk::resources::GeometryBufferPtr& geometryBuffer,
-            const vk::resources::TextureBufferPtr& textureBuffer = nullptr,
-            const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.4f, 0.4f, 0.4f},16.0f},
+            const vk::scene::MeshTextureSet& textureSet = {},
+            const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.6f, 0.6f, 0.6f},16.0f},
             const vk::scene::MeshTextureMapping& textureMapping = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
     /**

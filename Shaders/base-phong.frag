@@ -7,18 +7,23 @@
 #define LIGHT_TYPE_DIRECTIONAL 2  // Тип источника - направленный
 #define MAX_LIGHTS 100            // Максимальное число источников
 
+#define TEXTURE_COLOR 0           // Тип текстуры - дифузная (цвет)
+#define TEXTURE_NORMAL 1          // Тип текстуры - карта нормалей
+#define TEXTURE_SPECULAR 2        // Тип текстуры - бликовая карта
+#define TEXTURE_DISPLACE 3        // Тип текстуры - карта высот
+
 /*Схема входа-выхода*/
 
 layout (location = 0) out vec4 outColor;
 
-layout (location = 0) in VS_OUT
+layout (location = 0) in GS_OUT
 {
     vec3 color;            // Цвет фрагмента
     vec3 position;         // Положение фрагмента в мировых координатах
     vec3 positionLocal;    // Положение фрагмента в локальных координатах
     vec3 normal;           // Вектор нормали фрагмента
     vec2 uv;               // Текстурные координаты фрагмента
-    mat3 normalMatrix;     // Матрица преобразования нормалей
+    mat3 tbnMatrix;        // Матрица для преобразования из касательного пространства треугольника в мировое
 } fs_in;
 
 /*Вспомогательные типы*/
@@ -68,7 +73,7 @@ layout(set = 2, binding = 2, std140) uniform UniformModel {
     Material _materialSettings;
 };
 
-layout(set = 2, binding = 3) uniform sampler2D _texture;
+layout(set = 2, binding = 3) uniform sampler2D _textures[4];
 
 layout(set = 1, binding = 0) uniform UniformLightCount {
     uint _lightCount;
@@ -174,20 +179,31 @@ vec3 directionalLight(Fragment f, LightSource l, Material m)
     return diffuse + specular + ambient;
 }
 
+// Получить нормаль из карты нормалей произведя необходимые преобразования
+vec3 getNormalFromMap(vec2 uv)
+{
+    vec3 normal = normalize(texture(_textures[TEXTURE_NORMAL],uv).rgb * 2.0 - 1.0);
+    return fs_in.tbnMatrix * normal;
+}
+
+// Доступна ли текстур
+bool isTextureAvailable(uint textureType)
+{
+    ivec2 sizes =  textureSize(_textures[textureType],0);
+    return sizes.x > 1 && sizes.y > 1;
+}
+
 // Основная функция вершинного шейдера
 // Вычисление итогового цвета фрагмента (пикселя)
 void main()
 {
-    // Размер текстуры
-    ivec2 texSize = textureSize(_texture,0);
-
     // Структура описывающая текущий фрагмент
     Fragment f;
     f.position = fs_in.position;
-    f.color = texSize.x > 1 ? texture(_texture,fs_in.uv).rgb : vec3(1.0f);
-    f.normal = normalize(fs_in.normal);
+    f.color = isTextureAvailable(TEXTURE_COLOR) ? texture(_textures[TEXTURE_COLOR],fs_in.uv).rgb : vec3(1.0f);
+    f.normal = isTextureAvailable(TEXTURE_NORMAL) ? getNormalFromMap(fs_in.uv) : normalize(fs_in.normal);
     f.toView = normalize(_camPosition - fs_in.position);
-    f.specularity = 0.0f;
+    f.specularity = isTextureAvailable(TEXTURE_SPECULAR) ? texture(_textures[TEXTURE_SPECULAR],fs_in.uv).r : 0.0f;
 
     // Итоговый цвет
     vec3 result = vec3(0.0f);

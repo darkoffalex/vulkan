@@ -85,10 +85,11 @@ int main(int argc, char* argv[])
 
         // Загрузка кода шейдеров
         auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.vert.spv"));
+        auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.geom.spv"));
         auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
 
         // Инициализация рендерера
-        _vkRenderer = new VkRenderer(_hInstance,_hwnd,vsCode,fsCode);
+        _vkRenderer = new VkRenderer(_hInstance,_hwnd,vsCode,gsCode,fsCode);
 
         /** Рендерер - загрузка ресурсов **/
 
@@ -97,20 +98,25 @@ int main(int argc, char* argv[])
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
 
         // Текстуры
-        auto floorTexture = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
+        auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
+        auto floorTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/normal.png",true);
+        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"default_specular.jpg",true);
+
         auto cubeTexture = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
+        auto cubeTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"default_normal.jpg", true);
+        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
 
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = _vkRenderer->addMeshToScene(quadGeometry,floorTexture);
+        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
 
         // Куб
-        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,cubeTexture);
+        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,{cubeTexture,cubeTextureNormal,cubeTextureSpec});
         cube->setScale({0.5f,0.5f,0.5f}, false);
         cube->setOrientation({0.0f,45.0f,0.0f}, false);
         cube->setPosition({0.5f,0.25f,-0.5f});

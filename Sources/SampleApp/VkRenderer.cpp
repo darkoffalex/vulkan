@@ -374,7 +374,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескриптор для параметров материала
                 {vk::DescriptorType::eUniformBuffer,1},
                 // Дескриптор для текстуры/семплера
-                {vk::DescriptorType::eCombinedImageSampler, 1}
+                {vk::DescriptorType::eCombinedImageSampler, 4}
         };
 
         // Поскольку у каждого меша есть свой набор, то кол-во таких наборов ограничено кол-вом мешей
@@ -460,7 +460,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 {
                         3,
                         vk::DescriptorType::eCombinedImageSampler,
-                        1,
+                        4,
                         vk::ShaderStageFlagBits::eFragment,
                         nullptr,
                 },
@@ -540,11 +540,13 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
 /**
  * Инициализация графического конвейера
  * @param vertexShaderCodeBytes Код вершинного шейдера
+ * @param geometryShaderCodeBytes Код геометрического шейдера
  * @param fragmentShaderCodeBytes Код фрагментного шейдера
  */
 void VkRenderer::initPipeline(
-        const std::vector<unsigned char> &vertexShaderCodeBytes,
-        const std::vector<unsigned char> &fragmentShaderCodeBytes)
+        const std::vector<unsigned char>& vertexShaderCodeBytes,
+        const std::vector<unsigned char>& geometryShaderCodeBytes,
+        const std::vector<unsigned char>& fragmentShaderCodeBytes)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -627,25 +629,32 @@ void VkRenderer::initPipeline(
     // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
 
     // Убеждаемся что шейдерный код был предоставлен
-    if(vertexShaderCodeBytes.empty() || fragmentShaderCodeBytes.empty()){
+    if(vertexShaderCodeBytes.empty() || fragmentShaderCodeBytes.empty() || geometryShaderCodeBytes.empty()){
         throw vk::InitializationFailedError("No shader code provided");
     }
 
     // Вершинный шейдер
     vk::ShaderModule shaderModuleVs = device_.getLogicalDevice()->createShaderModule({
-        {},
-        vertexShaderCodeBytes.size(),
-        reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
+            {},
+            vertexShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
+
+    // Геометрический шейдер
+    vk::ShaderModule shaderModuleGs = device_.getLogicalDevice()->createShaderModule({
+            {},
+            geometryShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(geometryShaderCodeBytes.data())});
 
     // Фрагментный шейдер
     vk::ShaderModule shaderModuleFs = device_.getLogicalDevice()->createShaderModule({
-        {},
-        fragmentShaderCodeBytes.size(),
-        reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
+            {},
+            fragmentShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
 
     // Описываем стадии
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eVertex,shaderModuleVs,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eGeometry,shaderModuleGs,"main"),
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFs,"main")
     };
 
@@ -842,11 +851,15 @@ void VkRenderer::freeMeshes()
  * Конструктор
  * @param hInstance Экземпляр WinApi приложения
  * @param hWnd Дескриптор окна WinApi
+ * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
+ * @param geometryShaderCodeBytes Код геометрического шейдера (байты)
+ * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
  * @param maxMeshes Максимальное кол-во мешей
  */
 VkRenderer::VkRenderer(HINSTANCE hInstance,
         HWND hWnd,
         const std::vector<unsigned char>& vertexShaderCodeBytes,
+        const std::vector<unsigned char>& geometryShaderCodeBytes,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
         size_t maxMeshes):
 isEnabled_(true),
@@ -925,7 +938,7 @@ inputDataInOpenGlStyle_(true)
     std::cout << "Light source set created." << std::endl;
 
     // Создать проход рендеринга
-    this->initPipeline(vertexShaderCodeBytes,fragmentShaderCodeBytes);
+    this->initPipeline(vertexShaderCodeBytes,geometryShaderCodeBytes,fragmentShaderCodeBytes);
     std::cout << "Graphics pipeline created." << std::endl;
 
     // Создать примитивы синхронизации (семафоры)
@@ -1116,17 +1129,19 @@ vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned c
 /**
  * Добавление меша на сцену
  * @param geometryBuffer Геометрический буфер
+ * @param textureSet Текстурный набор
  * @param materialSettings Параметры материала меша
+ * @param textureMapping Параметры отображения текстуры
  * @return Shared smart pointer на объект меша
  */
 vk::scene::MeshPtr VkRenderer::addMeshToScene(
         const vk::resources::GeometryBufferPtr& geometryBuffer,
-        const vk::resources::TextureBufferPtr& textureBuffer,
+        const vk::scene::MeshTextureSet& textureSet,
         const vk::scene::MeshMaterialSettings& materialSettings,
         const vk::scene::MeshTextureMapping& textureMapping)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureBuffer, materialSettings, textureMapping);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureSet, materialSettings, textureMapping);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);

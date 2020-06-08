@@ -33,8 +33,8 @@ namespace vk
             std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
+            std::swap(textureSet_, other.textureSet_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
-            textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
@@ -68,8 +68,8 @@ namespace vk
             std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
+            std::swap(textureSet_, other.textureSet_);
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
-            textureBufferPtr_.swap(other.textureBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
             uboMaterial_ = std::move(other.uboMaterial_);
@@ -90,8 +90,9 @@ namespace vk
          * Основной конструктор
          * @param pDevice Указатель на объект устройства
          * @param descriptorPool Unique smart pointer объекта дескрипторного пула
-         * @param descriptorSetLayout Макет размещения дескрипторного набора меша
+         * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
          * @param geometryBufferPtr Smart-pointer на объект геом. буфера
+         * @param textureSet Набор текстур меша
          * @param materialSettings Параметры материала
          * @param textureMappingSettings Параметры отображения текстуры
          */
@@ -99,14 +100,14 @@ namespace vk
                    const vk::UniqueDescriptorPool& descriptorPool,
                    const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                    vk::resources::GeometryBufferPtr geometryBufferPtr,
-                   vk::resources::TextureBufferPtr textureBufferPtr,
+                   vk::scene::MeshTextureSet textureSet,
                    const vk::scene::MeshMaterialSettings& materialSettings,
                    const vk::scene::MeshTextureMapping& textureMappingSettings): SceneElement(),
         isReady_(false),
         pDevice_(pDevice),
         pDescriptorPool_(&(descriptorPool.get())),
         geometryBufferPtr_(std::move(geometryBufferPtr)),
-        textureBufferPtr_(std::move(textureBufferPtr)),
+        textureSet_(std::move(textureSet)),
         materialSettings_(materialSettings)
         {
             // Проверить устройство
@@ -154,9 +155,6 @@ namespace vk
                     {uboMaterial_.getBuffer().get(),0,VK_WHOLE_SIZE}
             };
 
-            // Информация об изображении (изначально пуста)
-            vk::DescriptorImageInfo descriptorImageInfo{};
-
             // Описываем связи дескрипторов с буферами (описание "записей")
             std::vector<vk::WriteDescriptorSet> writes = {
                     {
@@ -192,24 +190,75 @@ namespace vk
             };
 
             // Если есть текстура
-            if(textureBufferPtr_.get() != nullptr)
-            {
-                // Заполнить информацию об изображении
-                descriptorImageInfo.sampler = textureBufferPtr_->getSampler()->get();
-                descriptorImageInfo.imageView = textureBufferPtr_->getImage().getImageView().get();
-                descriptorImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+//            if(textureBufferPtr_.get() != nullptr)
+//            {
+//                // Заполнить информацию об изображении
+//                descriptorImageInfo.sampler = textureBufferPtr_->getSampler()->get();
+//                descriptorImageInfo.imageView = textureBufferPtr_->getImage().getImageView().get();
+//                descriptorImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+//
+//                // Связь дескриптора с изображением
+//                writes.emplace_back(vk::WriteDescriptorSet(
+//                        descriptorSet_.get(),
+//                        3,
+//                        0,
+//                        1,
+//                        vk::DescriptorType::eCombinedImageSampler,
+//                        &descriptorImageInfo,
+//                        nullptr,
+//                        nullptr
+//                        ));
+//            }
 
+            // Массив с информацией о текстурах привязываемых к дескриптору
+            std::vector<vk::DescriptorImageInfo> descriptorImageInfos = {};
+
+            // Заполнение массива (если текстуры указаны)
+            if(textureSet_.color.get() != nullptr){
+                descriptorImageInfos.emplace_back(
+                        vk::DescriptorImageInfo(
+                                textureSet_.color->getSampler()->get(),
+                                textureSet_.color->getImage().getImageView().get(),
+                                vk::ImageLayout::eShaderReadOnlyOptimal));
+            }
+
+            if(textureSet_.normal.get() != nullptr){
+                descriptorImageInfos.emplace_back(
+                        vk::DescriptorImageInfo(
+                                textureSet_.normal->getSampler()->get(),
+                                textureSet_.normal->getImage().getImageView().get(),
+                                vk::ImageLayout::eShaderReadOnlyOptimal));
+            }
+
+            if(textureSet_.specular.get() != nullptr){
+                descriptorImageInfos.emplace_back(
+                        vk::DescriptorImageInfo(
+                                textureSet_.specular->getSampler()->get(),
+                                textureSet_.specular->getImage().getImageView().get(),
+                                vk::ImageLayout::eShaderReadOnlyOptimal));
+            }
+
+            if(textureSet_.displace.get() != nullptr){
+                descriptorImageInfos.emplace_back(
+                        vk::DescriptorImageInfo(
+                                textureSet_.displace->getSampler()->get(),
+                                textureSet_.displace->getImage().getImageView().get(),
+                                vk::ImageLayout::eShaderReadOnlyOptimal));
+            }
+
+            //TODO: сделать доступ к текстурам шейдере по фиксированным индексам массива (c текущим подходом это не прокатит)
+            if(!descriptorImageInfos.empty()){
                 // Связь дескриптора с изображением
                 writes.emplace_back(vk::WriteDescriptorSet(
                         descriptorSet_.get(),
                         3,
                         0,
-                        1,
+                        descriptorImageInfos.size(),
                         vk::DescriptorType::eCombinedImageSampler,
-                        &descriptorImageInfo,
+                        descriptorImageInfos.data(),
                         nullptr,
                         nullptr
-                        ));
+                ));
             }
 
             // Связываем дескрипторы с ресурсами (буферами и изображениями)
