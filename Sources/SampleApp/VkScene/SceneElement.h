@@ -21,12 +21,7 @@ namespace vk
 
         class SceneElement
         {
-        private:
-            /// Матрица модели (координаты объекта с точки зрения мира)
-            glm::mat4 modelMatrix_ = glm::mat4(1);
-            /// Матрица вида (координаты мира с точки зрения объекта)
-            glm::mat4 viewMatrix_ = glm::mat4(1);
-
+        protected:
             /// Абсолютное положение в пространстве
             glm::vec3 position_;
             /// Ориентация в пространстве
@@ -63,6 +58,22 @@ namespace vk
              */
             [[nodiscard]] glm::mat4 makeScaleMatrix() const;
 
+        private:
+            /// Матрица модели (координаты объекта с точки зрения мира)
+            glm::mat4 modelMatrix_ = glm::mat4(1);
+            /// Матрица вида (координаты мира с точки зрения объекта)
+            glm::mat4 viewMatrix_ = glm::mat4(1);
+
+            /**
+             * Вызывается после того как положение объекта в пространстве было изменено
+             * @param updateMatrices Запрос обновить матрицы
+             *
+             * @details Полностью виртуальный метод, должен быть переопределен в классе-потомке. Можно использовать
+             * для обновления буферов UBO и аналогичных целей
+             */
+            virtual void onPlacementUpdated(bool updateMatrices) = 0;
+
+        protected:
             /**
              * Обновление матрицы модели
              */
@@ -72,14 +83,6 @@ namespace vk
              * Обновление матрицы вида
              */
             void updateViewMatrix();
-
-            /**
-             * Вызывается после того капк матрицы были обновлены
-             *
-             * @details Полностью виртуальный метод, должен быть переопределен в классе-потомке. Можно использовать
-             * для обновления буферов UBO и аналогичных целей
-             */
-            virtual void onMatricesUpdated() = 0;
 
         public:
 
@@ -119,14 +122,14 @@ namespace vk
 
             /**
              * Установить положение
-             * @param position Тчока в пространстве
+             * @param position Точка в пространстве
              * @param updateMatrices Обновление матриц
              */
             void setPosition(const glm::vec3& position, bool updateMatrices = true);
 
             /**
              * Получить положение
-             * @return Тчока в пространстве
+             * @return Точка в пространстве
              */
             [[nodiscard]] const glm::vec3& getPosition() const;
 

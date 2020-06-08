@@ -31,16 +31,17 @@ struct TextureMapping
 
 /*Uniform*/
 
-layout(set = 0, binding = 0) uniform UniformViewProjection {
+layout(set = 0, binding = 0) uniform UniformCamera {
     mat4 _view;
     mat4 _proj;
+    vec3 _camPosition;
 };
 
-layout(set = 1, binding = 0) uniform UniformModel {
+layout(set = 2, binding = 0) uniform UniformModel {
     mat4 _model;
 };
 
-layout(set = 1, binding = 1) uniform UniformTextureMapping {
+layout(set = 2, binding = 1) uniform UniformTextureMapping {
     TextureMapping _textureMapping;
 };
 
@@ -71,7 +72,7 @@ void main()
 
     // Матрица преобразования нормалей
     // Учитывает только поворот, без искажения нормалей в процессе масштабирования
-    vs_out.normalMatrix = mat3(transpose(inverse(_model)));
+    vs_out.normalMatrix = transpose(inverse(mat3(_model)));
 
     // Цвет вершины передается как есть
     vs_out.color = color;

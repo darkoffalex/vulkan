@@ -9,6 +9,7 @@
 
 #include "VkScene/Mesh.h"
 #include "VkScene/Camera.h"
+#include "VkScene/LightSourceSet.hpp"
 
 class VkRenderer
 {
@@ -46,11 +47,15 @@ private:
     vk::UniqueDescriptorPool descriptorPoolCamera_;
     /// Объект дескрипторного пула для выделения наборов мешей (матрицы, материалы, текстуры)
     vk::UniqueDescriptorPool descriptorPoolMeshes_;
+    /// Объект дескрипторного пула для выделения набора для источников света
+    vk::UniqueDescriptorPool descriptorPoolLightSources_;
 
     /// Макет размещения дескрипторного набора для камеры (матрицы)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
     /// Макет размещения дескрипторного набора для меша (матрицы, материалы, текстуры)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshes_;
+    /// Макет размещения дескрипторного набора для источников света (кол-во, массив источников)
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutLightSources_;
 
     /// Макет размещения графического конвейера
     vk::UniquePipelineLayout pipelineLayout_;
@@ -70,6 +75,9 @@ private:
     std::vector<vk::scene::MeshPtr> sceneMeshes_;
     /// Камера (матрицы, UBO)
     vk::scene::Camera camera_;
+    /// Источники освещения сцены
+    vk::scene::LightSourceSet lightSourceSet_;
+
 
     /**
      * Инициализация проходов рендеринга
@@ -251,7 +259,7 @@ public:
      */
     vk::scene::MeshPtr addMeshToScene(const vk::resources::GeometryBufferPtr& geometryBuffer,
             const vk::resources::TextureBufferPtr& textureBuffer = nullptr,
-            const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f},
+            const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.4f, 0.4f, 0.4f},16.0f},
             const vk::scene::MeshTextureMapping& textureMapping = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
     /**
@@ -259,6 +267,31 @@ public:
      * @param meshPtr Shared smart pointer на объект меша
      */
     void removeMeshFromScene(const vk::scene::MeshPtr& meshPtr);
+
+    /**
+     * Добавить источник света на сцену
+     * @param type Тип источника света
+     * @param position Положение источника света
+     * @param color Цвет источника света
+     * @param attenuationLinear Линейный коэффициент затухания
+     * @param attenuationQuadratic Квадратичный коэффициент затухания
+     * @param cutOffAngle Внутренний угол отсечения света (для типа eSpot)
+     * @param cutOffOuterAngle Внешний угол отсечения света (для типа eSpot)
+     * @return Shared smart pointer на объект источника
+     */
+    vk::scene::LightSourcePtr addLightToScene(const vk::scene::LightSourceType& type,
+            const glm::vec3& position = {0.0f,0.0f,0.0f},
+            const glm::vec3& color = {1.0f,1.0f,1.0f},
+            glm::float32 attenuationLinear = 0.20f,
+            glm::float32 attenuationQuadratic = 0.22f,
+            glm::float32 cutOffAngle = 40.0f,
+            glm::float32 cutOffOuterAngle = 45.0f);
+
+    /**
+     * Удалить источник света со сцены
+     * @param lightSourcePtr
+     */
+    void removeLightFromScene(const vk::scene::LightSourcePtr& lightSourcePtr);
 
     /**
      * Доступ к камере

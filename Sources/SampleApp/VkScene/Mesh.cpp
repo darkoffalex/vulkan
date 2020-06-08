@@ -122,7 +122,7 @@ namespace vk
 
             // Выделить буфер для параметров материала
             uboMaterial_ = vk::tools::Buffer(pDevice_,
-                    sizeof(vk::scene::MeshMaterialSettings),
+                    MATERIAL_UBO_SIZE,
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
@@ -282,11 +282,15 @@ namespace vk
         }
 
         /**
-         * Обновление буферов UBO
+         * Событие смены положения
+         * @param updateMatrices Запрос обновить матрицы
          */
-        void Mesh::onMatricesUpdated()
+        void Mesh::onPlacementUpdated(bool updateMatrices)
         {
-            this->updateMatrixBuffers();
+            if(updateMatrices){
+                this->updateModelMatrix();
+                this->updateMatrixBuffers();
+            }
         }
 
         /**
@@ -305,7 +309,14 @@ namespace vk
         void Mesh::updateMaterialSettingsBuffers()
         {
             if(uboMaterial_.isReady()){
-                memcpy(pUboMaterialData_,&materialSettings_, sizeof(vk::scene::MeshMaterialSettings));
+                // Преобразование указателя (для возможности указывать побайтовое смещение)
+                auto pData = reinterpret_cast<unsigned char*>(pUboMaterialData_);
+
+                // Копирование в буфер (с учетом выравнивания std140)
+                memcpy(pData + 0,&materialSettings_.ambientColor,16);
+                memcpy(pData + 16,&materialSettings_.diffuseColor,16);
+                memcpy(pData + 32, &materialSettings_.specularColor,16);
+                memcpy(pData + 48, &materialSettings_.shininess,4);
             }
         }
 

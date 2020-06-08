@@ -17,6 +17,7 @@ namespace vk
                          pDescriptorPool_(nullptr),
                          pUboViewMatrixData_(nullptr),
                          pUboProjectionMatrixData_(nullptr),
+                         pUboCamPositionData_(nullptr),
                          projectionMatrix_({}),
                          aspectRatio_(1.0f),
                          projectionType_(CameraProjectionType::ePerspective),
@@ -37,6 +38,7 @@ namespace vk
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboViewMatrixData_, other.pUboViewMatrixData_);
             std::swap(pUboProjectionMatrixData_, other.pUboProjectionMatrixData_);
+            std::swap(pUboCamPositionData_, other.pUboCamPositionData_);
 
             std::swap(projectionMatrix_, other.projectionMatrix_);
             std::swap(projectionType_, other.projectionType_);
@@ -46,7 +48,7 @@ namespace vk
             std::swap(aspectRatio_, other.aspectRatio_);
 
             descriptorSet_.swap(other.descriptorSet_);
-            uboViewProjectionMatrix_ = std::move(other.uboViewProjectionMatrix_);
+            uboCameraBuffer_ = std::move(other.uboCameraBuffer_);
         }
 
         /**
@@ -64,12 +66,14 @@ namespace vk
             pDescriptorPool_ = nullptr;
             pUboViewMatrixData_ = nullptr;
             pUboProjectionMatrixData_ = nullptr;
+            pUboCamPositionData_ = nullptr;
 
             std::swap(isReady_,other.isReady_);
             std::swap(pDevice_,other.pDevice_);
             std::swap(pDescriptorPool_,other.pDescriptorPool_);
             std::swap(pUboViewMatrixData_, other.pUboViewMatrixData_);
             std::swap(pUboProjectionMatrixData_, other.pUboProjectionMatrixData_);
+            std::swap(pUboCamPositionData_, other.pUboCamPositionData_);
 
             std::swap(projectionMatrix_, other.projectionMatrix_);
             std::swap(projectionType_, other.projectionType_);
@@ -79,7 +83,7 @@ namespace vk
             std::swap(aspectRatio_, other.aspectRatio_);
 
             descriptorSet_.swap(other.descriptorSet_);
-            uboViewProjectionMatrix_ = std::move(other.uboViewProjectionMatrix_);
+            uboCameraBuffer_ = std::move(other.uboCameraBuffer_);
 
             return *this;
         }
@@ -109,6 +113,7 @@ namespace vk
                 pDescriptorPool_(&(descriptorPool.get())),
                 pUboViewMatrixData_(nullptr),
                 pUboProjectionMatrixData_(nullptr),
+                pUboCamPositionData_(nullptr),
                 projectionMatrix_({}),
                 aspectRatio_(aspectRatio),
                 projectionType_(projectionType),
@@ -122,14 +127,15 @@ namespace vk
             }
 
             // Выделить буфер для матрицы модели
-            uboViewProjectionMatrix_ = vk::tools::Buffer(pDevice_,
-                    sizeof(glm::mat4) * 2,
+            uboCameraBuffer_ = vk::tools::Buffer(pDevice_,
+                    sizeof(glm::mat4) * 2 + sizeof(glm::vec3),
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
             // Разметить память буфера, получив указатели на регионы
-            pUboViewMatrixData_ = uboViewProjectionMatrix_.mapMemory(0, sizeof(glm::mat4));
-            pUboProjectionMatrixData_ = uboViewProjectionMatrix_.mapMemory(sizeof(glm::mat4), sizeof(glm::mat4));
+            pUboViewMatrixData_ = uboCameraBuffer_.mapMemory(0, sizeof(glm::mat4));
+            pUboProjectionMatrixData_ = uboCameraBuffer_.mapMemory(sizeof(glm::mat4), sizeof(glm::mat4));
+            pUboCamPositionData_ = uboCameraBuffer_.mapMemory(sizeof(glm::mat4) * 2, sizeof(glm::vec3));
 
             // Выделить дескрипторный набор
             vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
@@ -143,7 +149,7 @@ namespace vk
 
             // Информация о буферах
             std::vector<vk::DescriptorBufferInfo> bufferInfos = {
-                    {uboViewProjectionMatrix_.getBuffer().get(),0,VK_WHOLE_SIZE},
+                    {uboCameraBuffer_.getBuffer().get(), 0, VK_WHOLE_SIZE},
             };
 
             // Описываем связи дескрипторов с буферами (описание "записей")
@@ -167,7 +173,7 @@ namespace vk
             this->updateProjectionMatrix();
 
             // Обновить UBO буферы
-            this->updateMatrixBuffers();
+            this->updateUbo();
 
             // Инициализация завершена
             isReady_ = true;
@@ -193,14 +199,15 @@ namespace vk
                 descriptorSet_.release();
 
                 // Очистить UBO буферы
-                uboViewProjectionMatrix_.unmapMemory();
-                uboViewProjectionMatrix_.destroyVulkanResources();
+                uboCameraBuffer_.unmapMemory();
+                uboCameraBuffer_.destroyVulkanResources();
 
                 // Обнулить указатели
                 pDevice_ = nullptr;
                 pDescriptorPool_ = nullptr;
                 pUboViewMatrixData_ = nullptr;
                 pUboProjectionMatrixData_ = nullptr;
+                pUboCamPositionData_ = nullptr;
 
                 // Объект де-инициализирован
                 isReady_ = false;
@@ -242,7 +249,7 @@ namespace vk
         {
             this->projectionType_ = projectionType;
             this->updateProjectionMatrix();
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eProjection);
+            this->updateUbo(BufferUpdateFlagBits::eProjection);
         }
 
         /**
@@ -261,7 +268,7 @@ namespace vk
         {
             this->zNear_ = zNear;
             this->updateProjectionMatrix();
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eProjection);
+            this->updateUbo(BufferUpdateFlagBits::eProjection);
         }
 
         /**
@@ -280,7 +287,7 @@ namespace vk
         {
             this->zFar_ = zFar;
             this->updateProjectionMatrix();
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eProjection);
+            this->updateUbo(BufferUpdateFlagBits::eProjection);
         }
 
         /**
@@ -299,7 +306,7 @@ namespace vk
         {
             this->fov_ = fov;
             this->updateProjectionMatrix();
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eProjection);
+            this->updateUbo(BufferUpdateFlagBits::eProjection);
         }
 
         /**
@@ -318,7 +325,7 @@ namespace vk
         {
             this->aspectRatio_ = aspectRatio;
             this->updateProjectionMatrix();
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eProjection);
+            this->updateUbo(BufferUpdateFlagBits::eProjection);
         }
 
         /**
@@ -333,26 +340,32 @@ namespace vk
          * Обновление UBO буферов матриц модели
          * @param updateFlags Флаги обновления буферов (не всегда нужно обновлять все матрицы)
          */
-        void Camera::updateMatrixBuffers(const unsigned int updateFlags)
+        void Camera::updateUbo(const unsigned int updateFlags)
         {
-            if(uboViewProjectionMatrix_.isReady())
+            if(uboCameraBuffer_.isReady())
             {
                 if(updateFlags & BufferUpdateFlagBits::eView)
                     memcpy(pUboViewMatrixData_,&(this->getViewMatrix()),sizeof(glm::mat4));
 
                 if(updateFlags & BufferUpdateFlagBits::eProjection)
                     memcpy(pUboProjectionMatrixData_,&(this->getProjectionMatrix()),sizeof(glm::mat4));
+
+                if(updateFlags & BufferUpdateFlagBits::eCamPosition)
+                    memcpy(pUboCamPositionData_, &(this->getPosition()), sizeof(glm::vec3));
             }
         }
 
         /**
-         * Обработка события обновления матриц
+         * Событие смены положения
+         * @param updateMatrices Запрос обновить матрицы
          */
-        void Camera::onMatricesUpdated()
+        void Camera::onPlacementUpdated(bool updateMatrices)
         {
-            // Метод вызывается только после смены пространственных параметров (матрица вида)
-            // Достаточно обновить в буфере только эту матрицу
-            this->updateMatrixBuffers(BufferUpdateFlagBits::eView);
+            if(updateMatrices){
+                this->updateViewMatrix();
+                //this->updateModelMatrix();
+                this->updateUbo(BufferUpdateFlagBits::eView|BufferUpdateFlagBits::eCamPosition);
+            }
         }
 
         /**

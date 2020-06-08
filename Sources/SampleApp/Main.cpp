@@ -103,23 +103,27 @@ int main(int argc, char* argv[])
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = _vkRenderer->addMeshToScene(quadGeometry, floorTexture);
+        auto floor = _vkRenderer->addMeshToScene(quadGeometry,floorTexture);
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
-        floor->setScale({10.0f,10.0f,0.0f}, false);
+        floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
 
         // Куб
         auto cube = _vkRenderer->addMeshToScene(cubeGeometry,cubeTexture);
-        cube->setScale({0.5f,0.5f,0.5f});
-        cube->setPosition({0.0f,0.25f,0.0f});
+        cube->setScale({0.5f,0.5f,0.5f}, false);
+        cube->setOrientation({0.0f,45.0f,0.0f}, false);
+        cube->setPosition({0.5f,0.25f,-0.5f});
+
+        // Свет
+        auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{0.0f,1.5f,0.0f});
 
         /** MAIN LOOP **/
 
         // Управляемая камера
         _camera = new tools::Camera();
-        _camera->position = {0.0f,2.0f,0.0f};
-        _camera->orientation = {0.0f,0.0f,0.0f};
+        _camera->position = {0.0f,2.0f,4.0f};
+        _camera->orientation = {-30.0f,0.0f,0.0f};
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
         _timer = new tools::Timer();

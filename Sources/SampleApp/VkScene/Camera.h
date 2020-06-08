@@ -20,7 +20,8 @@ namespace vk
             enum BufferUpdateFlagBits
             {
                 eView = (1u << 0u),
-                eProjection = ( 1u << 1u)
+                eProjection = ( 1u << 1u),
+                eCamPosition = (1u << 2u)
             };
 
             /// Готово ли изображение
@@ -42,11 +43,13 @@ namespace vk
             glm::float32 aspectRatio_;
 
             /// UBO буфер для матриц вида-проекции
-            vk::tools::Buffer uboViewProjectionMatrix_;
+            vk::tools::Buffer uboCameraBuffer_;
             /// Указатель на размеченную область буфера UBO для матриц вида
             void* pUboViewMatrixData_;
             /// Указатель на размеченную область буфера UBO для матрицы проекции
             void* pUboProjectionMatrixData_;
+            /// Указатель на размеченную область буфера UBO для положения камеры
+            void* pUboCamPositionData_;
 
             /// Указатель на пул дескрипторов, из которого выделяется набор дескрипторов меша
             const vk::DescriptorPool *pDescriptorPool_;
@@ -62,12 +65,13 @@ namespace vk
              * Обновление UBO буферов матриц модели
              * @param updateFlags Флаги обновления буферов (не всегда нужно обновлять все матрицы)
              */
-            void updateMatrixBuffers(unsigned updateFlags = BufferUpdateFlagBits::eView | BufferUpdateFlagBits::eProjection);
+            void updateUbo(unsigned updateFlags = BufferUpdateFlagBits::eView | BufferUpdateFlagBits::eProjection | BufferUpdateFlagBits::eCamPosition);
 
             /**
-             * Обработка события обновления матриц
+             * Событие смены положения
+             * @param updateMatrices Запрос обновить матрицы
              */
-            void onMatricesUpdated() override;
+            void onPlacementUpdated(bool updateMatrices) override;
 
         public:
 

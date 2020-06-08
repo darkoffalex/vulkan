@@ -385,6 +385,24 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolMeshes_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
+    // Создать пул для набора описывающего источники света сцены
+    {
+        // Размеры пула для наборов типа "материал меша"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Дескриптор кол-ва источников
+                {vk::DescriptorType::eUniformBuffer,1},
+                // Дескриптор массива источников
+                {vk::DescriptorType::eUniformBuffer,1},
+        };
+
+        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр (кол-во источников и массив источников)
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolLightSources_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    }
+
     // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
     // Макет размещения набора подробно описывает какие конкретно типы дескрипторов будут в наборе, сколько их, на каком
     // этапе конвейера они доступы, а так же какой у них индекс привязки (binding) в шейдере
@@ -393,12 +411,12 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
     {
         // Описание привязок
         std::vector<vk::DescriptorSetLayoutBinding> bindings = {
-                // Обычный UBO буфер (для матриц вида и проекции)
+                // Обычный UBO буфер (для матриц вида, проекции и для положения камеры)
                 {
                         0,
                         vk::DescriptorType::eUniformBuffer,
                         1,
-                        vk::ShaderStageFlagBits::eVertex,
+                        vk::ShaderStageFlagBits::eVertex|vk::ShaderStageFlagBits::eFragment,
                         nullptr,
                 },
         };
@@ -454,6 +472,35 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
         descriptorSetLayoutMeshes_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
+
+    // Макет размещения набора описывающего источники света сцены
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Обычный UBO буфер (для значения кол-ва источников)
+                {
+                        0,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                },
+                // Обычный UBO буфер (для массива источников)
+                {
+                        1,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutLightSources_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
 }
 
 /**
@@ -469,20 +516,25 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     try{
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolCamera_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshes_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolLightSources_.get());
     }
 	catch(std::exception&){}
 
     // Уничтожить размещения дескрипторов
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshes_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutLightSources_.get());
     descriptorSetLayoutCamera_.release();
     descriptorSetLayoutMeshes_.release();
+    descriptorSetLayoutLightSources_.release();
 
     // Уничтожить пулы дескрипторов
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshes_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolLightSources_.get());
     descriptorPoolCamera_.release();
     descriptorPoolMeshes_.release();
+    descriptorPoolLightSources_.release();
 }
 
 /**
@@ -506,8 +558,11 @@ void VkRenderer::initPipeline(
     // М А К Е Т  Р А З М Е Щ Е Н И Я  К О Н В Е Й Е Р А
 
     // Массив макетов размещения дескрипторов
+    // ВНИМАНИЕ! Порядок следования наборов в шейдере (индексы дескрипторных наборов) зависит от порядка указания
+    // макетов размещения в данном массиве.
     std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
             descriptorSetLayoutCamera_.get(),
+            descriptorSetLayoutLightSources_.get(),
             descriptorSetLayoutMeshes_.get()
     };
 
@@ -865,6 +920,10 @@ inputDataInOpenGlStyle_(true)
             vk::scene::CameraProjectionType::ePerspective);
     std::cout << "Camera created." << std::endl;
 
+    // Создание объекта набора источников света сцены (UBO буферов и дескрипторных наборов)
+    lightSourceSet_ = vk::scene::LightSourceSet(&device_,descriptorPoolLightSources_,descriptorSetLayoutLightSources_,100);
+    std::cout << "Light source set created." << std::endl;
+
     // Создать проход рендеринга
     this->initPipeline(vertexShaderCodeBytes,fragmentShaderCodeBytes);
     std::cout << "Graphics pipeline created." << std::endl;
@@ -897,6 +956,10 @@ VkRenderer::~VkRenderer()
     // Очистить все ресурсы мешей
     this->freeMeshes();
     std::cout << "All allocated meshes data freed." << std::endl;
+
+    // Очистить ресурсы набора источников света
+    this->lightSourceSet_.destroyVulkanResources();
+    std::cout << "Light source set destroyed." << std::endl;
 
     // Очистить ресурсы камеры
     this->camera_.destroyVulkanResources();
@@ -1120,6 +1183,43 @@ void VkRenderer::removeMeshFromScene(const vk::scene::MeshPtr& meshPtr)
 }
 
 /**
+ * Добавить источник света на сцену
+ * @param type Тип источника света
+ * @param position Положение источника света
+ * @param color Цвет источника света
+ * @param attenuationLinear Линейный коэффициент затухания
+ * @param attenuationQuadratic Квадратичный коэффициент затухания
+ * @param cutOffAngle Внутренний угол отсечения света (для типа eSpot)
+ * @param cutOffOuterAngle Внешний угол отсечения света (для типа eSpot)
+ * @return Shared smart pointer на объект источника
+ */
+vk::scene::LightSourcePtr VkRenderer::addLightToScene(
+        const vk::scene::LightSourceType &type, const glm::vec3 &position, const glm::vec3 &color,
+        glm::float32 attenuationLinear, glm::float32 attenuationQuadratic, glm::float32 cutOffAngle,
+        glm::float32 cutOffOuterAngle)
+{
+    if(lightSourceSet_.isReady())
+    {
+        return lightSourceSet_.addLightSource(type,
+                position,color,attenuationLinear,attenuationQuadratic,cutOffAngle,cutOffOuterAngle);
+    }
+
+    return nullptr;
+}
+
+/**
+ * Удалить источник света со сцены
+ * @param lightSourcePtr
+ */
+void VkRenderer::removeLightFromScene(const vk::scene::LightSourcePtr &lightSourcePtr)
+{
+    if(lightSourceSet_.isReady())
+    {
+        lightSourceSet_.removeLightSource(lightSourcePtr);
+    }
+}
+
+/**
  * Доступ к камере
  * @return Константный указатель на объект камеры
  */
@@ -1188,7 +1288,7 @@ void VkRenderer::draw()
                     vk::PipelineBindPoint::eGraphics,
                     pipelineLayout_.get(),
                     0,
-                    {getCameraPtr()->getDescriptorSet()},{});
+                    {camera_.getDescriptorSet(),lightSourceSet_.getDescriptorSet()},{});
 
             for(const auto& meshPtr : sceneMeshes_)
             {
@@ -1198,7 +1298,7 @@ void VkRenderer::draw()
                     commandBuffers_[i].bindDescriptorSets(
                             vk::PipelineBindPoint::eGraphics,
                             pipelineLayout_.get(),
-                            1,
+                            2,
                             {meshPtr->getDescriptorSet()},{});
 
                     // Буферы вершин и индексов

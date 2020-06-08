@@ -8,11 +8,18 @@ namespace vk
 {
     namespace scene
     {
+        /**
+         * Размер UBO буфера материала меша
+         * С учетом выравнивания std140
+         */
+        const size_t MATERIAL_UBO_SIZE = 56;
+
         struct MeshMaterialSettings
         {
-            glm::vec3 albedo = {1.0f,1.0f,1.0f};
-            glm::float32 metallic = 0.0f;
-            glm::float32 roughness = 1.0f;
+            glm::vec3 ambientColor = {0.05f, 0.05f, 0.05f};
+            glm::vec3 diffuseColor = {0.8f, 0.8f, 0.8f};
+            glm::vec3 specularColor = {0.4f, 0.4f, 0.4f};
+            glm::float32 shininess = 16.0f;
         };
 
         struct MeshTextureMapping
@@ -26,7 +33,7 @@ namespace vk
         class Mesh : public SceneElement
         {
         private:
-            /// Готово ли изображение
+            /// Готово ли к использованию
             bool isReady_;
             /// Указатель на устройство
             const vk::tools::Device* pDevice_;
@@ -75,9 +82,10 @@ namespace vk
             void updateTextureMappingBuffers();
 
             /**
-             * Обработка события обновления матриц
+             * Событие смены положения
+             * @param updateMatrices Запрос обновить матрицы
              */
-            void onMatricesUpdated() override;
+            void onPlacementUpdated(bool updateMatrices) override;
 
         public:
             /**
@@ -99,7 +107,7 @@ namespace vk
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                     vk::resources::GeometryBufferPtr geometryBufferPtr,
                     vk::resources::TextureBufferPtr textureBufferPtr = nullptr,
-                    const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f,1.0f,1.0f},0.0f,1.0f},
+                    const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.4f, 0.4f, 0.4f},16.0f},
                     const vk::scene::MeshTextureMapping& textureMappingSettings = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
             /**

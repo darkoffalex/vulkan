@@ -169,12 +169,7 @@ namespace vk
         void SceneElement::setPosition(const glm::vec3 &position, bool updateMatrices)
         {
             this->position_ = position;
-
-            if(updateMatrices) {
-                this->updateModelMatrix();
-                this->updateViewMatrix();
-                this->onMatricesUpdated();
-            }
+            this->onPlacementUpdated(updateMatrices);
         }
 
         /**
@@ -194,12 +189,7 @@ namespace vk
         void SceneElement::setOrientation(const glm::vec3 &orientation, bool updateMatrices)
         {
             this->orientation_ = orientation;
-
-            if(updateMatrices) {
-                this->updateModelMatrix();
-                this->updateViewMatrix();
-                this->onMatricesUpdated();
-            }
+            this->onPlacementUpdated(updateMatrices);
         }
 
         /**
@@ -219,12 +209,7 @@ namespace vk
         void SceneElement::setScale(const glm::vec3 &scale, bool updateMatrices)
         {
             this->scale_ = scale;
-
-            if(updateMatrices) {
-                this->updateModelMatrix();
-                this->updateViewMatrix();
-                this->onMatricesUpdated();
-            }
+            this->onPlacementUpdated(updateMatrices);
         }
 
         /**
@@ -244,12 +229,7 @@ namespace vk
         void SceneElement::setOrigin(const glm::vec3 &origin, bool updateMatrices)
         {
             this->origin_ = origin;
-
-            if(updateMatrices) {
-                this->updateModelMatrix();
-                this->updateViewMatrix();
-                this->onMatricesUpdated();
-            }
+            this->onPlacementUpdated(updateMatrices);
         }
 
         /**
