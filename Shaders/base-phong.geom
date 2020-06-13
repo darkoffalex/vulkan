@@ -29,6 +29,7 @@ layout (location = 0) out GS_OUT
     vec3 normal;           // Вектор нормали фрагмента
     vec2 uv;               // Текстурные координаты фрагмента
     mat3 tbnMatrix;        // Матрица для преобразования из касательного пространства треугольника в мировое
+    mat3 tbnMatrixInverse; // Матрица для преобразования из мирового пространства в касательное
 } gs_out;
 
 /*Функции*/
@@ -92,6 +93,7 @@ void main()
         vec3 B = normalize(cross(gs_in[i].normal, T));
         vec3 N = normalize(gs_in[i].normal);
         gs_out.tbnMatrix = mat3(T,B,N);
+        gs_out.tbnMatrixInverse = inverse(gs_out.tbnMatrix);
 
         // Добавить вершину
         EmitVertex();

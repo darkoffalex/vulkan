@@ -51,7 +51,7 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
     depthStAttDesc.samples = vk::SampleCountFlagBits::e1;                   // Один семпл на пиксель (без мульти-семплинга)
     depthStAttDesc.loadOp = vk::AttachmentLoadOp::eClear;                   // Цвет. Начало под-прохода - очищать вложение
     depthStAttDesc.storeOp = vk::AttachmentStoreOp::eDontCare;              // Цвет. Конец под-прохода - не важно (показывать не нужно)
-    depthStAttDesc.stencilLoadOp = vk::AttachmentLoadOp::eClear;            // Трафарет. Начало под-прохода - очищать
+    depthStAttDesc.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;         // Трафарет. Начало под-прохода - очищать
     depthStAttDesc.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;       // Трафарет. Конец под-прохода - не важно
     depthStAttDesc.initialLayout = vk::ImageLayout::eUndefined;             // Макет памяти изображения в начале - не важно
     depthStAttDesc.finalLayout = vk::ImageLayout::eDepthAttachmentOptimal;  // Макет памяти изображения в конце - буфер глубины-трафарета
@@ -86,7 +86,7 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
     externalToFirst.dstSubpass = 0;
     externalToFirst.srcStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
     externalToFirst.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-    externalToFirst.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+    externalToFirst.srcAccessMask = vk::AccessFlagBits::eMemoryRead;
     externalToFirst.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
     externalToFirst.dependencyFlags = vk::DependencyFlagBits::eByRegion;
     subPassDependencies.push_back(externalToFirst);
@@ -98,7 +98,7 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
     firstToExternal.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     firstToExternal.dstStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
     firstToExternal.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
-    firstToExternal.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+    firstToExternal.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
     firstToExternal.dependencyFlags = vk::DependencyFlagBits::eByRegion;
     subPassDependencies.push_back(firstToExternal);
 
@@ -669,7 +669,6 @@ void VkRenderer::initPipeline(
     viewport.setWidth(static_cast<float>(viewPortExtent.width));
     viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
     viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
-
     viewport.setMinDepth(0.0f);
     viewport.setMaxDepth(1.0f);
 
@@ -709,7 +708,7 @@ void VkRenderer::initPipeline(
     pipelineDepthStencilStateCreateInfo.depthTestEnable = true;                        // Тест глубины включен
     pipelineDepthStencilStateCreateInfo.depthWriteEnable = true;                       // Запись в тест глубины включена
     pipelineDepthStencilStateCreateInfo.depthCompareOp = vk::CompareOp::eLessOrEqual;  // Функция сравнения (меньше или равно)
-    pipelineDepthStencilStateCreateInfo.depthBoundsTestEnable = false;                 // Тест границ глубины отеключен
+    pipelineDepthStencilStateCreateInfo.depthBoundsTestEnable = false;                 // Тест границ глубины отключен
     pipelineDepthStencilStateCreateInfo.stencilTestEnable = false;                     // Тест трафарета отключен
     pipelineDepthStencilStateCreateInfo.back.failOp = vk::StencilOp::eKeep;            // В случае провала теста трафарета для задних граней
     pipelineDepthStencilStateCreateInfo.back.passOp = vk::StencilOp::eKeep;            // В случае прохождения теста трафарета для задних граней
@@ -1296,6 +1295,8 @@ void VkRenderer::draw()
             viewport.setWidth(static_cast<float>(viewPortExtent.width));
             viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
             viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
+            viewport.setMinDepth(0.0f);
+            viewport.setMaxDepth(1.0f);
             commandBuffers_[i].setViewport(0,1,&viewport);
 
             // Привязать набор дескрипторов камеры (матрицы вида и проекции)

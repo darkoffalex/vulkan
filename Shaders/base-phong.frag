@@ -24,6 +24,7 @@ layout (location = 0) in GS_OUT
     vec3 normal;           // Вектор нормали фрагмента
     vec2 uv;               // Текстурные координаты фрагмента
     mat3 tbnMatrix;        // Матрица для преобразования из касательного пространства треугольника в мировое
+    mat3 tbnMatrixInverse; // Матрица для преобразования из мирового пространства в касательное
 } fs_in;
 
 /*Вспомогательные типы*/
@@ -203,16 +204,15 @@ float depthMap(vec2 uv, bool inverse)
 vec2 paralaxMappedUv(vec2 uv, vec3 toView, bool inverseMap)
 {
     // Вектор в направлении камеры от фрагмента (в касательном пространстве)
-    vec3 toViewT = normalize(inverse(fs_in.tbnMatrix) * toView);
+    vec3 toViewT = normalize(fs_in.tbnMatrixInverse * toView);
 
     // Кол-во слоев глубины
-    const float minDepthLayers = 16;
-    const float maxDepthLayers = 32;
+    const float minDepthLayers = 8;
+    const float maxDepthLayers = 16;
 
     // Определяем оптимальное кол-во слоев деления глубины в зависимости от угла под которым смотрим на тангент-плоскость
     // Для большего угла будет более корректно использовать большее дробление слоёв
-    float depthLayers = mix(minDepthLayers, maxDepthLayers, abs(dot(vec3(0.0, 0.0, 1.0), toViewT)));
-//    float depthLayers = maxDepthLayers;
+    float depthLayers = mix(maxDepthLayers,minDepthLayers,abs(dot(vec3(0.0, 0.0, 1.0), toViewT)));
     // Размер слоя глубины (маскимальная глубина - 1, белый цвет)
     float layerDepth = 1.0f / depthLayers;
 
