@@ -88,9 +88,9 @@ void main()
         gs_out.uv = gs_in[i].uv;
 
         // Собрать TBN матрицу (касательного-мирового пространства)
-        vec3 T = orthogonalizeTangent(gs_in[i].normalMatrix * polygonTangent, gs_in[i].normal);
-        vec3 B = cross(gs_in[i].normal, T);
-        vec3 N = gs_in[i].normal;
+        vec3 T = normalize(orthogonalizeTangent(gs_in[i].normalMatrix * polygonTangent, gs_in[i].normal));
+        vec3 B = normalize(cross(gs_in[i].normal, T));
+        vec3 N = normalize(gs_in[i].normal);
         gs_out.tbnMatrix = mat3(T,B,N);
 
         // Добавить вершину

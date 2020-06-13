@@ -100,29 +100,42 @@ int main(int argc, char* argv[])
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
         auto floorTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/normal.png",true);
-        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"default_specular.jpg",true);
+        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/spec.png",true);
+        auto floorTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/height.png",true);
 
-        auto cubeTexture = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
+        auto wallTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/color.jpg", true);
+        auto wallTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/normal.jpg", true);
+        auto wallTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/spec.jpg", true);
+        auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/disp.png", true);
+
+        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
         auto cubeTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"default_normal.jpg", true);
         auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
 
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
+        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec,floorTextureDisplace});
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
 
+        // Стена
+        auto wall = _vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec,wallTextureDisplace});
+        wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f}});
+        wall->setPosition({0.0f,1.25f,-1.5f}, false);
+        wall->setScale({10.0f,2.5f,1.0f});
+
         // Куб
-        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,{cubeTexture,cubeTextureNormal,cubeTextureSpec});
+        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,{cubeTextureColor, cubeTextureNormal, cubeTextureSpec});
         cube->setScale({0.5f,0.5f,0.5f}, false);
         cube->setOrientation({0.0f,45.0f,0.0f}, false);
-        cube->setPosition({0.5f,0.25f,-0.5f});
+        cube->setPosition({0.0f,0.25f,-0.5f});
 
         // Свет
-        auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{0.0f,1.5f,0.0f});
+        auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});
+        auto light2 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{-2.5f,1.5f,0.0f});
 
         /** MAIN LOOP **/
 

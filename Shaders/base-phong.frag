@@ -193,17 +193,85 @@ bool isTextureAvailable(uint textureType)
     return sizes.x > 1 && sizes.y > 1;
 }
 
+// Получить значение из карты глубины
+float depthMap(vec2 uv, bool inverse)
+{
+    return inverse ? 1 - texture(_textures[TEXTURE_DISPLACE], uv).r : texture(_textures[TEXTURE_DISPLACE], uv).r;
+}
+
+// Сдвинуть UV координаты согласно карте глубин
+vec2 paralaxMappedUv(vec2 uv, vec3 toView, bool inverseMap)
+{
+    // Вектор в направлении камеры от фрагмента (в касательном пространстве)
+    vec3 toViewT = normalize(inverse(fs_in.tbnMatrix) * toView);
+
+    // Кол-во слоев глубины
+    const float minDepthLayers = 16;
+    const float maxDepthLayers = 32;
+
+    // Определяем оптимальное кол-во слоев деления глубины в зависимости от угла под которым смотрим на тангент-плоскость
+    // Для большего угла будет более корректно использовать большее дробление слоёв
+    float depthLayers = mix(minDepthLayers, maxDepthLayers, abs(dot(vec3(0.0, 0.0, 1.0), toViewT)));
+//    float depthLayers = maxDepthLayers;
+    // Размер слоя глубины (маскимальная глубина - 1, белый цвет)
+    float layerDepth = 1.0f / depthLayers;
+
+    // Вектор сдвига UV координат на каждом шаге (слое)
+    // Несмотря на то что по факту мы работаем с глубиной (ось Z), сами данные распологаются на плосоксти (XY).
+    // Компонента Z не задействована при выборке, но направление вектора взгляда определяет направление выборки на плоскости текстуры
+    vec2 p = toViewT.xy * 0.15f;
+    vec2 layerUvOffset = p / depthLayers;
+
+    // Начальные значения UV координат
+    vec2 currentUv = uv;
+    // Текущая вычисленная глубина
+    float currentDepthCalculated = 0.0f;
+    // Текущая глубина из карты глубины
+    float currentDepthFromMap = depthMap(currentUv,inverseMap);
+
+    // Покуда не превзошли глубину из карты
+    while(currentDepthCalculated < currentDepthFromMap)
+    {
+        // Смещаем текстурные координаты вдоль вектора взгляда
+        currentUv -= layerUvOffset;
+        // Смещяем глубину на 1 уровень
+        currentDepthCalculated += layerDepth;
+        // Обновляем значение текущей глубины из карты
+        currentDepthFromMap = depthMap(currentUv,inverseMap);
+    }
+
+    // Найти UV координаты предыдущего шага
+    vec2 previousUv = currentUv + layerUvOffset;
+    // Найти глубины предыдущего шага
+    float previousDepthCalculated = currentDepthCalculated - layerDepth;
+
+    // Разница между настоящим значением глубины в текущих координатах и вычисленным
+    float currentDeptDelta = currentDepthFromMap - currentDepthCalculated;
+    // Разница между настоящим значением глубины в предыдущих координатах и вычесленным для прошлого слоя
+    float beforeDepthDelta = depthMap(previousUv,inverseMap) - previousDepthCalculated;
+
+    // Интерполяция текстурных координат
+    float weight = currentDeptDelta / (currentDeptDelta - beforeDepthDelta);
+    vec2 finalUv = (previousUv * weight) + (currentUv * (1.0 - weight));
+
+    return finalUv;
+}
+
 // Основная функция вершинного шейдера
 // Вычисление итогового цвета фрагмента (пикселя)
 void main()
 {
     // Структура описывающая текущий фрагмент
     Fragment f;
-    f.position = fs_in.position;
-    f.color = isTextureAvailable(TEXTURE_COLOR) ? texture(_textures[TEXTURE_COLOR],fs_in.uv).rgb : vec3(1.0f);
-    f.normal = isTextureAvailable(TEXTURE_NORMAL) ? getNormalFromMap(fs_in.uv) : normalize(fs_in.normal);
     f.toView = normalize(_camPosition - fs_in.position);
-    f.specularity = isTextureAvailable(TEXTURE_SPECULAR) ? texture(_textures[TEXTURE_SPECULAR],fs_in.uv).r : 0.0f;
+
+    // UV координаты фрагмента
+    vec2 uv = isTextureAvailable(TEXTURE_DISPLACE) ? paralaxMappedUv(fs_in.uv,f.toView,true) : fs_in.uv;
+
+    f.position = fs_in.position;
+    f.color = isTextureAvailable(TEXTURE_COLOR) ? texture(_textures[TEXTURE_COLOR],uv).rgb : vec3(1.0f);
+    f.normal = isTextureAvailable(TEXTURE_NORMAL) ? getNormalFromMap(uv) : normalize(fs_in.normal);
+    f.specularity = isTextureAvailable(TEXTURE_SPECULAR) ? texture(_textures[TEXTURE_SPECULAR],uv).r : 0.0f;
 
     // Итоговый цвет
     vec3 result = vec3(0.0f);

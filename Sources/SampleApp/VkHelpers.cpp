@@ -33,13 +33,15 @@ namespace vk
                 throw std::runtime_error(std::string("Can't load texture (").append(path).append(")").c_str());
             }
 
+            //TODO: сделать определение кол-ва каналов и байт на пиксель
+
             // Создать ресурс текстуры
             // Для простоты пока будем считать что кол-вао байт на пиксель равно кол-ву каналов
             auto texture = pRenderer->createTextureBuffer(
                     bytes,
                     static_cast<size_t>(width),
                     static_cast<size_t>(height),
-                    static_cast<size_t>(channels > 2 ? 4 : channels),
+                    static_cast<size_t>(4),
                     mip,
                     sRgb);
 
