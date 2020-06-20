@@ -14,12 +14,19 @@ namespace vk
          */
         const size_t MATERIAL_UBO_SIZE = 56;
 
+        // Типы текстур
+        // Порядок индексов должен соответствовать порядку MeshTextureSet
+        const size_t TEXTURE_TYPE_COLOR = 0;
+        const size_t TEXTURE_TYPE_NORMAL = 1;
+        const size_t TEXTURE_TYPE_SPECULAR = 2;
+        const size_t TEXTURE_TYPE_DISPLACE = 3;
+
         struct MeshTextureSet
         {
-            vk::resources::TextureBufferPtr color;
-            vk::resources::TextureBufferPtr normal;
-            vk::resources::TextureBufferPtr specular;
-            vk::resources::TextureBufferPtr displace;
+            vk::resources::TextureBufferPtr color = nullptr;
+            vk::resources::TextureBufferPtr normal = nullptr;
+            vk::resources::TextureBufferPtr specular = nullptr;
+            vk::resources::TextureBufferPtr displace = nullptr;
         };
 
         struct MeshMaterialSettings
@@ -77,17 +84,17 @@ namespace vk
             /**
              * Обновление UBO буферов матриц модели
              */
-            void updateMatrixBuffers();
+            void updateMatrixUbo();
 
             /**
              * Обновление UBO буферов параметров материала меша
              */
-            void updateMaterialSettingsBuffers();
+            void updateMaterialSettingsUbo();
 
             /**
              * Обновление UBO буферов параметров отображения текстуры меша
              */
-            void updateTextureMappingBuffers();
+            void updateTextureMappingUbo();
 
             /**
              * Событие смены положения
@@ -107,6 +114,7 @@ namespace vk
              * @param descriptorPool Unique smart pointer объекта дескрипторного пула
              * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
              * @param geometryBufferPtr Smart-pointer на объект геом. буфера
+             * @param defaultTexturePtr Smart-pointer на объект текстурного буфера
              * @param textureSet Набор текстур меша
              * @param materialSettings Параметры материала
              * @param textureMappingSettings Параметры отображения текстуры
@@ -115,6 +123,7 @@ namespace vk
                     const vk::UniqueDescriptorPool& descriptorPool,
                     const vk::UniqueDescriptorSetLayout& descriptorSetLayout,
                     vk::resources::GeometryBufferPtr geometryBufferPtr,
+                    const vk::resources::TextureBufferPtr& defaultTexturePtr,
                     vk::scene::MeshTextureSet textureSet = {},
                     const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.6f, 0.6f, 0.6f},16.0f},
                     const vk::scene::MeshTextureMapping& textureMappingSettings = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});

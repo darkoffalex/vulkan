@@ -78,6 +78,9 @@ private:
     /// Источники освещения сцены
     vk::scene::LightSourceSet lightSourceSet_;
 
+    /// Ресурсы по умолчанию - текстуры
+    vk::resources::TextureBufferPtr blackPixelTexture_;
+
 
     /**
      * Инициализация проходов рендеринга

@@ -944,6 +944,11 @@ inputDataInOpenGlStyle_(true)
     semaphoreReadyToPresent_ = device_.getLogicalDevice()->createSemaphoreUnique({});
     semaphoreReadyToRender_ = device_.getLogicalDevice()->createSemaphoreUnique({});
     std::cout << "Synchronization semaphores created." << std::endl;
+
+    // Создать ресурсы по умолчанию
+    unsigned char blackPixel[4] = {0,0,0,255};
+    blackPixelTexture_ = this->createTextureBuffer(blackPixel,1,1,4,false,false);
+    std::cout << "Default resources created." << std::endl;
 }
 
 /**
@@ -953,6 +958,10 @@ VkRenderer::~VkRenderer()
 {
     // Остановка рендеринга
     this->setRenderingStatus(false);
+
+    // Очистка ресурсов по умолчанию
+    blackPixelTexture_->destroyVulkanResources();
+    std::cout << "Default resources destroyed." << std::endl;
 
     // Удалить примитивы синхронизации
     device_.getLogicalDevice()->destroySemaphore(semaphoreReadyToRender_.get());
@@ -1140,7 +1149,7 @@ vk::scene::MeshPtr VkRenderer::addMeshToScene(
         const vk::scene::MeshTextureMapping& textureMapping)
 {
     // Создание меша
-    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, textureSet, materialSettings, textureMapping);
+    auto mesh = std::make_shared<vk::scene::Mesh>(&device_,descriptorPoolMeshes_,descriptorSetLayoutMeshes_,geometryBuffer, blackPixelTexture_, textureSet, materialSettings, textureMapping);
 
     // Добавляем в список мешей сцены
     sceneMeshes_.push_back(mesh);
