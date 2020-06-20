@@ -60,6 +60,8 @@ namespace vk
             vk::scene::MeshMaterialSettings materialSettings_;
             /// Параметры отображения текстуры меша
             vk::scene::MeshTextureMapping textureMapping_;
+            /// Параметры использования текстур
+            glm::uint32 textureUsage_[4] = {0,0,0,0};
 
             /// UBO буфер для матрицы модели
             vk::tools::Buffer uboModelMatrix_;
@@ -75,6 +77,11 @@ namespace vk
             vk::tools::Buffer uboTextureMapping_;
             /// Указатель на размеченную область буфера UBO параметров материала
             void* pUboTextureMappingData_;
+
+            /// UBO буфер для параметров использования текстур
+            vk::tools::Buffer uboTextureUsage_;
+            /// Указатель на размеченную область буфера UBO параметров использования текстур
+            void* pUboTextureUsageData_;
 
             /// Указатель на пул дескрипторов, из которого выделяется набор дескрипторов меша
             const vk::DescriptorPool *pDescriptorPool_;
@@ -95,6 +102,11 @@ namespace vk
              * Обновление UBO буферов параметров отображения текстуры меша
              */
             void updateTextureMappingUbo();
+
+            /**
+             * Обновление UBO параметров использования текстур
+             */
+            void updateTextureUsageUbo();
 
             /**
              * Событие смены положения

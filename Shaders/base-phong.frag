@@ -76,6 +76,10 @@ layout(set = 2, binding = 2, std140) uniform UniformModel {
 
 layout(set = 2, binding = 3) uniform sampler2D _textures[4];
 
+layout(set = 2, binding = 4, std140) uniform UniformTextureUsage {
+    uvec4 _texturesUsed;
+};
+
 layout(set = 1, binding = 0) uniform UniformLightCount {
     uint _lightCount;
 };
@@ -188,10 +192,21 @@ vec3 getNormalFromMap(vec2 uv)
 }
 
 // Доступна ли текстур
-bool isTextureAvailable(uint textureType)
+bool isTextureEnabled(uint textureType)
 {
-    ivec2 sizes =  textureSize(_textures[textureType],0);
-    return sizes.x > 1 && sizes.y > 1;
+    switch(textureType)
+    {
+        case TEXTURE_COLOR:
+            return _texturesUsed.x > 0;
+        case TEXTURE_NORMAL:
+            return _texturesUsed.y > 0;
+        case TEXTURE_SPECULAR:
+            return _texturesUsed.z > 0;
+        case TEXTURE_DISPLACE:
+            return _texturesUsed.w > 0;
+    }
+
+    return false;
 }
 
 // Получить значение из карты глубины
@@ -266,12 +281,12 @@ void main()
     f.toView = normalize(_camPosition - fs_in.position);
 
     // UV координаты фрагмента
-    vec2 uv = isTextureAvailable(TEXTURE_DISPLACE) ? paralaxMappedUv(fs_in.uv,f.toView,true) : fs_in.uv;
+    vec2 uv = isTextureEnabled(TEXTURE_DISPLACE) ? paralaxMappedUv(fs_in.uv,f.toView,true) : fs_in.uv;
 
     f.position = fs_in.position;
-    f.color = isTextureAvailable(TEXTURE_COLOR) ? texture(_textures[TEXTURE_COLOR],uv).rgb : vec3(1.0f);
-    f.normal = isTextureAvailable(TEXTURE_NORMAL) ? getNormalFromMap(uv) : normalize(fs_in.normal);
-    f.specularity = isTextureAvailable(TEXTURE_SPECULAR) ? texture(_textures[TEXTURE_SPECULAR],uv).r : 0.0f;
+    f.color = isTextureEnabled(TEXTURE_COLOR) ? texture(_textures[TEXTURE_COLOR],uv).rgb : vec3(1.0f);
+    f.normal = isTextureEnabled(TEXTURE_NORMAL) ? getNormalFromMap(uv) : normalize(fs_in.normal);
+    f.specularity = isTextureEnabled(TEXTURE_SPECULAR) ? texture(_textures[TEXTURE_SPECULAR],uv).r : 0.0f;
 
     // Итоговый цвет
     vec3 result = vec3(0.0f);

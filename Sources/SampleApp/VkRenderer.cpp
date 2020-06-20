@@ -374,7 +374,9 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескриптор для параметров материала
                 {vk::DescriptorType::eUniformBuffer,1},
                 // Дескриптор для текстуры/семплера
-                {vk::DescriptorType::eCombinedImageSampler, 4}
+                {vk::DescriptorType::eCombinedImageSampler, 4},
+                // Дескриптор для параметров использования текстур
+                {vk::DescriptorType::eUniformBuffer, 1}
         };
 
         // Поскольку у каждого меша есть свой набор, то кол-во таких наборов ограничено кол-вом мешей
@@ -464,6 +466,14 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         vk::ShaderStageFlagBits::eFragment,
                         nullptr,
                 },
+                // UBO буфер для параметров использования текстур
+                {
+                        4,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                }
         };
 
         // Создать макет размещения дескрипторного набора
