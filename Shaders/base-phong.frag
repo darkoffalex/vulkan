@@ -80,7 +80,7 @@ layout(set = 2, binding = 4, std140) uniform UniformTextureUsage {
     uvec4 _texturesUsed;
 };
 
-layout(set = 1, binding = 0) uniform UniformLightCount {
+layout(set = 1, binding = 0, std140) uniform UniformLightCount {
     uint _lightCount;
 };
 

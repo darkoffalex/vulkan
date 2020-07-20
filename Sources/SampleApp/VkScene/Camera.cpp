@@ -222,10 +222,10 @@ namespace vk
             switch (this->projectionType_)
             {
                 case CameraProjectionType::ePerspective:
-                    this->projectionMatrix_ = glm::perspective(glm::radians(fov_), aspectRatio_, zNear_, zFar_);
+                    this->projectionMatrix_ = glm::perspectiveRH_ZO(glm::radians(fov_), aspectRatio_, zNear_, zFar_);
                     break;
                 case CameraProjectionType::eOrthogonal:
-                    this->projectionMatrix_ = glm::ortho(-fov_ * aspectRatio_ / 2.0f, fov_ * aspectRatio_ / 2.0f, -fov_ / 2.0f, fov_ / 2.0f, zNear_, zFar_);
+                    this->projectionMatrix_ = glm::orthoRH_ZO(-fov_ * aspectRatio_ / 2.0f, fov_ * aspectRatio_ / 2.0f, -fov_ / 2.0f, fov_ / 2.0f, zNear_, zFar_);
                     break;
                 default:
                     this->projectionMatrix_ = glm::mat4(1);

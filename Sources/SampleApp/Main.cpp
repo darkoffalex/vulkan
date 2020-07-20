@@ -109,7 +109,6 @@ int main(int argc, char* argv[])
         auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/disp.png", true);
 
         auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
-        auto cubeTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"default_normal.jpg", true);
         auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
 
         /** Рендерер - инициализация сцены **/
@@ -123,12 +122,13 @@ int main(int argc, char* argv[])
 
         // Стена
         auto wall = _vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec,wallTextureDisplace});
-        wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f}});
+        wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f},0.0f});
         wall->setPosition({0.0f,1.25f,-1.5f}, false);
         wall->setScale({10.0f,2.5f,1.0f});
 
         // Куб
-        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,{cubeTextureColor, cubeTextureNormal, cubeTextureSpec});
+        auto cube = _vkRenderer->addMeshToScene(cubeGeometry,{cubeTextureColor, nullptr, cubeTextureSpec});
+        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
         cube->setScale({0.5f,0.5f,0.5f}, false);
         cube->setOrientation({0.0f,45.0f,0.0f}, false);
         cube->setPosition({0.0f,0.25f,-0.5f});

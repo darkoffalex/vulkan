@@ -31,17 +31,17 @@ struct TextureMapping
 
 /*Uniform*/
 
-layout(set = 0, binding = 0) uniform UniformCamera {
+layout(set = 0, binding = 0, std140) uniform UniformCamera {
     mat4 _view;
     mat4 _proj;
     vec3 _camPosition;
 };
 
-layout(set = 2, binding = 0) uniform UniformModel {
+layout(set = 2, binding = 0, std140) uniform UniformModel {
     mat4 _model;
 };
 
-layout(set = 2, binding = 1) uniform UniformTextureMapping {
+layout(set = 2, binding = 1, std140) uniform UniformTextureMapping {
     TextureMapping _textureMapping;
 };
 
@@ -60,7 +60,7 @@ mat2 rotate2D(float angle)
 // Подсчет UV координат с учетом параметров текстурирования
 vec2 calcUV(vec2 uv, TextureMapping mapping)
 {
-    return ((rotate2D(mapping.angle) * (uv - mapping.origin)) + mapping.origin)*mapping.scale - mapping.offset;
+    return ((rotate2D(radians(mapping.angle)) * (uv - mapping.origin)) + mapping.origin) * mapping.scale - mapping.offset;
 }
 
 // Основная функция вершинного шейдера
