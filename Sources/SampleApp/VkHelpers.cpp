@@ -3,6 +3,10 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <STB/stb_image.h>
+#include <rapidxml/rapidxml.hpp>
+
+#include <sstream>
+#include <unordered_map>
 
 namespace vk
 {
@@ -184,6 +188,166 @@ namespace vk
                     indices.push_back(second + 1);
                     indices.push_back(first + 1);
                 }
+            }
+
+            // Отдать smart-pointer объекта ресурса геометрического буфера
+            return pRenderer->createGeometryBuffer(vertices,indices);
+        }
+
+        /**
+         * Заполнение массива float значений из узла XML в .dae (collada) файле
+         * @param floatArray Указатель на массив значений
+         * @param node Указатель на узел XML
+         */
+        void DaeGeomNodeFillFloatArray(glm::float32_t* floatArray, rapidxml::xml_node<>* node)
+        {
+            // Указатель на узел "accessor" содержащий правила чтения массива
+            auto pAccessorNode = node->first_node("technique_common",16)
+                    ->first_node("accessor",8);
+
+            // Получить кол-во позиций
+            auto count = static_cast<size_t>(std::stoi(pAccessorNode->first_attribute("count",5)->value()));
+            // Получить шаг (сколько элементов массива считается одним элементом)
+            auto stride = static_cast<size_t>(std::stoi(pAccessorNode->first_attribute("stride",6)->value()));
+
+            // Доступ к набору чисел как к строковому потоку
+            std::stringstream positionsStream(node->first_node("float_array",11)->value());
+
+            // Заполнение массива
+            for(size_t i = 0; i < count * stride; i++)
+            {
+                glm::float32_t val; positionsStream >> val;
+                *(floatArray + i) = val;
+            }
+        }
+
+        /**
+         * Получить кол-во элементов в узле XML в .dae (collada) файле
+         * @param node Указатель на узел XML
+         * @return
+         */
+        size_t DaeGeomNodeGetCount(rapidxml::xml_node<>* node)
+        {
+            auto count = std::stoi(node->first_node("technique_common",16)
+                    ->first_node("accessor",8)
+                    ->first_attribute("count",5)->value());
+
+            return static_cast<size_t>(count);
+        }
+
+        /**
+         * Загрузка геометрии из .dae (collada) файла
+         * @param pRenderer Указатель на рендерер
+         * @param xmlString Строка содержащая XML
+         * @param Сменить порядок обхода вершин
+         * @return Smart pointer объекта геометрического буфера
+         */
+        vk::resources::GeometryBufferPtr LoadGeometryFromDaeString(VkRenderer *pRenderer, char *xmlString, bool swapVertexOrder)
+        {
+            // Парсинг
+            rapidxml::xml_document<> document;
+            document.parse<0>(xmlString);
+
+            // Указатель на узел "mesh" в XML файле .dae
+            auto firstMeshNodePtr = document.first_node()
+                    ->first_node("library_geometries",18)
+                    ->first_node("geometry",8)
+                    ->first_node("mesh",4);
+
+            // Указатели на узлы с нужными параметрами в XML документе
+            auto positionsNodePtr = firstMeshNodePtr->first_node();
+            auto normalsNodePtr = positionsNodePtr->next_sibling();
+            auto uvNodePtr = normalsNodePtr->next_sibling();
+
+            // Загрузить данные из файла в массивы
+            std::vector<glm::vec3> positions(DaeGeomNodeGetCount(positionsNodePtr));
+            DaeGeomNodeFillFloatArray(reinterpret_cast<glm::float32_t*>(positions.data()),positionsNodePtr);
+
+            std::vector<glm::vec3> normals(DaeGeomNodeGetCount(normalsNodePtr));
+            DaeGeomNodeFillFloatArray(reinterpret_cast<glm::float32_t*>(normals.data()),normalsNodePtr);
+
+            std::vector<glm::vec2> uvs(DaeGeomNodeGetCount(uvNodePtr));
+            DaeGeomNodeFillFloatArray(reinterpret_cast<glm::float32_t*>(uvs.data()),uvNodePtr);
+
+            // Узел "triangles", его атрибуты и под-узлы
+            auto verticesNodePtr = firstMeshNodePtr->first_node("triangles",9);
+            auto maxOffsetAttrPtr = verticesNodePtr->last_node("input",5)->first_attribute("offset",6);
+            auto dataNodePtr = verticesNodePtr->first_node("p",1);
+
+            // Количества
+            auto trianglesCount = static_cast<size_t>(std::stoi(verticesNodePtr->first_attribute("count",5)->value()));
+            auto vertexCount = trianglesCount * 3;
+            auto elementsPerVertex = static_cast<size_t>(std::stoi(maxOffsetAttrPtr->value()) + 1);
+
+            // Доступ к набору чисел как к строковому потоку
+            std::stringstream indicesStream(dataNodePtr->value());
+
+            // Итоговые массивы вершин и индексов
+            std::vector<vk::tools::Vertex> vertices;
+            std::vector<size_t> indices;
+
+            // Ассоциативный массив для избежания добавления ранее добавленных вершин
+            // Ключ массива - уникальная строка из индексов позиции, нормали, и UV координат
+            std::unordered_map<std::string,size_t> indicesOfVertices;
+
+            // Пройтись по всем вершинам
+            for(size_t i = 0; i < vertexCount; i++)
+            {
+                // Индексы атрибутов вершин в массивах заданных выше
+                size_t posIndex = 0;
+                size_t normIndex = 0;
+                size_t uvIndex = 0;
+
+                // Массив указателей для доступа по индексу
+                size_t* pIndices[3] = {&posIndex, &normIndex, &uvIndex};
+
+                // Проход по атрибутам
+                for(size_t j = 0; j < elementsPerVertex; j++)
+                {
+                    size_t value;
+                    indicesStream >> value;
+
+                    if(j < 3){
+                        *(pIndices[j]) = value;
+                    }
+                }
+
+                // Получить уникальный ключ-строку из индексов (ключ соответствует вершине)
+                std::string keyString = std::to_string(posIndex).
+                        append(std::to_string(normIndex)).
+                        append(std::to_string(uvIndex));
+
+                // Если такая вершина (с такими атрибутами) уже существует - добавить в массив индексов ее индекс
+                if(indicesOfVertices.find(keyString) != indicesOfVertices.end())
+                {
+                    indices.push_back(indicesOfVertices.at(keyString));
+                }
+                // Если такой вершины еще не было
+                else
+                {
+                    // Создать вершину
+                    vk::tools::Vertex v{};
+                    v.position = positions[posIndex];
+                    v.normal = normals[normIndex];
+                    v.uv = uvs[uvIndex];
+                    v.color = {1.0f,1.0f,1.0f};
+
+                    // Добавить в массив вершин
+                    vertices.push_back(v);
+
+                    // Получить индекс новой вершины
+                    size_t index = vertices.size()-1;
+
+                    // Добавить в ассоциативный массив этот индекс
+                    indicesOfVertices[keyString] = index;
+
+                    // Добавить в массив индексов
+                    indices.push_back(index);
+                }
+            }
+
+            if(swapVertexOrder){
+                std::reverse(indices.begin(),indices.end());
             }
 
             // Отдать smart-pointer объекта ресурса геометрического буфера

@@ -95,6 +95,7 @@ namespace tools
 
         if (is.is_open())
         {
+            is.seekg(0,std::ios::end);
             auto size = is.tellg();
             auto pData = new char[size];
             is.seekg(0, std::ios::beg);
@@ -102,6 +103,34 @@ namespace tools
             is.close();
 
             return std::vector<unsigned char>(pData, pData + size);
+        }
+
+        return {};
+    }
+
+    /**
+     * Загрузить символы из файлв
+     * @param path Путь к файлу
+     * @return Массив символов
+     */
+    inline std::vector<char> LoadCharsFromFile(const std::string &path)
+    {
+        // Открытие файла в режиме текстового чтения
+        std::ifstream is(path.c_str());
+
+        if(is.is_open())
+        {
+            is.seekg(0,std::ios::end);
+            auto size = static_cast<unsigned >(is.tellg()) + 1;
+            auto pData = new char[size];
+            is.seekg(0,std::ios::beg);
+            is.read(pData,size);
+            is.close();
+
+            // Добавляем null character в конец, для валидной работы С-строк
+            pData[size-1] = '\0';
+
+            return std::vector<char>(pData, pData + size);
         }
 
         return {};

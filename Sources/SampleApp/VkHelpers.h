@@ -46,5 +46,14 @@ namespace vk
          * @return Smart pointer объекта геометрического буфера
          */
         vk::resources::GeometryBufferPtr GenerateSphereGeometry(VkRenderer* pRenderer, unsigned segments, float radius);
+
+        /**
+         * Загрузка геометрии из .dae (collada) файла
+         * @param pRenderer Указатель на рендерер
+         * @param xmlString Строка содержащая XML
+         * @param Сменить порядок обхода вершин
+         * @return Smart pointer объекта геометрического буфера
+         */
+        vk::resources::GeometryBufferPtr LoadGeometryFromDaeString(VkRenderer* pRenderer, char* xmlString, bool swapVertexOrder = false);
     }
 }
