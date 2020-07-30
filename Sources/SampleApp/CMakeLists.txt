@@ -18,9 +18,9 @@ add_executable(${TARGET_NAME}
 
 # Директории с библиотеками (.lib)
 if(${PLATFORM_BIT_SUFFIX} STREQUAL "x86")
-    target_link_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Lib32")
+    target_link_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Lib32" "${CMAKE_CURRENT_SOURCE_DIR}/../../Lib")
 else()
-    target_link_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Lib")
+    target_link_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Lib" "${CMAKE_CURRENT_SOURCE_DIR}/../../Lib")
 endif()
 
 # Директории с включаемыми файлами (.h)
@@ -28,6 +28,8 @@ target_include_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Include" "../../
 
 # Меняем название запускаемого файла в зависимости от типа сборки
 set_property(TARGET ${TARGET_NAME} PROPERTY OUTPUT_NAME "${TARGET_BIN_NAME}$<$<CONFIG:Debug>:_Debug>_${PLATFORM_BIT_SUFFIX}")
+
+SET_TARGET_PROPERTIES(${TARGET_NAME} PROPERTIES PREFIX "")
 
 # Статическая линковка рантайма и стандартных библиотек
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -37,6 +39,8 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 # Линковка Vulkan
-target_link_libraries(${TARGET_NAME} PUBLIC vulkan-1.lib)
+target_link_libraries(${TARGET_NAME} PUBLIC "vulkan-1.lib")
 # Линковка с shlwapi.lib для получения путей к файлам (tools)
 target_link_libraries(${TARGET_NAME} PUBLIC "shlwapi.lib")
+# Линковка с Assimp для импорта моделей
+target_link_libraries(${TARGET_NAME} PUBLIC "assimp.lib")

@@ -1,6 +1,7 @@
 .idea
 .vs
-Bin/*
+Bin/SampleApp_Debug_x86.exe
+Bin/SampleApp_x86.exe
 out/
 CMakeSettings.json
 Folder.DotSettings.user

@@ -48,12 +48,11 @@ namespace vk
         vk::resources::GeometryBufferPtr GenerateSphereGeometry(VkRenderer* pRenderer, unsigned segments, float radius);
 
         /**
-         * Загрузка геометрии из .dae (collada) файла
+         * Загрузка геометрии меша из файла 3D-моделей
          * @param pRenderer Указатель на рендерер
-         * @param xmlString Строка содержащая XML
-         * @param Сменить порядок обхода вершин
+         * @param filename Имя файла в папке Models
          * @return Smart pointer объекта геометрического буфера
          */
-        vk::resources::GeometryBufferPtr LoadGeometryFromDaeString(VkRenderer* pRenderer, char* xmlString, bool swapVertexOrder = false);
+        vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer* pRenderer, const std::string &filename);
     }
 }
