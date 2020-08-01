@@ -2,7 +2,8 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2017, assimp team
+Copyright (c) 2006-2020, assimp team
+
 
 All rights reserved.
 
@@ -40,8 +41,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 /** @file Default implementation of IOSystem using the standard C file functions */
+#pragma once
 #ifndef AI_DEFAULTIOSYSTEM_H_INC
 #define AI_DEFAULTIOSYSTEM_H_INC
+
+#ifdef __GNUC__
+#   pragma GCC system_header
+#endif
 
 #include <assimp/IOSystem.hpp>
 
@@ -49,15 +55,8 @@ namespace Assimp    {
 
 // ---------------------------------------------------------------------------
 /** Default implementation of IOSystem using the standard C file functions */
-class ASSIMP_API DefaultIOSystem : public IOSystem
-{
+class ASSIMP_API DefaultIOSystem : public IOSystem {
 public:
-    /** Constructor. */
-    DefaultIOSystem();
-
-    /** Destructor. */
-    ~DefaultIOSystem();
-
     // -------------------------------------------------------------------
     /** Tests for the existence of a file at the given path. */
     bool Exists( const char* pFile) const;

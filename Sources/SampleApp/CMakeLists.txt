@@ -29,8 +29,6 @@ target_include_directories(${TARGET_NAME} PUBLIC "${VULKAN_PATH}Include" "../../
 # Меняем название запускаемого файла в зависимости от типа сборки
 set_property(TARGET ${TARGET_NAME} PROPERTY OUTPUT_NAME "${TARGET_BIN_NAME}$<$<CONFIG:Debug>:_Debug>_${PLATFORM_BIT_SUFFIX}")
 
-SET_TARGET_PROPERTIES(${TARGET_NAME} PROPERTIES PREFIX "")
-
 # Статическая линковка рантайма и стандартных библиотек
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set_property(TARGET ${TARGET_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -38,9 +36,21 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_property(TARGET ${TARGET_NAME} PROPERTY LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
 endif()
 
+# Отключить стандартные функции min и max (для MSVC)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    target_compile_definitions(${TARGET_NAME} PUBLIC "-DNOMINMAX")
+endif()
+
+
 # Линковка Vulkan
 target_link_libraries(${TARGET_NAME} PUBLIC "vulkan-1.lib")
+
 # Линковка с shlwapi.lib для получения путей к файлам (tools)
 target_link_libraries(${TARGET_NAME} PUBLIC "shlwapi.lib")
+
 # Линковка с Assimp для импорта моделей
-target_link_libraries(${TARGET_NAME} PUBLIC "assimp.lib")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    target_link_libraries(${TARGET_NAME} PUBLIC "assimp-vc142-mt.lib")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(${TARGET_NAME} PUBLIC "assimp.lib")
+endif()

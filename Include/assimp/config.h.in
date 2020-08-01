@@ -3,7 +3,8 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2017, assimp team
+Copyright (c) 2006-2020, assimp team
+
 
 All rights reserved.
 
@@ -497,6 +498,13 @@ enum aiComponent
 #define AI_CONFIG_PP_FID_ANIM_ACCURACY              \
     "PP_FID_ANIM_ACCURACY"
 
+// ---------------------------------------------------------------------------
+/** @brief Input parameter to the #aiProcess_FindInvalidData step:
+ *  Set to true to ignore texture coordinates. This may be useful if you have
+ *  to assign different kind of textures like one for the summer or one for the winter.
+ */
+#define AI_CONFIG_PP_FID_IGNORE_TEXTURECOORDS        \
+    "PP_FID_IGNORE_TEXTURECOORDS"
 
 // TransformUVCoords evaluates UV scalings
 #define AI_UVTRAFO_SCALING 0x1
@@ -642,14 +650,29 @@ enum aiComponent
     "IMPORT_FBX_OPTIMIZE_EMPTY_ANIMATION_CURVES"
 
 // ---------------------------------------------------------------------------
-/** @brief Set whether the fbx importer will search for embedded loaded textures, where no embedded texture data is provided.
-*
-* The default value is false (0)
-* Property type: bool
-*/
-#define AI_CONFIG_IMPORT_FBX_SEARCH_EMBEDDED_TEXTURES \
-	"IMPORT_FBX_SEARCH_EMBEDDED_TEXTURES"
-	
+/** @brief Set whether the fbx importer will use the legacy embedded texture naming.
+ *
+ * The default value is false (0)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_FBX_EMBEDDED_TEXTURES_LEGACY_NAMING \
+	"AI_CONFIG_IMPORT_FBX_EMBEDDED_TEXTURES_LEGACY_NAMING"
+
+// ---------------------------------------------------------------------------
+/** @brief  Set wether the importer shall not remove empty bones.
+ *  
+ *  Empty bone are often used to define connections for other models.
+ */
+#define AI_CONFIG_IMPORT_REMOVE_EMPTY_BONES \
+    "AI_CONFIG_IMPORT_REMOVE_EMPTY_BONES"
+
+
+// ---------------------------------------------------------------------------
+/** @brief  Set wether the FBX importer shall convert the unit from cm to m.
+ */
+#define AI_CONFIG_FBX_CONVERT_TO_M \
+    "AI_CONFIG_FBX_CONVERT_TO_M"
+
 // ---------------------------------------------------------------------------
 /** @brief  Set the vertex animation keyframe to be imported
  *
@@ -672,6 +695,79 @@ enum aiComponent
 #define AI_CONFIG_IMPORT_SMD_KEYFRAME       "IMPORT_SMD_KEYFRAME"
 #define AI_CONFIG_IMPORT_UNREAL_KEYFRAME    "IMPORT_UNREAL_KEYFRAME"
 
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read animations.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_ANIMATIONS "IMPORT_MDL_HL1_READ_ANIMATIONS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read animation events.
+ * \note This property requires AI_CONFIG_IMPORT_MDL_HL1_READ_ANIMATIONS to be set to true.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_ANIMATION_EVENTS "IMPORT_MDL_HL1_READ_ANIMATION_EVENTS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read blend controllers.
+ * \note This property requires AI_CONFIG_IMPORT_MDL_HL1_READ_ANIMATIONS to be set to true.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_BLEND_CONTROLLERS "IMPORT_MDL_HL1_READ_BLEND_CONTROLLERS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read sequence transition graph.
+ * \note This property requires AI_CONFIG_IMPORT_MDL_HL1_READ_ANIMATIONS to be set to true.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_SEQUENCE_TRANSITIONS "IMPORT_MDL_HL1_READ_SEQUENCE_TRANSITIONS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read attachments info.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_ATTACHMENTS "IMPORT_MDL_HL1_READ_ATTACHMENTS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read bone controllers info.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_BONE_CONTROLLERS "IMPORT_MDL_HL1_READ_BONE_CONTROLLERS"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read hitboxes info.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_HITBOXES "IMPORT_MDL_HL1_READ_HITBOXES"
+
+// ---------------------------------------------------------------------------
+/** @brief Set whether the MDL (HL1) importer will read miscellaneous global model info.
+ *
+ * The default value is true (1)
+ * Property type: bool
+ */
+#define AI_CONFIG_IMPORT_MDL_HL1_READ_MISC_GLOBAL_INFO "IMPORT_MDL_HL1_READ_MISC_GLOBAL_INFO"
+
+// ---------------------------------------------------------------------------
+/** Smd load multiple animations
+ *
+ *  Property type: bool. Default value: true.
+ */
+#define AI_CONFIG_IMPORT_SMD_LOAD_ANIMATION_LIST "IMPORT_SMD_LOAD_ANIMATION_LIST"
 
 // ---------------------------------------------------------------------------
 /** @brief  Configures the AC loader to collect all surfaces which have the
@@ -933,6 +1029,16 @@ enum aiComponent
  */
 #define AI_CONFIG_IMPORT_COLLADA_IGNORE_UP_DIRECTION "IMPORT_COLLADA_IGNORE_UP_DIRECTION"
 
+// ---------------------------------------------------------------------------
+/** @brief Specifies whether the Collada loader should use Collada names.
+ *
+ * If this property is set to true, the Collada names will be used as the node and
+ * mesh names. The default is to use the id tag (resp. sid tag, if no id tag is present)
+ * instead.
+ * Property type: Bool. Default value: false.
+ */
+#define AI_CONFIG_IMPORT_COLLADA_USE_COLLADA_NAMES "IMPORT_COLLADA_USE_COLLADA_NAMES"
+
 // ---------- All the Export defines ------------
 
 /** @brief Specifies the xfile use double for real values of float
@@ -942,6 +1048,15 @@ enum aiComponent
 
 #define AI_CONFIG_EXPORT_XFILE_64BIT "EXPORT_XFILE_64BIT"
 
+/** @brief Specifies whether the assimp export shall be able to export point clouds
+ * 
+ *  When this flag is not defined the render data has to contain valid faces.
+ *  Point clouds are only a collection of vertices which have nor spatial organization
+ *  by a face and the validation process will remove them. Enabling this feature will
+ *  switch off the flag and enable the functionality to export pure point clouds.
+ */
+#define AI_CONFIG_EXPORT_POINT_CLOUDS "EXPORT_POINT_CLOUDS"
+
 /**
  *  @brief  Specifies a gobal key factor for scale, float value
  */
@@ -950,6 +1065,13 @@ enum aiComponent
 #if (!defined AI_CONFIG_GLOBAL_SCALE_FACTOR_DEFAULT)
 #   define AI_CONFIG_GLOBAL_SCALE_FACTOR_DEFAULT  1.0f
 #endif // !! AI_DEBONE_THRESHOLD
+
+#define AI_CONFIG_APP_SCALE_KEY "APP_SCALE_FACTOR"
+
+#if (!defined AI_CONFIG_APP_SCALE_KEY)
+#   define AI_CONFIG_APP_SCALE_KEY 1.0
+#endif // AI_CONFIG_APP_SCALE_KEY
+
 
 // ---------- All the Build/Compile-time defines ------------
 
