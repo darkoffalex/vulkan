@@ -5,8 +5,6 @@
 
 #pragma once
 
-#define NO_MIN_MAX
-
 #include "../VkTools/Tools.h"
 #include <glm/glm.hpp>
 

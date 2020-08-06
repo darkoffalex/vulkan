@@ -212,9 +212,9 @@ namespace vk
             const aiScene* scene = importer.ReadFile(path.c_str(),
                     aiProcess_Triangulate |
                     aiProcess_JoinIdenticalVertices |
-                    aiProcess_FlipWindingOrder |        // Меняем порядок обхода вершин (используется обход ПО часовой)
-                    aiProcess_PreTransformVertices      // Применяем внутренние трансформации меша, заданные в программе для моделирования (чтобы сохранить пропорции)
-                    );
+                    //aiProcess_PreTransformVertices |
+                    aiProcess_FlipWindingOrder
+            );
 
             // Если не удалось загрузить
             if(scene == nullptr){
@@ -254,8 +254,98 @@ namespace vk
                 }
             }
 
+            // Инициализировать индексы костей и веса для вершин (если есть)
+            if(pFirstMesh->HasBones())
+            {
+                // Массив массивов весов для каждой вершины (на каждую вершину - массив весов, индексы совпадают с массивом vertices)
+                std::vector<std::vector<glm::float32_t>> weights(vertices.size());
+                // Массив массивов индексов костей для каждой вершины (на каждую вершину - массив индексов, индексы совпадают с массивом vertices)
+                std::vector<std::vector<size_t>> bones(vertices.size());
+
+                // Пройтись по костям скелета и наполнить массив весов
+                for(size_t i = 0; i < pFirstMesh->mNumBones; i++)
+                {
+                    auto bone = pFirstMesh->mBones[i];
+                    for(size_t j = 0; j < bone->mNumWeights; j++)
+                    {
+                        auto weightData = bone->mWeights[j];
+
+                        // Добавляем вершине вес
+                        weights[weightData.mVertexId].push_back(weightData.mWeight);
+                        // Добавляем вершине индекс кости соответствующей весу
+                        bones[weightData.mVertexId].push_back(i);
+                    }
+                }
+
+                // Максимальное кол-во весов у вершины
+                const size_t maxWeightsPerVertex = 4;
+
+                // Инициализация весов у вершин
+                for(size_t i = 0; i < weights.size(); i++)
+                {
+                    // Массивы весов и костей для вершины под индексом i
+                    auto& vertexWeights = weights[i];
+                    auto& vertexBones = bones[i];
+
+                    // Несколько наиболее значимых весов и костей (итоговые значения передаваемые в вершинных атрибутах)
+                    std::vector<glm::float32_t> mostInfluenceWeights;
+                    std::vector<size_t> mostInfluencedBones;
+
+                    // Получить итоговые значения
+                    for(size_t j = 0; j < maxWeightsPerVertex; j++)
+                    {
+                        if(!vertexWeights.empty())
+                        {
+                            // Найти индекс максимального веса
+                            auto maxWeightIndex = std::distance(vertexWeights.begin(),std::max_element(vertexWeights.begin(), vertexWeights.end()));
+
+                            // Добавить индекс кости которая влияет более всего на данную вершину
+                            mostInfluencedBones.push_back(vertexBones[maxWeightIndex]);
+                            // Добавить вес кости которая влияет более всего на данную вершину
+                            mostInfluenceWeights.push_back(vertexWeights[maxWeightIndex]);
+
+                            // Удалить элементы из массивов по данному индексу (на следующей итерации максимальный будет уже другой)
+                            vertexBones.erase(vertexBones.begin() + maxWeightIndex);
+                            vertexWeights.erase(vertexWeights.begin() + maxWeightIndex);
+                        }
+                        else
+                        {
+                            // Отрицательное значение индекса кости - кость отсутствует
+                            mostInfluencedBones.push_back(-1);
+                            // При отсутствии кости вес не имеет значения, указывается 0
+                            mostInfluenceWeights.push_back(0.0f);
+                        }
+                    }
+
+                    // Индексы костей у вершины
+                    vertices[i].boneIndices = {
+                            mostInfluencedBones[0],
+                            mostInfluencedBones[1],
+                            mostInfluencedBones[2],
+                            mostInfluencedBones[3]
+                    };
+
+                    // Соответствующие веса (поскольку в сумме веса должны давать единицу, необходимо нормализовать этот вектор)
+                    vertices[i].weights = glm::normalize(glm::vec4({
+                            mostInfluenceWeights[0],
+                            mostInfluenceWeights[1],
+                            mostInfluenceWeights[2],
+                            mostInfluenceWeights[3]
+                    }));
+                }
+            }
+
             // Отдать smart-pointer объекта ресурса геометрического буфера
             return pRenderer->createGeometryBuffer(vertices,indices);
+        }
+
+        /**
+         * Временный тестовый метод по загрузке информации о скелете
+         * @param filename Имя файла в папке Models
+         */
+        void LoadSkeleton(const std::string &filename)
+        {
+            //TODO: загрузка информации о скелете
         }
     }
 }

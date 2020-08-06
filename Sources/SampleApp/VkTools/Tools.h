@@ -18,10 +18,15 @@ namespace vk
          */
         struct Vertex
         {
+            // Базовые атрибуты
             glm::vec3 position;
             glm::vec3 color;
             glm::vec2 uv;
             glm::vec3 normal;
+
+            // Данные для скелета
+            glm::ivec4 boneIndices;
+            glm::vec4 weights;
         };
 
         /// В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы

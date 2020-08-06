@@ -54,5 +54,11 @@ namespace vk
          * @return Smart pointer объекта геометрического буфера
          */
         vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer* pRenderer, const std::string &filename);
+
+        /**
+         * Временный тестовый метод по загрузке информации о скелете
+         * @param filename Имя файла в папке Models
+         */
+        void LoadSkeleton(const std::string &filename);
     }
 }

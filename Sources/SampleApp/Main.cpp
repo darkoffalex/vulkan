@@ -95,8 +95,10 @@ int main(int argc, char* argv[])
 
         // Геометрия
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
-        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
-        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
+//        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
+//        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
+        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"ar2rDevilPinky.dae");
+
 
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
@@ -109,12 +111,12 @@ int main(int argc, char* argv[])
         auto wallTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/spec.jpg", true);
         auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/disp.png", true);
 
-        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
-        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
+//        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
+//        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
 
-        auto headTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/diffuse.tga", true);
-        auto headTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/nm_tangent.tga", true);
-        auto headTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/spec.tga", true);
+//        auto headTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/diffuse.tga", true);
+//        auto headTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/nm_tangent.tga", true);
+//        auto headTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/spec.tga", true);
 
         /** Рендерер - инициализация сцены **/
 
@@ -132,17 +134,22 @@ int main(int argc, char* argv[])
         wall->setScale({10.0f,2.5f,1.0f});
 
         // Куб
-        auto cube = _vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr,cubeTextureSpec});
-        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
-        cube->setScale({0.5f,0.5f,0.5f}, false);
-        cube->setOrientation({0.0f,45.0f,0.0f}, false);
-        cube->setPosition({0.0f,0.25f,0.0f});
+//        auto cube = _vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr,cubeTextureSpec});
+//        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
+//        cube->setScale({0.5f,0.5f,0.5f}, false);
+//        cube->setOrientation({0.0f,45.0f,0.0f}, false);
+//        cube->setPosition({0.0f,0.25f,0.0f});
 
         // Голова
-        auto head = _vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
-        head->setScale({0.35f,0.35f,0.35f}, false);
-        head->setOrientation({0.0f,0.0f,0.0f}, false);
-        head->setPosition({0.0f,0.75f,0.15f});
+//        auto head = _vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
+//        head->setScale({0.35f,0.35f,0.35f}, false);
+//        head->setOrientation({0.0f,0.0f,0.0f}, false);
+//        head->setPosition({0.0f,0.75f,0.15f});
+
+        //Ar2r-Devil-Pinky
+        auto ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
+        ar2r->setPosition({0.0f,0.0f,0.0f}, false);
+        ar2r->setScale({2.0f,2.0f,2.0f});
 
         // Свет
         auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});
