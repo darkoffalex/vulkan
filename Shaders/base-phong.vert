@@ -1,12 +1,18 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+// Набор констант
+#define MAX_SKELETON_BONES 50            // Максимальное кол-во костей скелета
+#define MAX_BONE_WEIGHTS 4               // Максимальное кол-во весов кости на вершину
+
 /*Схема входа-выхода*/
 
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 color;
 layout (location = 2) in vec2 uv;
 layout (location = 3) in vec3 normal;
+layout (location = 4) in ivec4 boneIndices;
+layout (location = 5) in vec4 weights;
 
 layout (location = 0) out VS_OUT
 {
@@ -43,6 +49,14 @@ layout(set = 2, binding = 0, std140) uniform UniformModel {
 
 layout(set = 2, binding = 1, std140) uniform UniformTextureMapping {
     TextureMapping _textureMapping;
+};
+
+layout(set = 2, binding = 5, std140) uniform SkeletonBoneCount {
+    uint _boneCount;
+};
+
+layout(set = 2, binding = 6, std140) uniform SkeletonBoneTransforms {
+    mat4 _boneTransforms[MAX_SKELETON_BONES];
 };
 
 /*Функции*/

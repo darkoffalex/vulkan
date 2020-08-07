@@ -14,6 +14,12 @@ namespace vk
          */
         const size_t MATERIAL_UBO_SIZE = 56;
 
+        /**
+         * Количество костей скелетной анимации
+         * Определяет размер буфера uboBoneTransforms_
+         */
+        const size_t MAX_SKELETON_BONES = 50;
+
         // Типы текстур
         // Порядок индексов должен соответствовать порядку MeshTextureSet
         const size_t TEXTURE_TYPE_COLOR = 0;
@@ -83,6 +89,16 @@ namespace vk
             /// Указатель на размеченную область буфера UBO параметров использования текстур
             void* pUboTextureUsageData_;
 
+            /// UBO буфер для кол-ва костей скелетной анимации
+            vk::tools::Buffer uboBoneCount_;
+            /// Указатель на размеченную область буфера UBO кол-ва костей скелетной анимации
+            void* pUboBoneCountData_;
+
+            /// UBO буфер для матриц костей скелетной анимации
+            vk::tools::Buffer uboBoneTransforms_;
+            /// Указатель на размеченную область буфера UBO матриц костей скелетной анимации
+            void* pUboBoneTransformsData_;
+
             /// Указатель на пул дескрипторов, из которого выделяется набор дескрипторов меша
             const vk::DescriptorPool *pDescriptorPool_;
             /// Дескрипторный набор
@@ -107,6 +123,16 @@ namespace vk
              * Обновление UBO параметров использования текстур
              */
             void updateTextureUsageUbo();
+
+            /**
+             * Обновление UBO параметров скелетной анимации (кол-во костей)
+             */
+            void updateSkeletonBoneCountUbo();
+
+            /**
+             * Обновление UBO параметров скелетной анимации (матрицы трансформации костей)
+             */
+            void updateSkeletonBoneTransformsUbo();
 
             /**
              * Событие смены положения

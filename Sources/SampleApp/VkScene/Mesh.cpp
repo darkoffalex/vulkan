@@ -17,7 +17,9 @@ namespace vk
         pUboModelMatrixData_(nullptr),
         pUboMaterialData_(nullptr),
         pUboTextureMappingData_(nullptr),
-        pUboTextureUsageData_(nullptr){}
+        pUboTextureUsageData_(nullptr),
+        pUboBoneCountData_(nullptr),
+        pUboBoneTransformsData_(nullptr){}
 
         /**
          * Конструктор перемещения
@@ -33,6 +35,8 @@ namespace vk
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
             std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(pUboTextureUsageData_,other.pUboTextureUsageData_);
+            std::swap(pUboBoneCountData_,other.pUboBoneCountData_);
+            std::swap(pUboBoneTransformsData_, other.pUboBoneTransformsData_);
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
             std::swap(textureSet_, other.textureSet_);
@@ -42,6 +46,8 @@ namespace vk
             uboMaterial_ = std::move(other.uboMaterial_);
             uboTextureMapping_ = std::move(other.uboTextureMapping_);
             uboTextureUsage_ = std::move(other.uboTextureUsage_);
+            uboBoneCount_ = std::move(other.uboBoneCount_);
+            uboBoneTransforms_ = std::move(other.uboBoneTransforms_);
         }
 
         /**
@@ -61,6 +67,8 @@ namespace vk
             pUboMaterialData_ = nullptr;
             pUboTextureMappingData_ = nullptr;
             pUboTextureUsageData_ = nullptr;
+            pUboBoneCountData_ = nullptr;
+            pUboBoneTransformsData_ = nullptr;
             materialSettings_ = {};
             textureMapping_ = {};
 
@@ -71,6 +79,8 @@ namespace vk
             std::swap(pUboMaterialData_, other.pUboMaterialData_);
             std::swap(pUboTextureMappingData_, other.pUboTextureMappingData_);
             std::swap(pUboTextureUsageData_,other.pUboTextureUsageData_);
+            std::swap(pUboBoneCountData_,other.pUboBoneCountData_);
+            std::swap(pUboBoneTransformsData_, other.pUboBoneTransformsData_);
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
             std::swap(textureSet_, other.textureSet_);
@@ -80,6 +90,8 @@ namespace vk
             uboMaterial_ = std::move(other.uboMaterial_);
             uboTextureMapping_ = std::move(other.uboTextureMapping_);
             uboTextureUsage_ = std::move(other.uboTextureUsage_);
+            uboBoneCount_ = std::move(other.uboBoneCount_);
+            uboBoneTransforms_ = std::move(other.uboBoneTransforms_);
 
             return *this;
         }
@@ -147,11 +159,25 @@ namespace vk
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
+            // Выделить буфер для кол-ва костей скелетной анимации
+            uboBoneCount_ = vk::tools::Buffer(pDevice_,
+                    sizeof(glm::uint32),
+                    vk::BufferUsageFlagBits::eUniformBuffer,
+                    vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
+            // Выделить буфер для матриц костей скелетной анимации
+            uboBoneTransforms_ = vk::tools::Buffer(pDevice_,
+                    sizeof(glm::mat4) * MAX_SKELETON_BONES,
+                    vk::BufferUsageFlagBits::eUniformBuffer,
+                    vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
             // Разметить память буферов, получив указатели
             pUboModelMatrixData_ = uboModelMatrix_.mapMemory();
             pUboMaterialData_ = uboMaterial_.mapMemory();
             pUboTextureMappingData_ = uboTextureMapping_.mapMemory();
             pUboTextureUsageData_ = uboTextureUsage_.mapMemory();
+            pUboBoneCountData_ = uboBoneCount_.mapMemory();
+            pUboBoneTransformsData_ = uboBoneTransforms_.mapMemory();
 
             // Выделить дескрипторный набор
             vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
@@ -168,7 +194,9 @@ namespace vk
                     {uboModelMatrix_.getBuffer().get(),0,VK_WHOLE_SIZE},
                     {uboTextureMapping_.getBuffer().get(),0,VK_WHOLE_SIZE},
                     {uboMaterial_.getBuffer().get(),0,VK_WHOLE_SIZE},
-                    {uboTextureUsage_.getBuffer().get(),0,VK_WHOLE_SIZE}
+                    {uboTextureUsage_.getBuffer().get(),0,VK_WHOLE_SIZE},
+                    {uboBoneCount_.getBuffer().get(),0,VK_WHOLE_SIZE},
+                    {uboBoneTransforms_.getBuffer().get(),0,VK_WHOLE_SIZE}
             };
 
             // Описываем связи дескрипторов с буферами (описание "записей")
@@ -211,6 +239,26 @@ namespace vk
                             vk::DescriptorType::eUniformBuffer,
                             nullptr,
                             bufferInfos.data() + 3,
+                            nullptr
+                    },
+                    {
+                            descriptorSet_.get(),
+                            5,
+                            0,
+                            1,
+                            vk::DescriptorType::eUniformBuffer,
+                            nullptr,
+                            bufferInfos.data() + 4,
+                            nullptr
+                    },
+                    {
+                            descriptorSet_.get(),
+                            6,
+                            0,
+                            1,
+                            vk::DescriptorType::eUniformBuffer,
+                            nullptr,
+                            bufferInfos.data() + 5,
                             nullptr
                     }
             };
@@ -276,6 +324,8 @@ namespace vk
             this->updateMaterialSettingsUbo();
             this->updateTextureMappingUbo();
             this->updateTextureUsageUbo();
+            this->updateSkeletonBoneCountUbo();
+            this->updateSkeletonBoneTransformsUbo();
 
             // Инициализация завершена
             isReady_ = true;
@@ -305,12 +355,20 @@ namespace vk
                 uboTextureUsage_.unmapMemory();
                 uboTextureUsage_.destroyVulkanResources();
 
+                uboBoneCount_.unmapMemory();
+                uboBoneCount_.destroyVulkanResources();
+
+                uboBoneTransforms_.unmapMemory();
+                uboBoneTransforms_.destroyVulkanResources();
+
                 // Обнулить указатели
                 pDevice_ = nullptr;
                 pDescriptorPool_ = nullptr;
                 pUboModelMatrixData_ = nullptr;
                 pUboMaterialData_ = nullptr;
                 pUboTextureMappingData_ = nullptr;
+                pUboBoneCountData_ = nullptr;
+                pUboBoneTransformsData_ = nullptr;
 
                 // Объект де-инициализирован
                 isReady_ = false;
@@ -397,6 +455,28 @@ namespace vk
         {
             if(uboTextureMapping_.isReady()){
                 memcpy(pUboTextureUsageData_,textureUsage_, sizeof(glm::uvec4));
+            }
+        }
+
+        /**
+         * Обновление UBO параметров скелетной анимации (кол-во костей)
+         */
+        void Mesh::updateSkeletonBoneCountUbo()
+        {
+            if(uboBoneCount_.isReady()){
+                //TODO: копирование данных о кол-ве костей из объекта скелета меша (временно передаем 0)
+                glm::uint32 count = 0;
+                memcpy(pUboBoneCountData_, &count, sizeof(glm::uint32));
+            }
+        }
+
+        /**
+         * Обновление UBO параметров скелетной анимации (матрицы трансформации костей)
+         */
+        void Mesh::updateSkeletonBoneTransformsUbo()
+        {
+            if(uboBoneTransforms_.isReady()){
+                //TODO: копирование данных о трансформациях из объекта скелета меша (временно передаем 0)
             }
         }
 

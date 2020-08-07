@@ -376,6 +376,10 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескриптор для текстуры/семплера
                 {vk::DescriptorType::eCombinedImageSampler, 4},
                 // Дескриптор для параметров использования текстур
+                {vk::DescriptorType::eUniformBuffer, 1},
+                // Дескриптор для буфера кол-ва костей скелетной анимации
+                {vk::DescriptorType::eUniformBuffer, 1},
+                // Дескриптор для буфера трансформаций костей скелетной анимации
                 {vk::DescriptorType::eUniformBuffer, 1}
         };
 
@@ -473,6 +477,22 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         1,
                         vk::ShaderStageFlagBits::eFragment,
                         nullptr,
+                },
+                // UBO буфер для кол-ва костей скелетной анимации
+                {
+                    5,
+                    vk::DescriptorType::eUniformBuffer,
+                    1,
+                    vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry,
+                    nullptr
+                },
+                // UBO буфер для матриц трансформаций костей скелетной анимации
+                {
+                    6,
+                    vk::DescriptorType::eUniformBuffer,
+                    1,
+                    vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry,
+                    nullptr
                 }
         };
 
@@ -622,6 +642,18 @@ void VkRenderer::initPipeline(
                     vk::Format::eR32G32B32Sfloat,
                     offsetof(vk::tools::Vertex, normal)
             },
+            {
+                    4,
+                    0,
+                    vk::Format::eR32G32B32A32Sint,
+                    offsetof(vk::tools::Vertex, boneIndices)
+            },
+            {
+                    5,
+                    0,
+                    vk::Format::eR32G32B32A32Sfloat,
+                    offsetof(vk::tools::Vertex, weights)
+            }
     };
 
     vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo{};
