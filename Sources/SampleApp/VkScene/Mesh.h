@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneElement.h"
+#include "Skeleton.h"
 #include "../VkResources/GeometryBuffer.hpp"
 #include "../VkResources/TextureBuffer.hpp"
 
@@ -68,6 +69,8 @@ namespace vk
             vk::scene::MeshTextureMapping textureMapping_;
             /// Параметры использования текстур
             glm::uint32 textureUsage_[4] = {0,0,0,0};
+            /// Параметры скелета
+            UniqueSkeleton skeleton_;
 
             /// UBO буфер для матрицы модели
             vk::tools::Buffer uboModelMatrix_;
@@ -244,6 +247,18 @@ namespace vk
              * @return Структура описывающая параметры отображения текстуры
              */
             MeshTextureMapping getTextureMapping() const;
+
+            /**
+             * Установка нового скелета мешу
+             * @param skeleton Unique-smart-pointer объекта скелета
+             */
+            void setSkeleton(UniqueSkeleton skeleton);
+
+            /**
+             * Получить указатель на скелет меша
+             * @return Ссылка на unique-smart-pointer объекта скелета
+             */
+            const UniqueSkeleton& getSkeletonPtr();
         };
 
         /**

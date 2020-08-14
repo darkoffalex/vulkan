@@ -8,6 +8,8 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include <unordered_map>
+
 namespace vk
 {
     namespace helpers
@@ -198,9 +200,10 @@ namespace vk
          * Загрузка геометрии меша из файла 3D-моделей
          * @param pRenderer Указатель на рендерер
          * @param filename Имя файла в папке Models
+         * @param loadWeightInformation Загружать информацию о весах и костях
          * @return Smart pointer объекта геометрического буфера
          */
-        vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer *pRenderer, const std::string &filename)
+        vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer *pRenderer, const std::string &filename, bool loadWeightInformation)
         {
             // Полный путь к файлу
             auto path = ::tools::ExeDir().append("..\\Models\\").append(filename);
@@ -254,8 +257,8 @@ namespace vk
                 }
             }
 
-            // Инициализировать индексы костей и веса для вершин (если есть)
-            if(pFirstMesh->HasBones())
+            // Инициализировать индексы костей и веса для вершин (если нужно и если они есть)
+            if(loadWeightInformation && pFirstMesh->HasBones())
             {
                 // Массив массивов весов для каждой вершины (на каждую вершину - массив весов, индексы совпадают с массивом vertices)
                 std::vector<std::vector<glm::float32_t>> weights(vertices.size());
@@ -287,9 +290,9 @@ namespace vk
                     auto& vertexWeights = weights[i];
                     auto& vertexBones = bones[i];
 
-                    // Несколько наиболее значимых весов и костей (итоговые значения передаваемые в вершинных атрибутах)
-                    std::vector<glm::float32_t> mostInfluenceWeights;
-                    std::vector<size_t> mostInfluencedBones;
+                    // Наиболее влияющие кости и соответствующие веса (считать изначально 0-вая кость оказывает максимальное влияние)
+                    glm::ivec4 mostInfluencedBones(0,0,0,0);
+                    glm::vec4 mostInfluenceWeights(1.0f,0.0f,0.0f,0.0f);
 
                     // Получить итоговые значения
                     for(size_t j = 0; j < maxWeightsPerVertex; j++)
@@ -300,38 +303,20 @@ namespace vk
                             auto maxWeightIndex = std::distance(vertexWeights.begin(),std::max_element(vertexWeights.begin(), vertexWeights.end()));
 
                             // Добавить индекс кости которая влияет более всего на данную вершину
-                            mostInfluencedBones.push_back(vertexBones[maxWeightIndex]);
+                            (&mostInfluencedBones.x)[j] = vertexBones[maxWeightIndex];
                             // Добавить вес кости которая влияет более всего на данную вершину
-                            mostInfluenceWeights.push_back(vertexWeights[maxWeightIndex]);
+                            (&mostInfluenceWeights.x)[j] = vertexWeights[maxWeightIndex];
 
                             // Удалить элементы из массивов по данному индексу (на следующей итерации максимальный будет уже другой)
                             vertexBones.erase(vertexBones.begin() + maxWeightIndex);
                             vertexWeights.erase(vertexWeights.begin() + maxWeightIndex);
                         }
-                        else
-                        {
-                            // Отрицательное значение индекса кости - кость отсутствует
-                            mostInfluencedBones.push_back(-1);
-                            // При отсутствии кости вес не имеет значения, указывается 0
-                            mostInfluenceWeights.push_back(0.0f);
-                        }
                     }
 
                     // Индексы костей у вершины
-                    vertices[i].boneIndices = {
-                            mostInfluencedBones[0],
-                            mostInfluencedBones[1],
-                            mostInfluencedBones[2],
-                            mostInfluencedBones[3]
-                    };
-
+                    vertices[i].boneIndices = mostInfluencedBones;
                     // Соответствующие веса (поскольку в сумме веса должны давать единицу, необходимо нормализовать этот вектор)
-                    vertices[i].weights = glm::normalize(glm::vec4({
-                            mostInfluenceWeights[0],
-                            mostInfluenceWeights[1],
-                            mostInfluenceWeights[2],
-                            mostInfluenceWeights[3]
-                    }));
+                    vertices[i].weights = glm::normalize(mostInfluenceWeights);
                 }
             }
 
@@ -340,12 +325,121 @@ namespace vk
         }
 
         /**
-         * Временный тестовый метод по загрузке информации о скелете
-         * @param filename Имя файла в папке Models
+         * Конвертировать (по сути транспонировать) матрицу Assimp в GLM
+         * @param aiMat Матрица Assimp
+         * @return Матрица GLM (4*4)
          */
-        void LoadSkeleton(const std::string &filename)
+        glm::mat4 mat4fromAssimp(const aiMatrix4x4 &aiMat)
         {
-            //TODO: загрузка информации о скелете
+            return {
+                    aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
+                    aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
+                    aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
+                    aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
+            };
+        }
+
+        /**
+         * Рекурсивное заполнение данных скелета
+         * @param assimpBoneName Наименование кости assimp
+         * @param bone Текущая кость
+         * @param assimpBones Ассоциативный массив костей assimp (ключ - имя кости)
+         * @param assimpBoneIndices Ассоциативный массив индексов костей (ключ - имя кости)
+         */
+        void recursivePopulateSkeleton(const std::string& assimpBoneName,
+                const vk::scene::SkeletonBonePtr& bone,
+                const std::unordered_map<std::string, aiBone*>& assimpBones,
+                const std::unordered_map<std::string, size_t>& assimpBoneIndices,
+                const aiScene* scene)
+        {
+            // Получить текущую кость assimp
+            auto assimpBone = assimpBones.at(assimpBoneName);
+
+            // Если у кости есть потомки
+            if(assimpBone->mNode->mNumChildren > 0)
+            {
+                // Пройтись по ним
+                for(size_t i = 0; i < assimpBone->mNode->mNumChildren; i++)
+                {
+                    // Получить необходимые данные о потомке
+                    auto childNode = assimpBone->mNode->mChildren[i];
+                    auto childIndex = assimpBoneIndices.at(childNode->mName.C_Str());
+
+                    // Добавить нового потомка в текущую кость
+                    auto child = bone->addChildBone(childIndex,mat4fromAssimp(childNode->mTransformation),glm::mat4(1.0f));
+
+                    // Рекурсивно выполнить эту функцию для потомка
+                    recursivePopulateSkeleton(childNode->mName.C_Str(),child,assimpBones,assimpBoneIndices,scene);
+                }
+            }
+        }
+
+        /**
+         * Загрузка скелета из файла 3D-моделей
+         * @param filename Имя файла в папке Models
+         * @return Объект скелета
+         */
+        vk::scene::UniqueSkeleton LoadVulkanMeshSkeleton(const std::string &filename)
+        {
+            // Итоговый скелет
+            vk::scene::UniqueSkeleton skeleton = std::make_unique<vk::scene::Skeleton>();
+
+            // Полный путь к файлу
+            auto path = ::tools::ExeDir().append("..\\Models\\").append(filename);
+
+            // Импортер Assimp
+            Assimp::Importer importer;
+
+            // Получить сцену
+            const aiScene* scene = importer.ReadFile(path.c_str(),
+                    aiProcess_Triangulate |
+                    aiProcess_JoinIdenticalVertices |
+                    //aiProcess_PreTransformVertices |
+                    aiProcess_FlipWindingOrder |
+                    aiProcess_PopulateArmatureData
+            );
+
+            // Если не удалось загрузить
+            if(scene == nullptr){
+                throw std::runtime_error(std::string("Can't load geometry from (").append(path).append(")").c_str());
+            }
+
+            // Если нет геометрических мешей
+            if(!scene->HasMeshes()){
+                throw std::runtime_error(std::string("Can't find any geometry meshes from (").append(path).append(")").c_str());
+            }
+
+            // Первый меш сцены
+            auto pFirstMesh = scene->mMeshes[0];
+
+            // Если у меша есть кости
+            if(pFirstMesh->HasBones())
+            {
+                // Инициализировать скелет
+                skeleton = std::make_unique<vk::scene::Skeleton>(pFirstMesh->mNumBones);
+
+                // Ассоциативный массив костей Assimp
+                std::unordered_map<std::string, aiBone*> bones{};
+                // Ассоциативный массив индексов костей
+                std::unordered_map<std::string, size_t> indices{};
+
+                // Пройтись по костям скелета и заполнить ассоциативные массив костей и индексов для доступа по именам
+                for(size_t i = 0; i < pFirstMesh->mNumBones; i++)
+                {
+                    bones[pFirstMesh->mBones[i]->mName.C_Str()] = pFirstMesh->mBones[i];
+                    indices[pFirstMesh->mBones[i]->mName.C_Str()] = i;
+                }
+
+                // Установить значение корневой кости скелета
+                auto rootBone = pFirstMesh->mBones[0];
+                skeleton->getRootBone()->setTransformations(mat4fromAssimp(rootBone->mNode->mTransformation),glm::mat4(1.0f));
+
+                // Добавление дочерних костей
+                recursivePopulateSkeleton(pFirstMesh->mBones[0]->mName.C_Str(),skeleton->getRootBone(),bones,indices,scene);
+            }
+
+            // Отдать скелет
+            return skeleton;
         }
     }
 }

@@ -97,8 +97,10 @@ int main(int argc, char* argv[])
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
 //        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
 //        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
-        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"ar2rDevilPinky.dae");
+        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
 
+        // Скелет
+        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
 
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
@@ -146,10 +148,23 @@ int main(int argc, char* argv[])
 //        head->setOrientation({0.0f,0.0f,0.0f}, false);
 //        head->setPosition({0.0f,0.75f,0.15f});
 
-        //Ar2r-Devil-Pinky
-        auto ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
-        ar2r->setPosition({0.0f,0.0f,0.0f}, false);
-        ar2r->setScale({2.0f,2.0f,2.0f});
+        // Ar2r-Devil-Pinky (первая версия)
+        auto Ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
+        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
+        Ar2r->setScale({2.0f, 2.0f, 2.0f});
+        Ar2r->setSkeleton(std::move(skeleton));
+
+        // Доступ к костям скелета Ar2r-Devil-Pinky
+        auto torso = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[0];
+        auto leg1 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[1];
+        auto leg2 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[2];
+        auto neck = torso->getChildrenBones()[0];
+
+        // Управление костями скелета
+        torso->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(45.0f),{1.0f, 0.0f, 0.0f}));
+        neck->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-20.0f),{1.0f, 0.0f, 0.0f}));
+        leg1->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(30.0f),{1.0f, 0.0f, 0.0f}));
+        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
 
         // Свет
         auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});

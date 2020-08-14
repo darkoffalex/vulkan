@@ -19,7 +19,8 @@ namespace vk
         pUboTextureMappingData_(nullptr),
         pUboTextureUsageData_(nullptr),
         pUboBoneCountData_(nullptr),
-        pUboBoneTransformsData_(nullptr){}
+        pUboBoneTransformsData_(nullptr),
+        skeleton_(nullptr){}
 
         /**
          * Конструктор перемещения
@@ -40,6 +41,8 @@ namespace vk
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
             std::swap(textureSet_, other.textureSet_);
+            std::swap(skeleton_, other.skeleton_);
+
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
@@ -84,6 +87,8 @@ namespace vk
             std::swap(materialSettings_,other.materialSettings_);
             std::swap(textureMapping_,other.textureMapping_);
             std::swap(textureSet_, other.textureSet_);
+            std::swap(skeleton_,other.skeleton_);
+
             geometryBufferPtr_.swap(other.geometryBufferPtr_);
             descriptorSet_.swap(other.descriptorSet_);
             uboModelMatrix_ = std::move(other.uboModelMatrix_);
@@ -128,7 +133,8 @@ namespace vk
         pDescriptorPool_(&(descriptorPool.get())),
         geometryBufferPtr_(std::move(geometryBufferPtr)),
         textureSet_(std::move(textureSet)),
-        materialSettings_(materialSettings)
+        materialSettings_(materialSettings),
+        skeleton_(new Skeleton())
         {
             // Проверить устройство
             if(pDevice_ == nullptr || !pDevice_->isReady()){
@@ -327,6 +333,11 @@ namespace vk
             this->updateSkeletonBoneCountUbo();
             this->updateSkeletonBoneTransformsUbo();
 
+            // Установить callback функция скелету, вызываемую при обновлении данных костей
+            skeleton_->setUpdateCallback([&](){
+                this->updateSkeletonBoneTransformsUbo();
+            });
+
             // Инициализация завершена
             isReady_ = true;
         }
@@ -453,7 +464,7 @@ namespace vk
          */
         void Mesh::updateTextureUsageUbo()
         {
-            if(uboTextureMapping_.isReady()){
+            if(uboTextureUsage_.isReady()){
                 memcpy(pUboTextureUsageData_,textureUsage_, sizeof(glm::uvec4));
             }
         }
@@ -463,9 +474,9 @@ namespace vk
          */
         void Mesh::updateSkeletonBoneCountUbo()
         {
-            if(uboBoneCount_.isReady()){
-                //TODO: копирование данных о кол-ве костей из объекта скелета меша (временно передаем 0)
-                glm::uint32 count = 0;
+            if(uboBoneCount_.isReady() && this->skeleton_ != nullptr)
+            {
+                glm::uint32 count = this->skeleton_->getTotalBones();
                 memcpy(pUboBoneCountData_, &count, sizeof(glm::uint32));
             }
         }
@@ -475,8 +486,8 @@ namespace vk
          */
         void Mesh::updateSkeletonBoneTransformsUbo()
         {
-            if(uboBoneTransforms_.isReady()){
-                //TODO: копирование данных о трансформациях из объекта скелета меша (временно передаем 0)
+            if(uboBoneTransforms_.isReady() && this->skeleton_ != nullptr){
+                memcpy(pUboBoneTransformsData_,this->skeleton_->getFinalBoneTransforms().data(), this->skeleton_->getTransformsDataSize());
             }
         }
 
@@ -513,6 +524,35 @@ namespace vk
          */
         MeshTextureMapping Mesh::getTextureMapping() const {
             return textureMapping_;
+        }
+
+        /**
+         * Установка нового скелета мешу
+         * @param skeleton Unique-smart-pointer объекта скелета
+         */
+        void Mesh::setSkeleton(UniqueSkeleton skeleton)
+        {
+            // Сменить скелеты
+            this->skeleton_ = std::move(skeleton);
+            // Пересчитать матрицы
+            this->skeleton_->getRootBone()->calculateBranch(false);
+
+            // Обновить UBO
+            this->updateSkeletonBoneCountUbo();
+            this->updateSkeletonBoneTransformsUbo();
+
+            // Установить callback функция скелету, вызываемую при обновлении данных костей
+            this->skeleton_->setUpdateCallback([&](){
+                this->updateSkeletonBoneTransformsUbo();
+            });
+        }
+
+        /**
+         * Получить указатель на скелет меша
+         * @return Ссылка на unique-smart-pointer объекта скелета
+         */
+        const UniqueSkeleton &Mesh::getSkeletonPtr() {
+            return this->skeleton_;
         }
     }
 }

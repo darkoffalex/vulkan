@@ -3,6 +3,7 @@
 #include "VkRenderer.h"
 #include "VkResources/TextureBuffer.hpp"
 #include "VkResources/GeometryBuffer.hpp"
+#include "VkScene/Skeleton.h"
 
 namespace vk
 {
@@ -51,14 +52,16 @@ namespace vk
          * Загрузка геометрии меша из файла 3D-моделей
          * @param pRenderer Указатель на рендерер
          * @param filename Имя файла в папке Models
+         * @param loadWeightInformation Загружать информацию о весах и костях
          * @return Smart pointer объекта геометрического буфера
          */
-        vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer* pRenderer, const std::string &filename);
+        vk::resources::GeometryBufferPtr LoadVulkanGeometryMesh(VkRenderer* pRenderer, const std::string &filename, bool loadWeightInformation = false);
 
         /**
-         * Временный тестовый метод по загрузке информации о скелете
+         * Загрузка скелета из файла 3D-моделей
          * @param filename Имя файла в папке Models
+         * @return Объект скелета
          */
-        void LoadSkeleton(const std::string &filename);
+         vk::scene::UniqueSkeleton LoadVulkanMeshSkeleton(const std::string &filename);
     }
 }

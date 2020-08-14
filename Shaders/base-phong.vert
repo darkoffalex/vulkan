@@ -7,12 +7,12 @@
 
 /*Схема входа-выхода*/
 
-layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 color;
-layout (location = 2) in vec2 uv;
-layout (location = 3) in vec3 normal;
-layout (location = 4) in ivec4 boneIndices;
-layout (location = 5) in vec4 weights;
+layout (location = 0) in vec3 inPosition;
+layout (location = 1) in vec3 inColor;
+layout (location = 2) in vec2 inUv;
+layout (location = 3) in vec3 inNormal;
+layout (location = 4) in ivec4 inBoneIndices;
+layout (location = 5) in vec4 inWeights;
 
 layout (location = 0) out VS_OUT
 {
@@ -81,25 +81,47 @@ vec2 calcUV(vec2 uv, TextureMapping mapping)
 // Преобразование координат (и прочих параметров) вершины и передача их следующим этапам
 void main()
 {
-    // Координаты вершины после всех преобразований
-    gl_Position =  _proj * _view * _model * vec4(position, 1.0);
+    // Итоговые значения положения и нормали в пространстве модели
+    vec4 position = vec4(0.0f);
+    vec4 normal = vec4(0.0f);
 
     // Матрица преобразования нормалей
     // Учитывает только поворот, без искажения нормалей в процессе масштабирования
-    vs_out.normalMatrix = transpose(inverse(mat3(_model)));
+    mat3 normalMatrix = transpose(inverse(mat3(_model)));
+
+    // Пройтись по всем компонентам вектора весов
+    for(uint i = 0; i < MAX_BONE_WEIGHTS; i++)
+    {
+        // Получаем индекс кости и соответствующий вес
+        int boneIndex = inBoneIndices[i];
+        float weight = inWeights[i];
+
+        // Если индек кости валиден - произвести приращение значения положения и нормали с учетом трансформации кости
+        if(boneIndex >= 0 && boneIndex < MAX_SKELETON_BONES)
+        {
+            position += (_boneTransforms[boneIndex] * vec4(inPosition, 1.0)) * weight;
+            normal += (_boneTransforms[boneIndex] * vec4(inNormal,0.0)) * weight;
+        }
+    }
+
+    // Координаты вершины после всех преобразований
+    gl_Position = _proj * _view * _model * position;
+
+    // Передача матрицы нормалей
+    vs_out.normalMatrix = normalMatrix;
 
     // Цвет вершины передается как есть
-    vs_out.color = color;
+    vs_out.color = inColor;
 
     // Положение вершины в мировых координатах
-    vs_out.position = (_model * vec4(position, 1.0)).xyz;
+    vs_out.position = (_model * position).xyz;
 
     // Положение вершины в локальном пространстве
-    vs_out.positionLocal = position;
+    vs_out.positionLocal = position.xyz;
 
     // UV координаты текстуры для вершины
-    vs_out.uv = calcUV(uv, _textureMapping);
+    vs_out.uv = calcUV(inUv, _textureMapping);
 
     // Нормаль вершины - используем матрицу нормалей для корректной передачи
-    vs_out.normal = normalize(vs_out.normalMatrix * normal);
+    vs_out.normal = normalize(normalMatrix * normal.xyz);
 }

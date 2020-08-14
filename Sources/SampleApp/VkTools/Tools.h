@@ -25,8 +25,8 @@ namespace vk
             glm::vec3 normal;
 
             // Данные для скелета
-            glm::ivec4 boneIndices;
-            glm::vec4 weights;
+            glm::ivec4 boneIndices = {0,0,0,0};
+            glm::vec4 weights = {1.0f,0,0,0};
         };
 
         /// В С П О М О Г А Т Е Л Ь Н Ы Е  М Е Т О Д Ы
