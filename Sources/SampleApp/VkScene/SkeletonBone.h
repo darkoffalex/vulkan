@@ -19,6 +19,16 @@ namespace vk
 
         class SkeletonBone
         {
+        public:
+            /// Флаги вычисления матриц
+            enum CalcFlags
+            {
+                eNone = (0),
+                eFullTransform = (1u << 0u),
+                eBindTransform = (1u << 1u),
+                eInverseBindTransform = (1u << 2u),
+            };
+
         private:
             friend class Mesh;
             friend class Skeleton;
@@ -42,14 +52,16 @@ namespace vk
             /// Данная трансформация может быть применена к точкам находящимся В ПРОСТРАНСТВЕ КОСТИ
             glm::mat4 totalTransform_;
             /// Результирующая трансформация кости БЕЗ учета задаваемой, но с учетом bind-трансформаций родительских костей
-            /// Инвертированная матрица данной трансформации может быть использована для перехода в пространство кости ИЗ ПРОСТРАНСТВА МОДЕЛИ
             glm::mat4 totalBindTransform_;
+            /// Инвертированная bind матрица может быть использована для перехода в пространство кости ИЗ ПРОСТРАНСТВА МОДЕЛИ
+            glm::mat4 totalBindTransformInverse_;
 
             /**
              * Рекурсивное вычисление матриц для текущей кости и всех дочерних её костей
              * @param callUpdateCallbackFunction Вызывать функцию обратного вызова установленную к скелета
+             * @param calcFlags Опции вычисления матриц (какие матрицы считать)
              */
-            void calculateBranch(bool callUpdateCallbackFunction = true);
+            void calculateBranch(bool callUpdateCallbackFunction = true, unsigned calcFlags = CalcFlags::eFullTransform | CalcFlags::eBindTransform | CalcFlags::eInverseBindTransform);
 
         public:
             /**

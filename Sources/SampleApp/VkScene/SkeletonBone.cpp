@@ -12,24 +12,35 @@ namespace vk
     {
         /**
          * Рекурсивное вычисление матриц для текущей кости и всех дочерних её костей
-         * @param callUpdateCallbackFunction Вызывать функцию обновления UBO буфера у скелета
+         * @param callUpdateCallbackFunction Вызывать функцию обратного вызова установленную к скелета
+         * @param calcFlags Опции вычисления матриц (какие матрицы считать)
          */
-        void SkeletonBone::calculateBranch(bool callUpdateCallbackFunction)
+        void SkeletonBone::calculateBranch(bool callUpdateCallbackFunction, unsigned calcFlags)
         {
             // Если у кости есть родительская кость
             if(pParentBone_ != nullptr)
             {
                 // Общая initial (bind) трансформация для кости учитывает текущую и родительскую (что в свою очередь справедливо и для родительской)
-                totalBindTransform_ = pParentBone_->totalBindTransform_ * this->localBindTransform_;
+                if(calcFlags & CalcFlags::eBindTransform)
+                    totalBindTransform_ = pParentBone_->totalBindTransform_ * this->localBindTransform_;
+
                 // Общая полная (с учетом задаваемой) трансформация кости (смещаем на localTransform_, затем на initial, затем на общую родительскую трансформацию)
-                totalTransform_ = pParentBone_->totalTransform_ * this->localBindTransform_ * this->localTransform_;
+                if(calcFlags & CalcFlags::eFullTransform)
+                    totalTransform_ = pParentBone_->totalTransform_ * this->localBindTransform_ * this->localTransform_;
             }
             // Если нет родительской кости - считать кость корневой
             else
             {
-                totalBindTransform_ = this->localBindTransform_;
-                totalTransform_ = this->localBindTransform_ * this->localTransform_;
+                if(calcFlags & CalcFlags::eBindTransform)
+                    totalBindTransform_ = this->localBindTransform_;
+
+                if(calcFlags & CalcFlags::eFullTransform)
+                    totalTransform_ = this->localBindTransform_ * this->localTransform_;
             }
+
+            // Инвертированная матрица bind трансформации
+            if(calcFlags & CalcFlags::eInverseBindTransform)
+                totalBindTransformInverse_ = glm::inverse(totalBindTransform_);
 
             // Если есть указатель на объект скелета и индекс валиден
             if(pSkeleton_ != nullptr && index_ < pSkeleton_->modelSpaceFinalTransforms_.size())
@@ -37,7 +48,7 @@ namespace vk
                 // Итоговая матрица трансформации для точек находящихся в пространстве модели
                 // Поскольку общая трансформация кости работает с вершинами находящимися в пространстве модели,
                 // они в начале должны быть переведены в пространство кости.
-                pSkeleton_->modelSpaceFinalTransforms_[index_] = totalTransform_ * glm::inverse(totalBindTransform_);
+                pSkeleton_->modelSpaceFinalTransforms_[index_] = totalTransform_ * totalBindTransformInverse_;
 
                 // Для ситуаций, если вершины задаются сразу в пространстве кости
                 pSkeleton_->boneSpaceFinalTransforms_[index_] = totalTransform_;
@@ -46,7 +57,7 @@ namespace vk
             // Рекурсивно выполнить для дочерних элементов (если они есть)
             if(!this->childrenBones_.empty()){
                 for(auto& childBone : this->childrenBones_){
-                    childBone->calculateBranch(false);
+                    childBone->calculateBranch(false, calcFlags);
                 }
             }
 
@@ -66,7 +77,8 @@ namespace vk
                 localBindTransform_(glm::mat4(1.0f)),
                 localTransform_(glm::mat4(1.0f)),
                 totalTransform_(glm::mat4(1.0f)),
-                totalBindTransform_(glm::mat4(1.0f)){}
+                totalBindTransform_(glm::mat4(1.0f)),
+                totalBindTransformInverse_(glm::mat4(1.0f)){}
 
         /**
          * Основной конструктор кости
@@ -84,10 +96,11 @@ namespace vk
                 localBindTransform_(localBindTransform),
                 localTransform_(localTransform),
                 totalTransform_(glm::mat4(1.0f)),
-                totalBindTransform_(glm::mat4(1.0f))
+                totalBindTransform_(glm::mat4(1.0f)),
+                totalBindTransformInverse_(glm::mat4(1.0f))
         {
             // Вычисление матриц кости
-            calculateBranch();
+            calculateBranch(CalcFlags::eFullTransform|CalcFlags::eBindTransform|CalcFlags::eInverseBindTransform);
         }
 
         /**
@@ -101,8 +114,13 @@ namespace vk
                 const glm::mat4 &localBindTransform,
                 const glm::mat4 &localTransform)
         {
+            // Создать дочернюю кость
             std::shared_ptr<SkeletonBone> child(new SkeletonBone(this->pSkeleton_,index,this,localBindTransform,localTransform));
+            // Добавить в массив дочерних костей
             this->childrenBones_.push_back(child);
+            // Добавить в общий линейный массив по указанному индексу
+            if(this->pSkeleton_ != nullptr) this->pSkeleton_->bones_[index] = child;
+            // Вернуть указатель
             return child;
         }
 
@@ -114,7 +132,7 @@ namespace vk
         void SkeletonBone::setLocalTransform(const glm::mat4 &transform, bool recalculateBranch)
         {
             this->localTransform_ = transform;
-            if(recalculateBranch) this->calculateBranch(true);
+            if(recalculateBranch) this->calculateBranch(true, CalcFlags::eFullTransform);
         }
 
         /**
@@ -125,7 +143,7 @@ namespace vk
         void SkeletonBone::setLocalBindTransform(const glm::mat4 &transform, bool recalculateBranch)
         {
             this->localBindTransform_ = transform;
-            if(recalculateBranch) this->calculateBranch(true);
+            if(recalculateBranch) this->calculateBranch(true, CalcFlags::eBindTransform|CalcFlags::eInverseBindTransform);
         }
 
         /**
@@ -138,7 +156,7 @@ namespace vk
         {
             this->localBindTransform_ = localBind;
             this->localTransform_ = local;
-            if(recalculateBranch) this->calculateBranch(true);
+            if(recalculateBranch) this->calculateBranch(true, CalcFlags::eFullTransform|CalcFlags::eBindTransform|CalcFlags::eInverseBindTransform);
         }
 
         /**

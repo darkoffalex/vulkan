@@ -476,7 +476,7 @@ namespace vk
         {
             if(uboBoneCount_.isReady() && this->skeleton_ != nullptr)
             {
-                glm::uint32 count = this->skeleton_->getTotalBones();
+                glm::uint32 count = this->skeleton_->getBonesCount();
                 memcpy(pUboBoneCountData_, &count, sizeof(glm::uint32));
             }
         }

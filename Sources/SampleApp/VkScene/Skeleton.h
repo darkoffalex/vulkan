@@ -24,6 +24,9 @@ namespace vk
             /// Массив итоговых трансформаций для вершин в пространстве костей
             std::vector<glm::mat4> boneSpaceFinalTransforms_;
 
+            /// Массив указателей на кости для доступа по индексам
+            std::vector<SkeletonBonePtr> bones_;
+
             /// Корневая кость
             SkeletonBonePtr rootBone_;
 
@@ -72,7 +75,20 @@ namespace vk
              * Получить общее кол-во матриц
              * @return Целое положительное число
              */
-            size_t getTotalBones() const;
+            size_t getBonesCount() const;
+
+            /**
+             * Получить линейный массив костей
+             * @return Массив указателей на кости
+             */
+            const std::vector<SkeletonBonePtr>& getBones();
+
+            /**
+             * Получить указатель на кость по индексу
+             * @param index Индекс
+             * @return Smart-pointer кости
+             */
+            SkeletonBonePtr getBoneByIndex(size_t index);
 
             /**
              * Получить размер массива трансформаций в байтах
