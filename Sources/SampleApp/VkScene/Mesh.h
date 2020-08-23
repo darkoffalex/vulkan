@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SceneElement.h"
-#include "Skeleton.h"
+#include "MeshSkeleton.hpp"
 #include "../VkResources/GeometryBuffer.hpp"
 #include "../VkResources/TextureBuffer.hpp"
 
@@ -70,7 +70,7 @@ namespace vk
             /// Параметры использования текстур
             glm::uint32 textureUsage_[4] = {0,0,0,0};
             /// Параметры скелета
-            UniqueSkeleton skeleton_;
+            UniqueMeshSkeleton skeleton_;
 
             /// UBO буфер для матрицы модели
             vk::tools::Buffer uboModelMatrix_;
@@ -252,13 +252,13 @@ namespace vk
              * Установка нового скелета мешу
              * @param skeleton Unique-smart-pointer объекта скелета
              */
-            void setSkeleton(UniqueSkeleton skeleton);
+            void setSkeleton(UniqueMeshSkeleton skeleton);
 
             /**
              * Получить указатель на скелет меша
              * @return Ссылка на unique-smart-pointer объекта скелета
              */
-            const UniqueSkeleton& getSkeletonPtr();
+            const UniqueMeshSkeleton& getSkeletonPtr();
         };
 
         /**

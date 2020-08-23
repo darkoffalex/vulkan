@@ -3,7 +3,8 @@
 #include "VkRenderer.h"
 #include "VkResources/TextureBuffer.hpp"
 #include "VkResources/GeometryBuffer.hpp"
-#include "VkScene/Skeleton.h"
+
+#include "VkScene/MeshSkeleton.hpp"
 
 namespace vk
 {
@@ -62,6 +63,6 @@ namespace vk
          * @param filename Имя файла в папке Models
          * @return Объект скелета
          */
-         vk::scene::UniqueSkeleton LoadVulkanMeshSkeleton(const std::string &filename);
+         vk::scene::UniqueMeshSkeleton LoadVulkanMeshSkeleton(const std::string &filename);
     }
 }

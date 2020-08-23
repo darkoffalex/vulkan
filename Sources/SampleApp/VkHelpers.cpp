@@ -4,6 +4,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <STB/stb_image.h>
 
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -324,20 +327,12 @@ namespace vk
             return pRenderer->createGeometryBuffer(vertices,indices);
         }
 
-        /**
-         * Конвертировать (по сути транспонировать) матрицу Assimp в GLM
-         * @param aiMat Матрица Assimp
-         * @return Матрица GLM (4*4)
-         */
-        glm::mat4 mat4fromAssimp(const aiMatrix4x4 &aiMat)
-        {
-            return {
-                    aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
-                    aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
-                    aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
-                    aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
-            };
-        }
+        // Методы для конвертирования векторов, матриц и кватернионов из Assimp в GLM
+        static inline glm::vec3 ToGlmVec3(const aiVector3D &v) { return glm::vec3(v.x, v.y, v.z); }
+        static inline glm::vec2 ToGlmVec2(const aiVector3D &v) { return glm::vec2(v.x, v.y); }
+        static inline glm::quat ToGlmQuat(const aiQuaternion &q) { return glm::quat(q.w, q.x, q.y, q.z); }
+        static inline glm::mat4 ToGlmMat4(const aiMatrix4x4 &m) { return glm::transpose(glm::make_mat4(&m.a1)); }
+        static inline glm::mat4 ToGlmMat4(const aiMatrix3x3 &m) { return glm::transpose(glm::make_mat3(&m.a1)); }
 
         /**
          * Рекурсивное заполнение данных скелета
@@ -346,11 +341,11 @@ namespace vk
          * @param assimpBones Ассоциативный массив костей assimp (ключ - имя кости)
          * @param assimpBoneIndices Ассоциативный массив индексов костей (ключ - имя кости)
          */
-        void recursivePopulateSkeleton(const std::string& assimpBoneName,
-                const vk::scene::SkeletonBonePtr& bone,
-                const std::unordered_map<std::string, aiBone*>& assimpBones,
-                const std::unordered_map<std::string, size_t>& assimpBoneIndices,
-                const aiScene* scene)
+        void RecursivePopulateSkeleton(const std::string& assimpBoneName,
+                                       const vk::scene::MeshSkeleton::BonePtr& bone,
+                                       const std::unordered_map<std::string, aiBone*>& assimpBones,
+                                       const std::unordered_map<std::string, size_t>& assimpBoneIndices,
+                                       const aiScene* scene)
         {
             // Получить текущую кость assimp
             auto assimpBone = assimpBones.at(assimpBoneName);
@@ -363,13 +358,19 @@ namespace vk
                 {
                     // Получить необходимые данные о потомке
                     auto childNode = assimpBone->mNode->mChildren[i];
+
+                    // Если такого индекса кости не обнаружено - пропуск итерации
+                    if(assimpBoneIndices.find(childNode->mName.C_Str()) == assimpBoneIndices.end())
+                        continue;
+
+                    // Получить индекс
                     auto childIndex = assimpBoneIndices.at(childNode->mName.C_Str());
 
                     // Добавить нового потомка в текущую кость
-                    auto child = bone->addChildBone(childIndex,mat4fromAssimp(childNode->mTransformation),glm::mat4(1.0f));
+                    auto child = bone->addChildBone(childIndex,ToGlmMat4(childNode->mTransformation),glm::mat4(1.0f));
 
                     // Рекурсивно выполнить эту функцию для потомка
-                    recursivePopulateSkeleton(childNode->mName.C_Str(),child,assimpBones,assimpBoneIndices,scene);
+                    RecursivePopulateSkeleton(childNode->mName.C_Str(), child, assimpBones, assimpBoneIndices, scene);
                 }
             }
         }
@@ -379,10 +380,10 @@ namespace vk
          * @param filename Имя файла в папке Models
          * @return Объект скелета
          */
-        vk::scene::UniqueSkeleton LoadVulkanMeshSkeleton(const std::string &filename)
+        vk::scene::UniqueMeshSkeleton LoadVulkanMeshSkeleton(const std::string &filename)
         {
             // Итоговый скелет
-            vk::scene::UniqueSkeleton skeleton = std::make_unique<vk::scene::Skeleton>();
+            vk::scene::UniqueMeshSkeleton skeleton = std::make_unique<vk::scene::MeshSkeleton>();
 
             // Полный путь к файлу
             auto path = ::tools::ExeDir().append("..\\Models\\").append(filename);
@@ -416,7 +417,7 @@ namespace vk
             if(pFirstMesh->HasBones())
             {
                 // Инициализировать скелет
-                skeleton = std::make_unique<vk::scene::Skeleton>(pFirstMesh->mNumBones);
+                skeleton = std::make_unique<vk::scene::MeshSkeleton>(pFirstMesh->mNumBones);
 
                 // Ассоциативный массив костей Assimp
                 std::unordered_map<std::string, aiBone*> bones{};
@@ -432,10 +433,10 @@ namespace vk
 
                 // Установить значение корневой кости скелета
                 auto rootBone = pFirstMesh->mBones[0];
-                skeleton->getRootBone()->setTransformations(mat4fromAssimp(rootBone->mNode->mTransformation),glm::mat4(1.0f));
+                skeleton->getRootBone()->setTransformations(ToGlmMat4(rootBone->mNode->mTransformation),glm::mat4(1.0f));
 
                 // Добавление дочерних костей
-                recursivePopulateSkeleton(pFirstMesh->mBones[0]->mName.C_Str(),skeleton->getRootBone(),bones,indices,scene);
+                RecursivePopulateSkeleton(pFirstMesh->mBones[0]->mName.C_Str(), skeleton->getRootBone(), bones, indices, scene);
             }
 
             // Отдать скелет

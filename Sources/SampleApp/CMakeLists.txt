@@ -14,7 +14,7 @@ add_executable(${TARGET_NAME}
         "VkExtensionLoader/ExtensionLoader.h" "VkExtensionLoader/ExtensionLoader.c"
         "VkTools/Tools.h" "VkTools/Tools.cpp" "VkTools/Device.hpp" "VkTools/Buffer.hpp" "VkTools/Image.hpp"
         "VkResources/FrameBuffer.hpp" "VkResources/GeometryBuffer.hpp" "VkResources/TextureBuffer.hpp"
-        "VkScene/SceneElement.h" "VkScene/SceneElement.cpp" "VkScene/Mesh.h" "VkScene/Mesh.cpp" "VkScene/Camera.h" "VkScene/Camera.cpp" "VkScene/LightSource.h" "VkScene/LightSource.cpp" "VkScene/LightSourceSet.hpp" "VkScene/SkeletonBone.h" "VkScene/SkeletonBone.cpp" "VkScene/Skeleton.h" "VkScene/Skeleton.cpp")
+        "VkScene/SceneElement.h" "VkScene/SceneElement.cpp" "VkScene/Mesh.h" "VkScene/Mesh.cpp" "VkScene/Camera.h" "VkScene/Camera.cpp" "VkScene/LightSource.h" "VkScene/LightSource.cpp" "VkScene/LightSourceSet.hpp" "VkScene/MeshSkeleton.hpp")
 
 # Директории с библиотеками (.lib)
 if(${PLATFORM_BIT_SUFFIX} STREQUAL "x86")

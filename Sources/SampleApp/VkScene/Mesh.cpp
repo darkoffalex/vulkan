@@ -134,7 +134,7 @@ namespace vk
         geometryBufferPtr_(std::move(geometryBufferPtr)),
         textureSet_(std::move(textureSet)),
         materialSettings_(materialSettings),
-        skeleton_(new Skeleton())
+        skeleton_(new MeshSkeleton())
         {
             // Проверить устройство
             if(pDevice_ == nullptr || !pDevice_->isReady()){
@@ -530,7 +530,7 @@ namespace vk
          * Установка нового скелета мешу
          * @param skeleton Unique-smart-pointer объекта скелета
          */
-        void Mesh::setSkeleton(UniqueSkeleton skeleton)
+        void Mesh::setSkeleton(UniqueMeshSkeleton skeleton)
         {
             // Сменить скелеты
             this->skeleton_ = std::move(skeleton);
@@ -551,7 +551,7 @@ namespace vk
          * Получить указатель на скелет меша
          * @return Ссылка на unique-smart-pointer объекта скелета
          */
-        const UniqueSkeleton &Mesh::getSkeletonPtr() {
+        const UniqueMeshSkeleton &Mesh::getSkeletonPtr() {
             return this->skeleton_;
         }
     }
