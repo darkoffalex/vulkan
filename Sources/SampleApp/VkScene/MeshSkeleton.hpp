@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "MeshSkeletonAnimation.hpp"
+
 #include <vector>
 #include <functional>
 #include <memory>
@@ -255,27 +257,42 @@ namespace vk
              */
             typedef std::shared_ptr<Bone> BonePtr;
 
+            /**
+             * Состояние анимации
+             */
+            enum struct AnimationState
+            {
+                eStopped,
+                ePlaying
+            };
+
         private:
             /// Открыть доступ для класса Mesh
             friend class Mesh;
 
             /// Массив итоговых трансформаций для вершин в пространстве модели
             std::vector<glm::mat4> modelSpaceFinalTransforms_;
-
             /// Массив итоговых трансформаций для вершин в пространстве костей
             std::vector<glm::mat4> boneSpaceFinalTransforms_;
-
             /// Матрица глобальной инверсии (на случай если в программе для моделирования объекту задавалась глобальная трансформация)
             glm::mat4 globalInverseTransform_;
 
             /// Массив указателей на кости для доступа по индексам
             std::vector<BonePtr> bones_;
-
             /// Корневая кость
             BonePtr rootBone_;
 
             /// Функция обратного вызова при пересчете матриц
             std::function<void()> updateCallback_;
+
+            /// Текущая анимация скелета
+            MeshSkeletonAnimationPtr currentAnimationPtr_;
+            /// Скорость текущей анимации (сколько проходит миллисекунд анимации за миллисекунду времени рендерера)
+            double currentAnimationSpeed_;
+            /// Текущий момент анимации в миллисекундах
+            double currentAnimationTime_;
+            /// Состояние текущей анимации
+            AnimationState currentAnimationState_;
 
             /**
              * Установить функцию обратного вызова при пересчете матриц скелета
@@ -296,7 +313,11 @@ namespace vk
                     boneSpaceFinalTransforms_(1),
                     globalInverseTransform_(glm::mat4(1.0f)),
                     bones_(1),
-                    updateCallback_(nullptr)
+                    updateCallback_(nullptr),
+                    currentAnimationPtr_(nullptr),
+                    currentAnimationSpeed_(1.0f),
+                    currentAnimationTime_(0.0),
+                    currentAnimationState_(AnimationState::eStopped)
             {
                 // Создать корневую кость
                 rootBone_ = std::make_shared<Bone>(this,0,nullptr,glm::mat4(1),glm::mat4(1));
@@ -310,7 +331,11 @@ namespace vk
              * @param updateCallback Функция обратного вызова при пересчете матриц
              */
             explicit MeshSkeleton(size_t boneTotalCount, const std::function<void()>& updateCallback = nullptr):
-            globalInverseTransform_(glm::mat4(1.0f))
+                    globalInverseTransform_(glm::mat4(1.0f)),
+                    currentAnimationPtr_(nullptr),
+                    currentAnimationSpeed_(1.0f),
+                    currentAnimationTime_(0.0),
+                    currentAnimationState_(AnimationState::eStopped)
             {
                 // Изначально у скелета есть как минимум 1 кость
                 modelSpaceFinalTransforms_.resize(std::max<size_t>(1,boneTotalCount));
@@ -390,6 +415,128 @@ namespace vk
             BonePtr getBoneByIndex(size_t index)
             {
                 return bones_[index];
+            }
+
+            /**
+             * Установить текущую анимацию
+             */
+            void setCurrentAnimation(const vk::scene::MeshSkeletonAnimationPtr& animation)
+            {
+                // Установка указателя на анимацию
+                this->currentAnimationPtr_ = animation;
+
+                // Обнулить состояние анимации
+                this->currentAnimationState_ = AnimationState::eStopped;
+                this->currentAnimationTime_ = 0.0f;
+            }
+
+            /**
+             * Установить состояние анимации
+             * @param animationState
+             */
+            void setAnimationState(const vk::scene::MeshSkeleton::AnimationState& animationState)
+            {
+                this->currentAnimationState_ = animationState;
+            }
+
+            /**
+             * Обновление анимации
+             * @param deltaMs Время кадра в главном цикле
+             */
+            void updateAnimation(float deltaMs)
+            {
+                // Если анимация установлена
+                if(currentAnimationPtr_ != nullptr)
+                {
+                    // Если анимация проигрывается - меняем текущий счетчик времени
+                    if(this->currentAnimationState_ == AnimationState::ePlaying)
+                    {
+                        // Если время больше чем длительность анимации - начинаем снова (по кругу)
+                        auto newTime = this->currentAnimationTime_ + (static_cast<double>(deltaMs) * this->currentAnimationSpeed_);
+                        this->currentAnimationTime_ = std::fmod(newTime,currentAnimationPtr_->getDurationMs());
+                    }
+
+                    // Кадры
+                    const auto& frames = currentAnimationPtr_->getKeyFrames();
+
+                    // Найти 2 кадра между которыми время анимации
+                    for(size_t i = 0; i < frames.size(); i++)
+                    {
+                        // Если время кадра меньше чем текущее время анимации - значит добрались до нужного кадра
+                        if(frames[i].getFrameTime() <= this->currentAnimationTime_)
+                        {
+                            // Дельта между текущим вторым и первым кадром
+                            auto frameTimeDelta = frames[i+1].getFrameTime() - frames[i].getFrameTime();
+                            // Дельта между текущим временем анимации и первым кадром
+                            auto animTimeDelta = currentAnimationTime_ - frames[i].getFrameTime();
+
+                            // Получить коэффициент интерполяции
+                            auto mixCoff = static_cast<float>(animTimeDelta/frameTimeDelta);
+
+                            // Применить трансформацию костей
+                            this->applyAnimationFrameBoneTransforms(static_cast<float>(i) + mixCoff);
+                        }
+                    }
+                }
+            }
+
+            /**
+             * Применить трансформацию костей из кадра анимации
+             * @param frame Кадр анимации
+             * @details Кадр может быть не целым числом, в таком случае значения будут интерполироваться
+             */
+            void applyAnimationFrameBoneTransforms(float frame = 0.0f)
+            {
+                // Если анимация установлена
+                if(currentAnimationPtr_ != nullptr)
+                {
+                    // Кол-во кадров
+                    auto totalFramesCount = currentAnimationPtr_->getKeyFrames().size();
+
+                    // Если требуемый кадр больше чем кадров есть, начинаем с начала (по кругу)
+                    auto frameSafe = std::fmod(frame, static_cast<float>(totalFramesCount));
+
+                    // Индекс кадра по float значению
+                    auto frameIndex = static_cast<size_t>(std::floor(frameSafe));
+
+                    // Коэффициент интерполяции
+                    float mixCoff = frameSafe - static_cast<float>(frameIndex);
+
+                    // Считается что кол-во костей одинаково у всех кадров и оно равно кол-ву костей скелета
+                    size_t boneCount = this->getBonesCount();
+
+                    // Пройтись по костям и интерполировать значение между кадрами
+                    for(size_t i = 0; i < boneCount; i++)
+                    {
+                        // Интерполированное значение
+                        MeshSkeletonAnimation::Keyframe::BoneTransform interpolated{};
+
+                        // Интерполяция между кадрами
+                        interpolated.location = glm::mix(currentAnimationPtr_->getKeyFrames()[frameIndex].getBoneTransformations()[i].location,
+                                currentAnimationPtr_->getKeyFrames()[frameIndex+1].getBoneTransformations()[i].location,
+                                mixCoff);
+
+                        interpolated.orientation = glm::slerp(currentAnimationPtr_->getKeyFrames()[frameIndex].getBoneTransformations()[i].orientation,
+                                currentAnimationPtr_->getKeyFrames()[frameIndex+1].getBoneTransformations()[i].orientation,
+                                mixCoff);
+
+                        interpolated.scaling = glm::mix(currentAnimationPtr_->getKeyFrames()[frameIndex].getBoneTransformations()[i].scaling,
+                                currentAnimationPtr_->getKeyFrames()[frameIndex+1].getBoneTransformations()[i].scaling,
+                                mixCoff);
+
+
+                        // Получить матрицы трансформации
+                        glm::mat4 translation = glm::translate(glm::mat4(1.0f),interpolated.location);
+                        glm::mat4 rotation = glm::toMat4(interpolated.orientation);
+                        glm::mat4 scaling = glm::scale(glm::mat4(1.0f),interpolated.scaling);
+
+                        // Установить локальную трансформацию (не вычисляя матрицы)
+                        this->bones_[i]->setLocalTransform(scaling * translation * rotation, false);
+                    }
+
+                    // Вычислить матрицы начиная с корня
+                    this->getRootBone()->calculateBranch(true,MeshSkeleton::Bone::CalcFlags::eFullTransform);
+                }
             }
         };
 

@@ -101,6 +101,8 @@ int main(int argc, char* argv[])
 
         // Скелет
         auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
+        // Анимации
+        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
 
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
@@ -153,18 +155,21 @@ int main(int argc, char* argv[])
         Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
         Ar2r->setScale({2.0f, 2.0f, 2.0f});
         Ar2r->setSkeleton(std::move(skeleton));
+        Ar2r->getSkeletonPtr()->setCurrentAnimation(animations[0]);
+        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
+//        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
-        // Доступ к костям скелета Ar2r-Devil-Pinky
-        auto torso = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[0];
-        auto leg1 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[1];
-        auto leg2 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[2];
-        auto neck = torso->getChildrenBones()[0];
-
-        // Управление костями скелета
-        torso->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(45.0f),{1.0f, 0.0f, 0.0f}));
-        neck->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-20.0f),{1.0f, 0.0f, 0.0f}));
-        leg1->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(30.0f),{1.0f, 0.0f, 0.0f}));
-        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
+//        // Доступ к костям скелета Ar2r-Devil-Pinky
+//        auto torso = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[0];
+//        auto leg1 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[1];
+//        auto leg2 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[2];
+//        auto neck = torso->getChildrenBones()[0];
+//
+//        // Управление костями скелета
+//        torso->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(45.0f),{1.0f, 0.0f, 0.0f}));
+//        neck->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-20.0f),{1.0f, 0.0f, 0.0f}));
+//        leg1->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(30.0f),{1.0f, 0.0f, 0.0f}));
+//        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
 
         // Свет
         auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});
@@ -207,9 +212,13 @@ int main(int argc, char* argv[])
 
             /// Обновление сцены
 
+            // Камера
             _camera->translate(_timer->getDelta());
             _vkRenderer->getCameraPtr()->setPosition(_camera->position, false);
             _vkRenderer->getCameraPtr()->setOrientation(_camera->orientation);
+
+            // Анимация
+            Ar2r->getSkeletonPtr()->updateAnimation(_timer->getDelta());
 
             /// Отрисовка и показ кадра
 

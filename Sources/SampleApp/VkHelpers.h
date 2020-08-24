@@ -5,6 +5,7 @@
 #include "VkResources/GeometryBuffer.hpp"
 
 #include "VkScene/MeshSkeleton.hpp"
+#include "VkScene/MeshSkeletonAnimation.hpp"
 
 namespace vk
 {
@@ -64,5 +65,12 @@ namespace vk
          * @return Объект скелета
          */
          vk::scene::UniqueMeshSkeleton LoadVulkanMeshSkeleton(const std::string &filename);
+
+         /**
+          * Загрузка набора скелетных анимаций из файла 3D-моделей
+          * @param filename Имя файла в папке Models
+          * @return Массив указателей на скелетные анимации
+          */
+         std::vector<vk::scene::MeshSkeletonAnimationPtr> LoadVulkanMeshSkeletonAnimations(const std::string &filename);
     }
 }

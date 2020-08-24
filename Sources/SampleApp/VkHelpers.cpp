@@ -442,5 +442,140 @@ namespace vk
             // Отдать скелет
             return skeleton;
         }
+
+        /**
+         * Загрузка набора скелетных анимаций из файла 3D-моделей
+         * @param filename Имя файла в папке Models
+         * @return Массив указателей на скелетные анимации
+         */
+        std::vector<vk::scene::MeshSkeletonAnimationPtr> LoadVulkanMeshSkeletonAnimations(const std::string &filename)
+        {
+            // Итоговый массив анимаций
+            std::vector<vk::scene::MeshSkeletonAnimationPtr> animations;
+
+            // Полный путь к файлу
+            auto path = ::tools::ExeDir().append("..\\Models\\").append(filename);
+
+            // Импортер Assimp
+            Assimp::Importer importer;
+
+            // Получить сцену
+            const aiScene* scene = importer.ReadFile(path.c_str(),
+                    aiProcess_Triangulate |
+                    aiProcess_JoinIdenticalVertices |
+                    //aiProcess_PreTransformVertices |
+                    aiProcess_FlipWindingOrder |
+                    aiProcess_PopulateArmatureData
+            );
+
+            // Если не удалось загрузить
+            if(scene == nullptr){
+                throw std::runtime_error(std::string("Can't load geometry from (").append(path).append(")").c_str());
+            }
+
+            // Если нет геометрических мешей
+            if(!scene->HasMeshes()){
+                throw std::runtime_error(std::string("Can't find any geometry meshes from (").append(path).append(")").c_str());
+            }
+
+            // Если нет анимаций
+            if(!scene->HasAnimations()){
+                throw std::runtime_error(std::string("Can't find any animations from (").append(path).append(")").c_str());
+            }
+
+            // Первый меш сцены
+            auto pFirstMesh = scene->mMeshes[0];
+
+            // Ассоциативный массив индексов костей
+            std::unordered_map<std::string, size_t> indices{};
+
+            // Кол-во костей
+            size_t totalBones = 0;
+
+            // Если у меша есть кости
+            if(pFirstMesh->HasBones())
+            {
+                // Получить кол-во костей
+                totalBones = pFirstMesh->mNumBones;
+
+                // Пройтись по костям скелета и заполнить ассоциативный массив индексов костей для доступа по именам
+                for(size_t i = 0; i < totalBones; i++)
+                {
+                    indices[pFirstMesh->mBones[i]->mName.C_Str()] = i;
+                }
+            }
+
+            // Пройтись по набору анимаций сцены
+            for(size_t i = 0; i < scene->mNumAnimations; i++)
+            {
+                // Указатель на анимацию Assimp
+                auto pAiAnimation = scene->mAnimations[i];
+                // Кол-во ключевых кадров (считаем что у всех каналов одинаковое кол-во ключевых кадров)
+                auto keyframesCount = pAiAnimation->mChannels[0]->mNumRotationKeys;
+
+                // Продолжительность в тиках (пока что считаем что 1 тик - 1 м/с)
+                auto duration = static_cast<double>(pAiAnimation->mDuration);
+
+                // Создать анимацию
+                auto animation = std::make_shared<vk::scene::MeshSkeletonAnimation>(duration);
+
+                // Пройтись по ключевым кадрам
+                for(size_t f = 0; f < keyframesCount; f++)
+                {
+                    // Время кадра
+                    auto frameTime = static_cast<double>(pAiAnimation->mChannels[0]->mRotationKeys[f].mTime);
+                    // Создать кадр c указанным временем и кол-во костей
+                    vk::scene::MeshSkeletonAnimation::Keyframe keyframe(frameTime,totalBones);
+
+                    // Пройтись по всем костям в анимации
+                    for(size_t j = 0; j < pAiAnimation->mNumChannels; j++)
+                    {
+                        // Указатель на канал (кость) Assimp
+                        auto pAiBoneChannel = pAiAnimation->mChannels[j];
+
+                        // Если нет нужной кости
+                        if(indices.find(pAiBoneChannel->mNodeName.C_Str()) == indices.end()){
+                            continue;
+                        }
+
+                        // Получить индекс кости и саму кость
+                        auto boneIndex = indices.at(pAiBoneChannel->mNodeName.C_Str());
+                        auto bone = pFirstMesh->mBones[boneIndex];
+
+                        // Матрица локальной трансформации кости (включающая локальную bind трансформацию)
+                        aiMatrix4x4 boneTransformWithBind(pAiBoneChannel->mScalingKeys[f].mValue,pAiBoneChannel->mRotationKeys[f].mValue,pAiBoneChannel->mPositionKeys[f].mValue);
+                        // Матрица локальной bind трансформации
+                        aiMatrix4x4 boneLocalBindTransform = bone->mNode->mTransformation;
+                        // Матрица ТОЛЬКО локальной трансформации
+                        aiMatrix4x4 boneTransform = boneLocalBindTransform.Inverse() * boneTransformWithBind;
+
+                        // Декомпозиция матрицы на отдельные компоненты
+                        glm::vec3 scale;
+                        glm::quat rotate;
+                        glm::vec3 translate;
+                        glm::vec3 skew;
+                        glm::vec4 perspective;
+                        glm::decompose(ToGlmMat4(boneTransform),scale,rotate,translate,skew,perspective);
+
+                        // Установить трансформацию кости в кадре
+                        keyframe.setBoneTransformation(boneIndex,{
+                                translate,
+                                rotate,
+                                scale,
+                                ToGlmMat4(boneTransform)
+                        });
+                    }
+
+                    // Добавить ключевой кадр
+                    animation->addKeyFrame(keyframe);
+                }
+
+                // Добавить анимацию
+                animations.push_back(animation);
+            }
+
+            // Вернуть массив указателей
+            return animations;
+        }
     }
 }
