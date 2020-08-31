@@ -1,6 +1,5 @@
 .idea
 .vs
-Bin
 out/
 CMakeSettings.json
 Folder.DotSettings.user
