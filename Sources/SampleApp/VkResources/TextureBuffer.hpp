@@ -26,11 +26,11 @@ namespace vk
             /// Тип текстуры
             TextureBufferType type_;
             /// Размер по ширине
-            size_t width_;
+            uint32_t width_;
             /// Размер по высоте
-            size_t height_;
+            uint32_t height_;
             /// Байт на пиксель
-            size_t bpp_;
+            uint32_t bpp_;
             /// Буфер изображения
             vk::tools::Image image_;
 
@@ -40,7 +40,7 @@ namespace vk
              * @param sRgb Использовать sRGB пространство
              * @return Формат изображения
              */
-            static vk::Format getImageFormat(size_t bpp, bool sRgb = false)
+            static vk::Format getImageFormat(uint32_t bpp, bool sRgb = false)
             {
                 switch (bpp)
                 {
@@ -65,7 +65,7 @@ namespace vk
              * @details Изображение уже должно быть создано с mip-уровнями (пустыми), функция просто заполняет их
              * проходя по каждому уровню и копируя в него содержимое из предыдущего уменьшенное по размерам вдвое
              */
-            void generateMipLevels(const vk::Image& image, size_t mipLevelsCount, const vk::Extent3D& extent)
+            void generateMipLevels(const vk::Image& image, uint32_t mipLevelsCount, const vk::Extent3D& extent)
             {
                 // Выделить командный буфер для исполнения команд копирования измененного в размере изображения (blit)
                 vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
@@ -82,7 +82,7 @@ namespace vk
                 int32_t mipHeight = extent.height;
 
                 // Пройтись по всем мип-уровням кроме нулевого (ибо это и есть основное изображение)
-                for(size_t i = 1; i < mipLevelsCount; i++)
+                for(uint32_t i = 1; i < mipLevelsCount; i++)
                 {
                     // Перед копированием информации нужно подготовить макет размещения конкретного мип уровня
                     // Макет ПРЕДЫДУЩЕГО мип-уровня должен быть переведен в состояние vk::AccessFlagBits::eTransferRead
@@ -335,9 +335,9 @@ namespace vk
                     const vk::tools::Device* pDevice,
                     const vk::UniqueSampler* pSampler,
                     const unsigned char* imageBytes,
-                    size_t width,
-                    size_t height,
-                    size_t bpp,
+                    uint32_t width,
+                    uint32_t height,
+                    uint32_t bpp,
                     bool generateMip = false,
                     bool sRgb = false):
                     pDevice_(pDevice),
@@ -401,7 +401,7 @@ namespace vk
                 stagingImage.unmapMemory();
 
                 // Копировать из временного изображения в целевое
-                this->copyTmpToDst(stagingImage.getVulkanImage().get(), image_.getVulkanImage().get(), {width, height, 1}, !generateMip);
+                this->copyTmpToDst(stagingImage.getVulkanImage().get(), image_.getVulkanImage().get(), {width_, height_, 1}, !generateMip);
 
                 // Если нужно генерировать mip-уровни
                 if(generateMip){
@@ -414,7 +414,7 @@ namespace vk
                     }
 
                     // Генерировать мип-уровни
-                    this->generateMipLevels(image_.getVulkanImage().get(),image_.getMipLevelCount(),{width, height, 1});
+                    this->generateMipLevels(image_.getVulkanImage().get(),image_.getMipLevelCount(),{width_, height_, 1});
                 }
 
                 // Очищаем временное изображение

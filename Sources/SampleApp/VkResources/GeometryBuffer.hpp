@@ -135,7 +135,7 @@ namespace vk
              * @param vertices Массив вершин
              * @param indices Массив индексов
              */
-            GeometryBuffer(const vk::tools::Device* pDevice, const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices):
+            GeometryBuffer(const vk::tools::Device* pDevice, const std::vector<vk::tools::Vertex>& vertices, const std::vector<uint32_t>& indices):
                     isReady_(false),
                     isIndexed_(!indices.empty()),
                     pDevice_(pDevice),

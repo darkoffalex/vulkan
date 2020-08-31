@@ -20,6 +20,8 @@ private:
     bool isCommandsReady_;
     /// Данные на вход (о вершинах) подаются в стиле OpenGL (считая что начало view-port'а в нижнем левом углу)
     bool inputDataInOpenGlStyle_;
+    /// Использовать validation-слои и report callback
+    bool useValidation_;
 
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
@@ -242,7 +244,7 @@ public:
      * @param indices Массив индексов
      * @return Shared smart pointer на объект буфера
      */
-    vk::resources::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<size_t>& indices);
+    vk::resources::GeometryBufferPtr createGeometryBuffer(const std::vector<vk::tools::Vertex>& vertices, const std::vector<uint32_t>& indices);
 
     /**
      * Создать текстурный буфер
@@ -254,7 +256,7 @@ public:
      * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
      * @return Shared smart pointer на объект буфера
      */
-    vk::resources::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, size_t width, size_t height, size_t bpp, bool generateMip = false, bool sRgb = false);
+    vk::resources::TextureBufferPtr createTextureBuffer(const unsigned char* imageBytes, uint32_t width, uint32_t height, uint32_t bpp, bool generateMip = false, bool sRgb = false);
 
     /**
      * Добавление меша на сцену

@@ -601,7 +601,7 @@ void VkRenderer::initPipeline(
     // Создать макет размещения конвейера
     pipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
         {},
-        descriptorSetLayouts.size(),
+        static_cast<uint32_t>(descriptorSetLayouts.size()),
         descriptorSetLayouts.data()
     });
 
@@ -622,37 +622,37 @@ void VkRenderer::initPipeline(
                     0,
                     0,
                     vk::Format::eR32G32B32Sfloat,
-                    offsetof(vk::tools::Vertex, position)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, position))
             },
             {
                     1,
                     0,
                     vk::Format::eR32G32B32Sfloat,
-                    offsetof(vk::tools::Vertex, color)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, color))
             },
             {
                     2,
                     0,
                     vk::Format::eR32G32Sfloat,
-                    offsetof(vk::tools::Vertex, uv)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, uv))
             },
             {
                     3,
                     0,
                     vk::Format::eR32G32B32Sfloat,
-                    offsetof(vk::tools::Vertex, normal)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, normal))
             },
             {
                     4,
                     0,
                     vk::Format::eR32G32B32A32Sint,
-                    offsetof(vk::tools::Vertex, boneIndices)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, boneIndices))
             },
             {
                     5,
                     0,
                     vk::Format::eR32G32B32A32Sfloat,
-                    offsetof(vk::tools::Vertex, weights)
+                    static_cast<uint32_t>(offsetof(vk::tools::Vertex, weights))
             }
     };
 
@@ -905,29 +905,53 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         size_t maxMeshes):
 isEnabled_(true),
 isCommandsReady_(false),
-inputDataInOpenGlStyle_(true)
+inputDataInOpenGlStyle_(true),
+useValidation_(false)
 {
     // Инициализация экземпляра Vulkan
+    std::vector<const char*> instanceExtensionNames = {
+            VK_KHR_SURFACE_EXTENSION_NAME,
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+    };
+    std::vector<const char*> instanceValidationLayerNames = {};
+
+    if(useValidation_){
+        instanceExtensionNames.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+        instanceValidationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+    }
+
     this->vulkanInstance_ = vk::tools::CreateVulkanInstance("My Application",
             "My engine",
             1,1,
-            { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME},
-            { "VK_LAYER_LUNARG_standard_validation"});
+            instanceExtensionNames,
+            instanceValidationLayerNames);
     std::cout << "Vulkan instance created." << std::endl;
 
     // Загрузка функций расширений (получение адресов)
     vkExtInitInstance(static_cast<VkInstance>(vulkanInstance_.get()));
 
     // Создание debug report callback'а (создается только в том случае, если расширение VK_EXT_DEBUG_REPORT_EXTENSION_NAME использовано)
-    debugReportCallbackExt_ = vulkanInstance_->createDebugReportCallbackEXTUnique(vk::DebugReportCallbackCreateInfoEXT({vk::DebugReportFlagBitsEXT::eError|vk::DebugReportFlagBitsEXT::eWarning},vk::tools::DebugVulkanCallback));
-    std::cout << "Report callback object created." << std::endl;
+    if(useValidation_){
+        debugReportCallbackExt_ = vulkanInstance_->createDebugReportCallbackEXTUnique(vk::DebugReportCallbackCreateInfoEXT({vk::DebugReportFlagBitsEXT::eError|vk::DebugReportFlagBitsEXT::eWarning},vk::tools::DebugVulkanCallback));
+        std::cout << "Report callback object created." << std::endl;
+    }
 
     // Создание поверхности отображения на окне
     this->surface_ = vulkanInstance_->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR({},hInstance,hWnd));
     std::cout << "Surface created." << std::endl;
 
     // Создание устройства
-    device_ = vk::tools::Device(vulkanInstance_,surface_,{VK_KHR_SWAPCHAIN_EXTENSION_NAME},{"VK_LAYER_LUNARG_standard_validation"},false);
+    std::vector<const char*> deviceExtensionNames = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+
+    std::vector<const char*> deviceValidationLayerNames = {};
+
+    if(useValidation_){
+        deviceValidationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+    }
+
+    device_ = vk::tools::Device(vulkanInstance_,surface_,deviceExtensionNames,deviceValidationLayerNames, false);
     std::cout << "Device initialized (" << device_.getPhysicalDevice().getProperties().deviceName << ")" << std::endl;
 
     // Инициализация прохода/проходов рендеринга
@@ -1074,10 +1098,12 @@ VkRenderer::~VkRenderer()
     surface_.release();
     std::cout << "Surface destroyed." << std::endl;
 
-    // Уничтожение debug report callback'а
-    vulkanInstance_->destroyDebugReportCallbackEXT(debugReportCallbackExt_.get());
-    debugReportCallbackExt_.release();
-    std::cout << "Report callback object destroyed." << std::endl;
+    // Уничтожение debug report callback'а (если был создан)
+    if(useValidation_){
+        vulkanInstance_->destroyDebugReportCallbackEXT(debugReportCallbackExt_.get());
+        debugReportCallbackExt_.release();
+        std::cout << "Report callback object destroyed." << std::endl;
+    }
 
     // Уничтожение (явное) экземпляра Vulkan
     vulkanInstance_->destroy();
@@ -1152,7 +1178,7 @@ void VkRenderer::onSurfaceChanged()
  * @param indices Массив индексов
  * @return Shared smart pointer на объект буфера
  */
-vk::resources::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<size_t> &indices)
+vk::resources::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vector<vk::tools::Vertex> &vertices, const std::vector<uint32_t> &indices)
 {
     auto buffer = std::make_shared<vk::resources::GeometryBuffer>(&device_,vertices,indices);
     geometryBuffers_.push_back(buffer);
@@ -1169,7 +1195,7 @@ vk::resources::GeometryBufferPtr VkRenderer::createGeometryBuffer(const std::vec
  * @param sRgb Использовать цветовое пространство sRGB (гамма-коррекция)
  * @return Shared smart pointer на объект буфера
  */
-vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, size_t width, size_t height, size_t bpp, bool generateMip, bool sRgb)
+vk::resources::TextureBufferPtr VkRenderer::createTextureBuffer(const unsigned char *imageBytes, uint32_t width, uint32_t height, uint32_t bpp, bool generateMip, bool sRgb)
 {
     auto buffer = std::make_shared<vk::resources::TextureBuffer>(&device_,&textureSamplerDefault_,imageBytes,width,height,bpp,generateMip,sRgb);
     textureBuffers_.push_back(buffer);

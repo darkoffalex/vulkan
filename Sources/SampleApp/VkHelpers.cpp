@@ -78,7 +78,7 @@ namespace vk
             };
 
             // Индексы
-            std::vector<unsigned> indices = {
+            std::vector<uint32_t> indices = {
                     0,1,2, 0,2,3,
             };
 
@@ -128,7 +128,7 @@ namespace vk
             };
 
             // Индексы
-            std::vector<unsigned> indices = {
+            std::vector<uint32_t> indices = {
                     0,1,2, 0,2,3,
                     4,5,6, 4,6,7,
                     8,9,10, 8,10,11,
@@ -153,7 +153,7 @@ namespace vk
             const float pi = 3.14159265359f;
 
             std::vector<vk::tools::Vertex> vertices = {};
-            std::vector<unsigned> indices = {};
+            std::vector<uint32_t> indices = {};
 
             // Вершины
             for (unsigned int y = 0; y <= segments; ++y)
@@ -234,7 +234,7 @@ namespace vk
 
             // Результирующие массивы вершин и индексов
             std::vector<vk::tools::Vertex> vertices;
-            std::vector<size_t> indices;
+            std::vector<uint32_t> indices;
 
             // Первый меш сцены
             auto pFirstMesh = scene->mMeshes[0];

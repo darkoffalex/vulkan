@@ -1,10 +1,12 @@
 #pragma once
 
 #define VK_USE_PLATFORM_WIN32_KHR
+#define VK_ENABLE_BETA_EXTENSIONS
 #define VULKAN_HPP_TYPESAFE_CONVERSION
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_beta.h>
 #include <vector>
 
 namespace vk

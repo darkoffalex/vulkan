@@ -95,14 +95,13 @@ int main(int argc, char* argv[])
 
         // Геометрия
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
-//        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
-//        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
-        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
+        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
+        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
+//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
 
-        // Скелет
-        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
-        // Анимации
-        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
+        // Скелет и анимации
+//        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
+//        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
 
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
@@ -115,48 +114,48 @@ int main(int argc, char* argv[])
         auto wallTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/spec.jpg", true);
         auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/disp.png", true);
 
-//        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
-//        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
+        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
+        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
 
-//        auto headTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/diffuse.tga", true);
-//        auto headTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/nm_tangent.tga", true);
-//        auto headTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/spec.tga", true);
+        auto headTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/diffuse.tga", true);
+        auto headTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/nm_tangent.tga", true);
+        auto headTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/spec.tga", true);
 
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec,floorTextureDisplace});
+        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
 
         // Стена
-        auto wall = _vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec,wallTextureDisplace});
+        auto wall = _vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec});
         wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f},0.0f});
         wall->setPosition({0.0f,1.25f,-1.5f}, false);
         wall->setScale({10.0f,2.5f,1.0f});
 
         // Куб
-//        auto cube = _vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr,cubeTextureSpec});
-//        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
-//        cube->setScale({0.5f,0.5f,0.5f}, false);
-//        cube->setOrientation({0.0f,45.0f,0.0f}, false);
-//        cube->setPosition({0.0f,0.25f,0.0f});
+        auto cube = _vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr,cubeTextureSpec});
+        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
+        cube->setScale({0.5f,0.5f,0.5f}, false);
+        cube->setOrientation({0.0f,45.0f,0.0f}, false);
+        cube->setPosition({0.0f,0.25f,0.0f});
 
         // Голова
-//        auto head = _vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
-//        head->setScale({0.35f,0.35f,0.35f}, false);
-//        head->setOrientation({0.0f,0.0f,0.0f}, false);
-//        head->setPosition({0.0f,0.75f,0.15f});
+        auto head = _vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
+        head->setScale({0.35f,0.35f,0.35f}, false);
+        head->setOrientation({0.0f,0.0f,0.0f}, false);
+        head->setPosition({0.0f,0.75f,0.15f});
 
         // Ar2r-Devil-Pinky (первая версия)
-        auto Ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
-        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
-        Ar2r->setScale({2.0f, 2.0f, 2.0f});
-        Ar2r->setSkeleton(std::move(skeleton));
-        Ar2r->getSkeletonPtr()->setCurrentAnimation(animations[0]);
-        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
+//        auto Ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
+//        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
+//        Ar2r->setScale({2.0f, 2.0f, 2.0f});
+//        Ar2r->setSkeleton(std::move(skeleton));
+//        Ar2r->getSkeletonPtr()->setCurrentAnimation(animations[0]);
+//        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
 //        // Доступ к костям скелета Ar2r-Devil-Pinky
@@ -216,9 +215,6 @@ int main(int argc, char* argv[])
             _camera->translate(_timer->getDelta());
             _vkRenderer->getCameraPtr()->setPosition(_camera->position, false);
             _vkRenderer->getCameraPtr()->setOrientation(_camera->orientation);
-
-            // Анимация
-            Ar2r->getSkeletonPtr()->updateAnimation(_timer->getDelta());
 
             /// Отрисовка и показ кадра
 

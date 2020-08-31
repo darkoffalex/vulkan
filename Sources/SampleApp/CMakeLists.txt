@@ -50,7 +50,17 @@ target_link_libraries(${TARGET_NAME} PUBLIC "shlwapi.lib")
 
 # Линковка с Assimp для импорта моделей
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    target_link_libraries(${TARGET_NAME} PUBLIC "assimp-vc142-mt.lib")
+    target_link_libraries(${TARGET_NAME} PUBLIC "Assimp/${PLATFORM_BIT_SUFFIX}/assimp-vc142-mt")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_link_libraries(${TARGET_NAME} PUBLIC "assimp.lib")
+    target_link_libraries(${TARGET_NAME} PUBLIC "Assimp/${PLATFORM_BIT_SUFFIX}/libassimp")
+endif()
+
+# Копирование .dll-ок Assimp в папку bin после построения основной программы
+set(ASSIMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../Lib/Assimp)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    ADD_CUSTOM_COMMAND(TARGET ${TARGET_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${ASSIMP_DIR}\\${PLATFORM_BIT_SUFFIX}\\assimp-vc142-mt.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+            COMMENT "Copying Assimp DLLs" VERBATIM)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    ADD_CUSTOM_COMMAND(TARGET ${TARGET_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${ASSIMP_DIR}\\${PLATFORM_BIT_SUFFIX}\\libassimp.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+            COMMENT "Copying Assimp DLLs" VERBATIM)
 endif()

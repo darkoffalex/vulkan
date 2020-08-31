@@ -160,7 +160,7 @@ namespace vk
                         totalBindTransformInverse_(glm::mat4(1.0f))
                 {
                     // Вычисление матриц кости
-                    calculateBranch(CalcFlags::eFullTransform|CalcFlags::eBindTransform|CalcFlags::eInverseBindTransform);
+                    calculateBranch(false,CalcFlags::eFullTransform|CalcFlags::eBindTransform|CalcFlags::eInverseBindTransform);
                 }
 
                 /**
