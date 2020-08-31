@@ -942,7 +942,14 @@ useValidation_(false)
 
     // Создание устройства
     std::vector<const char*> deviceExtensionNames = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+
+            // Расширения для аппаратной трассировки лучей
+            VK_KHR_RAY_TRACING_EXTENSION_NAME,
+            VK_KHR_MAINTENANCE3_EXTENSION_NAME,
+            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
     };
 
     std::vector<const char*> deviceValidationLayerNames = {};

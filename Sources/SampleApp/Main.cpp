@@ -158,18 +158,6 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
-//        // Доступ к костям скелета Ar2r-Devil-Pinky
-//        auto torso = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[0];
-//        auto leg1 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[1];
-//        auto leg2 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[2];
-//        auto neck = torso->getChildrenBones()[0];
-//
-//        // Управление костями скелета
-//        torso->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(45.0f),{1.0f, 0.0f, 0.0f}));
-//        neck->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-20.0f),{1.0f, 0.0f, 0.0f}));
-//        leg1->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(30.0f),{1.0f, 0.0f, 0.0f}));
-//        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
-
         // Свет
         auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});
         auto light2 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{-2.5f,1.5f,0.0f});

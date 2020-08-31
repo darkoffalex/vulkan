@@ -206,6 +206,14 @@ namespace vk
                         // Особенности устройства (пока-что пустая структура)
                         vk::PhysicalDeviceFeatures deviceFeatures = {};
 
+                        // Особенности устройства связанные с ray-tracing
+//                        vk::PhysicalDeviceRayTracingFeaturesKHR rayTracingFeaturesKhr = {};
+//                        rayTracingFeaturesKhr.setRayTracing(VK_TRUE);
+//                        vk::PhysicalDeviceVulkan12Features deviceVulkan12Features = {};
+//                        deviceVulkan12Features.setPNext(&rayTracingFeaturesKhr);
+//                        deviceVulkan12Features.setBufferDeviceAddress(VK_TRUE);
+//                        deviceVulkan12Features.setRuntimeDescriptorArray(VK_TRUE);
+
                         // Информация о создаваемом устройстве
                         vk::DeviceCreateInfo deviceCreateInfo{};
                         deviceCreateInfo.setQueueCreateInfoCount(queueCreateInfoEntries.size());
@@ -215,6 +223,7 @@ namespace vk
                         deviceCreateInfo.setPpEnabledLayerNames(!requireValidationLayers.empty() ? requireValidationLayers.data() : nullptr);
                         deviceCreateInfo.setEnabledLayerCount(requireValidationLayers.size());
                         deviceCreateInfo.setPEnabledFeatures(&deviceFeatures);
+//                        deviceCreateInfo.setPNext(&deviceVulkan12Features);
 
                         // Создание устройства
                         this->device_ = physicalDevice_.createDeviceUnique(deviceCreateInfo);
