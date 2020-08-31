@@ -113,7 +113,7 @@ namespace vk
              * @param durationMs Продолжительность в миллисекундах
              * @param keyframes Массив ключевых кадров
              */
-            explicit MeshSkeletonAnimation(float durationMs, std::vector<Keyframe> keyframes = {}): durationMs_(durationMs),keyframes_(std::move(keyframes)){};
+            explicit MeshSkeletonAnimation(double durationMs, std::vector<Keyframe> keyframes = {}): durationMs_(durationMs),keyframes_(std::move(keyframes)){};
 
             /**
              * Получить массив ключевых кадров
