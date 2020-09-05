@@ -54,14 +54,14 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
     depthStAttDesc.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;         // Трафарет. Начало под-прохода - очищать
     depthStAttDesc.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;       // Трафарет. Конец под-прохода - не важно
     depthStAttDesc.initialLayout = vk::ImageLayout::eUndefined;             // Макет памяти изображения в начале - не важно
-    depthStAttDesc.finalLayout = vk::ImageLayout::eDepthAttachmentOptimal;  // Макет памяти изображения в конце - буфер глубины-трафарета
+    depthStAttDesc.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;  // Макет памяти изображения в конце - буфер глубины-трафарета
     attachmentDescriptions.push_back(depthStAttDesc);
 
     // Ссылки на вложения
     // Они содержат индексы описаний вложений, они также совместимы с порядком вложений в кадровом буфере, который привязывается во время начала прохода
     // Также ссылка определяет макет памяти вложения, который используется во время под-прохода
     vk::AttachmentReference colorAttachmentReferences[1] = {{0,vk::ImageLayout::eColorAttachmentOptimal}};
-    vk::AttachmentReference depthAttachmentReference{1,vk::ImageLayout::eDepthAttachmentOptimal};
+    vk::AttachmentReference depthAttachmentReference{1,vk::ImageLayout::eDepthStencilAttachmentOptimal};
 
     // Описываем под-проход
     // Проход должен содержать в себе как минимум один под-проход
@@ -182,6 +182,9 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     // Старый swap-chain
     const auto oldSwapChain = swapChainKhr_.get() ? swapChainKhr_.get() : nullptr;
 
+    // Индексы семейств очередей участвующих в рендеринге и показе
+    auto renderingQueueFamilies = device_.getQueueFamilyIndices();
+
     // Конфигурация swap-chain
     vk::SwapchainCreateInfoKHR swapChainCreateInfo{};
     swapChainCreateInfo.surface = surface_.get();
@@ -191,14 +194,15 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     swapChainCreateInfo.imageExtent = capabilities.currentExtent;
     swapChainCreateInfo.imageArrayLayers = 1;
     swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
-    swapChainCreateInfo.imageSharingMode = device_.isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
-    swapChainCreateInfo.queueFamilyIndexCount = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device_.getQueueFamilyIndices().size() : 0;
-    swapChainCreateInfo.pQueueFamilyIndices = swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? device_.getQueueFamilyIndices().data() : nullptr;
+    swapChainCreateInfo.imageSharingMode = (device_.isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent);
+    swapChainCreateInfo.queueFamilyIndexCount = (swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.size() : 0);
+    swapChainCreateInfo.pQueueFamilyIndices = (swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.data() : nullptr);
     swapChainCreateInfo.preTransform = capabilities.currentTransform;
     swapChainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
     swapChainCreateInfo.presentMode = presentMode;
     swapChainCreateInfo.clipped = true;
     swapChainCreateInfo.oldSwapchain = oldSwapChain;
+
 
     // Если у unique-pointer'а есть какой-то объект во владении - освобождаем его (это может быть старый swap-chain)
     swapChainKhr_.release();
@@ -360,6 +364,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
         descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolCamera_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
@@ -388,6 +393,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
         descriptorPoolCreateInfo.maxSets = maxMeshes;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolMeshes_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
@@ -406,6 +412,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
         descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolLightSources_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
@@ -715,20 +722,18 @@ void VkRenderer::initPipeline(
     viewport.setMaxDepth(1.0f);
 
     // Настройки обрезки
-//    vk::Rect2D scissors{};
-//    scissors.offset.x = 0;
-//    scissors.offset.y = 0;
-//    scissors.extent.width = viewPortExtent.width;
-//    scissors.extent.height = viewPortExtent.height;
+    vk::Rect2D scissors{};
+    scissors.offset.x = 0;
+    scissors.offset.y = 0;
+    scissors.extent.width = viewPortExtent.width;
+    scissors.extent.height = viewPortExtent.height;
 
     // Описываем кол-во областей вида и обрезки
     vk::PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{};
     pipelineViewportStateCreateInfo.viewportCount = 1;
     pipelineViewportStateCreateInfo.pViewports = &viewport;
-//    pipelineViewportStateCreateInfo.scissorCount = 1;
-//    pipelineViewportStateCreateInfo.pScissors = &scissors;
-    pipelineViewportStateCreateInfo.scissorCount = 0;
-    pipelineViewportStateCreateInfo.pScissors = nullptr;
+    pipelineViewportStateCreateInfo.scissorCount = 1;
+    pipelineViewportStateCreateInfo.pScissors = &scissors;
 
     // Р А С Т Е Р И З А Ц И Я
 
@@ -822,6 +827,7 @@ void VkRenderer::initPipeline(
     // Уничтожить шейдерные модули (конвейер создан, они не нужны)
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleVs);
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleFs);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
     pipeline_ = vk::UniquePipeline(pipeline);
@@ -911,13 +917,14 @@ useValidation_(false)
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
             VK_KHR_SURFACE_EXTENSION_NAME,
-            VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+//            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
     };
     std::vector<const char*> instanceValidationLayerNames = {};
 
     if(useValidation_){
         instanceExtensionNames.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-        instanceValidationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+        instanceValidationLayerNames.push_back("VK_LAYER_KHRONOS_validation");
     }
 
     this->vulkanInstance_ = vk::tools::CreateVulkanInstance("My Application",
@@ -942,13 +949,22 @@ useValidation_(false)
 
     // Создание устройства
     std::vector<const char*> deviceExtensionNames = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+//            VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+
+            // Расширения для аппаратной трассировки лучей
+//            VK_KHR_RAY_TRACING_EXTENSION_NAME,
+//            VK_KHR_MAINTENANCE3_EXTENSION_NAME,
+//            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+//            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+//            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
     };
 
     std::vector<const char*> deviceValidationLayerNames = {};
 
     if(useValidation_){
-        deviceValidationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+        deviceValidationLayerNames.push_back("VK_LAYER_KHRONOS_validation");
     }
 
     device_ = vk::tools::Device(vulkanInstance_,surface_,deviceExtensionNames,deviceValidationLayerNames, false);

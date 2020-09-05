@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Tools.h"
+
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <unordered_map>
 
 namespace vk
 {
@@ -25,12 +27,18 @@ namespace vk
             int queueFamilyGraphicsIndex_;
             /// Индекс семейства очередей команд представления
             int queueFamilyPresentIndex_;
+            /// Индекс семейства очередей команд вычисления
+            int queueFamilyComputeIndex_;
             /// Очередь графических команд
             vk::Queue queueGraphics_;
             /// Очередь команд представления
             vk::Queue queuePresent_;
+            /// Очередь команд вычисления
+            vk::Queue queueCompute_;
             /// Командный пул графического семейства (для выделения командных буферов)
             vk::UniqueCommandPool commandPoolGraphics_;
+            /// Командный пул вычислительного семейства (для выделения командных буферов)
+            vk::UniqueCommandPool commandPoolCompute_;
 
         public:
             /**
@@ -39,7 +47,8 @@ namespace vk
             Device():
                     isReady_(false),
                     queueFamilyGraphicsIndex_(0),
-                    queueFamilyPresentIndex_(0)
+                    queueFamilyPresentIndex_(0),
+                    queueFamilyComputeIndex_(0)
             {};
 
             /**
@@ -66,9 +75,11 @@ namespace vk
                 std::swap(queueFamilyGraphicsIndex_,other.queueFamilyGraphicsIndex_);
                 std::swap(queueGraphics_,other.queueGraphics_);
                 std::swap(queuePresent_,other.queuePresent_);
+                std::swap(queueCompute_, other.queueCompute_);
                 std::swap(physicalDevice_ ,other.physicalDevice_);
                 device_.swap(other.device_);
                 commandPoolGraphics_.swap(other.commandPoolGraphics_);
+                commandPoolCompute_.swap(other.commandPoolCompute_);
             }
 
 
@@ -83,15 +94,18 @@ namespace vk
                 this->destroyVulkanResources();
                 queueFamilyGraphicsIndex_ = 0;
                 queueFamilyPresentIndex_ = 0;
+                queueFamilyComputeIndex_ = 0;
 
                 std::swap(isReady_,other.isReady_);
                 std::swap(queueFamilyPresentIndex_,other.queueFamilyPresentIndex_);
                 std::swap(queueFamilyGraphicsIndex_,other.queueFamilyGraphicsIndex_);
                 std::swap(queueGraphics_,other.queueGraphics_);
                 std::swap(queuePresent_,other.queuePresent_);
+                std::swap(queueCompute_, other.queueCompute_);
                 std::swap(physicalDevice_ ,other.physicalDevice_);
                 device_.swap(other.device_);
                 commandPoolGraphics_.swap(other.commandPoolGraphics_);
+                commandPoolCompute_.swap(other.commandPoolCompute_);
 
                 return *this;
             }
@@ -122,6 +136,7 @@ namespace vk
                         auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
                         int queueFamilyPresentIndex = -1;
                         int queueFamilyGraphicsIndex = -1;
+                        int queueFamilyComputeIndex = -1;
 
                         // Найти семейства поддерживающие графику и представление
                         for(size_t i = 0; i < queueFamilyProperties.size(); i++)
@@ -131,6 +146,11 @@ namespace vk
                                 queueFamilyGraphicsIndex = i;
                             }
 
+                            // Поддерживает ли семейство команды вычисления
+                            if(queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eCompute){
+                                queueFamilyComputeIndex = i;
+                            }
+
                             // Поддерживает ли семейство представление
                             vk::Bool32 presentSupported = false;
                             physicalDevice.getSurfaceSupportKHR(i,surfaceKhr.get(),&presentSupported);
@@ -138,7 +158,7 @@ namespace vk
                         }
 
                         // Перейти к следующему устройству если необходимые возможности не поддерживаются
-                        if(queueFamilyPresentIndex == -1 || queueFamilyGraphicsIndex == -1){
+                        if(queueFamilyPresentIndex == -1 || queueFamilyGraphicsIndex == -1 || queueFamilyComputeIndex == -1){
                             continue;
                         }
 
@@ -168,6 +188,7 @@ namespace vk
                         physicalDevice_ = physicalDevice;
                         queueFamilyGraphicsIndex_ = queueFamilyGraphicsIndex;
                         queueFamilyPresentIndex_ = queueFamilyPresentIndex;
+                        queueFamilyComputeIndex_ = queueFamilyComputeIndex;
 
                         // Физическое устройство выбрано
                         physicalDeviceSelected = true;
@@ -184,27 +205,66 @@ namespace vk
 
                         // Индексы семейств очередей
                         // Если одно и то же семейство поддерживает все необходимые типы команд, индексы могут совпадать
-                        uint32_t queueFamilies[2] = {
+                        std::vector<uint32_t> queueFamilies = {
                                 static_cast<uint32_t>(queueFamilyGraphicsIndex_),
-                                static_cast<uint32_t>(queueFamilyPresentIndex_)
+                                static_cast<uint32_t>(queueFamilyPresentIndex_),
+                                static_cast<uint32_t>(queueFamilyComputeIndex_)
                         };
 
-                        // Используется ли для команд показа и представления одно и то же семейство
-                        bool sameFamily = queueFamilyGraphicsIndex_ == queueFamilyPresentIndex_;
+                        // Ассоциативный массив - количества очередей выделяемых на каждое семейство
+                        // Выделяется одна очередь на семейство, но если индексы семейств семейств совпадают то выделяется более одной
+                        std::unordered_map<uint32_t,uint32_t> queueCounts;
+                        // Ассоциативный массив - приоритеты очередей в пределах одного семейства
+                        std::unordered_map<uint32_t,std::vector<glm::float32_t>> queuePriorities;
+
+                        // Массив индексов семейств очередей исключающий дубликаты
+                        std::vector<uint32_t> queueFamilyIndicesUnique;
+
+                        // Заполнить ассоциативный массив количеств очередей
+                        for(uint32_t i = 0; i < queueFamilies.size(); i++)
+                        {
+                            auto queueFamilyIndex = queueFamilies[i];
+                            if(queueCounts.find(queueFamilyIndex) != queueCounts.end()){
+                                queueCounts[queueFamilyIndex]++;
+                                queuePriorities[queueFamilyIndex].push_back(1.0f);
+                            }else{
+                                queueCounts[queueFamilyIndex] = 1;
+                                queuePriorities[queueFamilyIndex] = {1.0f};
+                                queueFamilyIndicesUnique.push_back(queueFamilyIndex);
+                            }
+                        }
 
                         // Заполняем массив описаний создаваемых очередей
-                        // Если семейство одно, то при помощи ОДНОЙ структуры DeviceQueueCreateInfo выделяем ДВЕ разные очереди
-                        // В противном случае нужны ДВЕ структуры DeviceQueueCreateInfo выделяющие ОДНУ очередь для каждого семейства
-                        for (int i = 0; i < (sameFamily ? 1 : 2); i++) {
+                        // Если считать что совпадений нет, на каждое семейство создается одна структура vk::DeviceQueueCreateInfo
+                        // Если индексы семейств совпадают, структур может быть меньше чем явных семейств, но одна структура может выделять несколько очередей
+                        for(auto queueCount : queueCounts){
                             vk::DeviceQueueCreateInfo queueCreateInfo = {};
-                            queueCreateInfo.setQueueFamilyIndex(queueFamilies[i]);
-                            queueCreateInfo.setQueueCount(queueFamilies[0] == queueFamilies[1] ? 2 : 1);
-                            queueCreateInfo.setPQueuePriorities(nullptr);
+                            queueCreateInfo.setQueueFamilyIndex(queueCount.first);
+                            queueCreateInfo.setQueueCount(queueCount.second);
+                            queueCreateInfo.setPQueuePriorities(queuePriorities[queueCount.first].data());
                             queueCreateInfoEntries.push_back(queueCreateInfo);
                         }
 
-                        // Особенности устройства (пока-что пустая структура)
-                        vk::PhysicalDeviceFeatures deviceFeatures = {};
+                        // Особенности устройства
+                        vk::PhysicalDeviceFeatures physicalDeviceFeatures{};
+                        physicalDeviceFeatures.setGeometryShader(VK_TRUE);
+                        physicalDeviceFeatures.setSamplerAnisotropy(VK_TRUE);
+
+//                        vk::PhysicalDeviceFeatures2 deviceFeatures2{};
+//                        deviceFeatures2.setFeatures(physicalDeviceFeatures);
+//
+//                        vk::PhysicalDeviceRayTracingFeaturesKHR rayTracingFeaturesKhr{};
+//                        rayTracingFeaturesKhr.setRayTracing(VK_TRUE);
+//                        rayTracingFeaturesKhr.setRayQuery(VK_FALSE);
+//                        rayTracingFeaturesKhr.setPNext(&deviceFeatures2);
+//
+//                        vk::PhysicalDeviceVulkan12Features vulkan12Features{};
+//                        vulkan12Features.setDescriptorBindingVariableDescriptorCount(VK_TRUE);
+//                        vulkan12Features.setRuntimeDescriptorArray(VK_TRUE);
+//                        vulkan12Features.setDescriptorIndexing(VK_TRUE);
+//                        vulkan12Features.setBufferDeviceAddress(VK_TRUE);
+//                        vulkan12Features.setPNext(&rayTracingFeaturesKhr);
+
 
                         // Информация о создаваемом устройстве
                         vk::DeviceCreateInfo deviceCreateInfo{};
@@ -214,19 +274,36 @@ namespace vk
                         deviceCreateInfo.setEnabledExtensionCount(requireExtensions.size());
                         deviceCreateInfo.setPpEnabledLayerNames(!requireValidationLayers.empty() ? requireValidationLayers.data() : nullptr);
                         deviceCreateInfo.setEnabledLayerCount(requireValidationLayers.size());
-                        deviceCreateInfo.setPEnabledFeatures(&deviceFeatures);
+                        deviceCreateInfo.setPEnabledFeatures(&physicalDeviceFeatures);
+//                        deviceCreateInfo.setPNext(&vulkan12Features);
 
                         // Создание устройства
                         this->device_ = physicalDevice_.createDeviceUnique(deviceCreateInfo);
 
                         // Получение очередей
-                        queueGraphics_ = device_->getQueue(this->queueFamilyGraphicsIndex_, 0);
-                        queuePresent_ = device_->getQueue(this->queueFamilyPresentIndex_, sameFamily ? 1 : 0);
+                        std::vector<vk::Queue> queues;
+                        for(auto queueFamilyIndex : queueFamilyIndicesUnique){
+                            auto queueCount = queueCounts[queueFamilyIndex];
+                            for(uint32_t i = 0; i < queueCount; i++){
+                                queues.push_back(device_->getQueue(queueFamilyIndex, i));
+                            }
+                        }
+
+                        // Известно что кол-во полученных очередей не меньше чем изначальное кол-во семейств (3)
+                        queueGraphics_ = queues[0];
+                        queuePresent_ = queues[1];
+                        queueCompute_ = queues[2];
 
                         // Создание командного пула для графического семейства
                         commandPoolGraphics_ = device_->createCommandPoolUnique({
                                 vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                 static_cast<uint32_t>(queueFamilyGraphicsIndex_)
+                        });
+
+                        // Создание командного пула для вычислительного семейства
+                        commandPoolCompute_ = device_->createCommandPoolUnique({
+                                vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+                                static_cast<uint32_t>(queueFamilyComputeIndex_)
                         });
 
                         // Инициализация успешно произведена
@@ -255,9 +332,11 @@ namespace vk
             {
                 if(isReady_)
                 {
-                    // Уничтожить созданный командный пул
+                    // Уничтожить командные пулы
                     this->device_->destroyCommandPool(commandPoolGraphics_.get());
                     this->commandPoolGraphics_.release();
+                    this->device_->destroyCommandPool(commandPoolCompute_.get());
+                    this->commandPoolCompute_.release();
 
                     // Уничтожить логическое устройство
                     this->device_->destroy();
@@ -313,12 +392,30 @@ namespace vk
             }
 
             /**
+             * Получить очередь команд вычисления
+             * @return
+             */
+            vk::Queue getComputeQueue() const
+            {
+                return queueCompute_;
+            }
+
+            /**
              * Получить командный пул графических команд
              * @return Константная ссылка на smart pointer объекта командного пула
              */
             const vk::UniqueCommandPool& getCommandGfxPool() const
             {
                 return commandPoolGraphics_;
+            }
+
+            /**
+             * Получить командный пул вычислительных команд
+             * @return Константная ссылка на smart pointer объекта командного пула
+             */
+            const vk::UniqueCommandPool& getCommandComputePool() const
+            {
+                return commandPoolCompute_;
             }
 
             /**
@@ -419,13 +516,21 @@ namespace vk
 
                 auto memoryProperties = this->physicalDevice_.getMemoryProperties();
 
-                for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++){
-                    if ((typeBits & 1) == 1){
-                        if ((memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlag) == memoryPropertyFlag){
-                            return i;
-                        }
+//                for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++){
+//                    if ((typeBits & 1) == 1){
+//                        if ((memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlag) == memoryPropertyFlag){
+//                            return i;
+//                        }
+//                    }
+//                    typeBits >>= 1;
+//                }
+
+                for(uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+                {
+                    if(((typeBits & (1 << i)) > 0) && (memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlag) == memoryPropertyFlag)
+                    {
+                        return i;
                     }
-                    typeBits >>= 1;
                 }
 
                 return -1;

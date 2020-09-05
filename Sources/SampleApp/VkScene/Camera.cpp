@@ -11,13 +11,14 @@ namespace vk
         /**
          * Конструктор по умолчанию
          */
-        Camera::Camera():SceneElement({0.0f,0.0f,0.0f}),
+        Camera::Camera(): SceneElement({0.0f,0.0f,0.0f}),
                          isReady_(false),
                          pDevice_(nullptr),
                          pDescriptorPool_(nullptr),
                          pUboViewMatrixData_(nullptr),
                          pUboProjectionMatrixData_(nullptr),
                          pUboCamPositionData_(nullptr),
+                         pUboMapped_(nullptr),
                          projectionMatrix_({}),
                          aspectRatio_(1.0f),
                          projectionType_(CameraProjectionType::ePerspective),
@@ -39,6 +40,7 @@ namespace vk
             std::swap(pUboViewMatrixData_, other.pUboViewMatrixData_);
             std::swap(pUboProjectionMatrixData_, other.pUboProjectionMatrixData_);
             std::swap(pUboCamPositionData_, other.pUboCamPositionData_);
+            std::swap(pUboMapped_, other.pUboMapped_);
 
             std::swap(projectionMatrix_, other.projectionMatrix_);
             std::swap(projectionType_, other.projectionType_);
@@ -67,6 +69,7 @@ namespace vk
             pUboViewMatrixData_ = nullptr;
             pUboProjectionMatrixData_ = nullptr;
             pUboCamPositionData_ = nullptr;
+            pUboMapped_ = nullptr;
 
             std::swap(isReady_,other.isReady_);
             std::swap(pDevice_,other.pDevice_);
@@ -74,6 +77,7 @@ namespace vk
             std::swap(pUboViewMatrixData_, other.pUboViewMatrixData_);
             std::swap(pUboProjectionMatrixData_, other.pUboProjectionMatrixData_);
             std::swap(pUboCamPositionData_, other.pUboCamPositionData_);
+            std::swap(pUboMapped_, other.pUboMapped_);
 
             std::swap(projectionMatrix_, other.projectionMatrix_);
             std::swap(projectionType_, other.projectionType_);
@@ -114,6 +118,7 @@ namespace vk
                 pUboViewMatrixData_(nullptr),
                 pUboProjectionMatrixData_(nullptr),
                 pUboCamPositionData_(nullptr),
+                pUboMapped_(nullptr),
                 projectionMatrix_({}),
                 aspectRatio_(aspectRatio),
                 projectionType_(projectionType),
@@ -133,9 +138,12 @@ namespace vk
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
             // Разметить память буфера, получив указатели на регионы
-            pUboViewMatrixData_ = uboCameraBuffer_.mapMemory(0, sizeof(glm::mat4));
-            pUboProjectionMatrixData_ = uboCameraBuffer_.mapMemory(sizeof(glm::mat4), sizeof(glm::mat4));
-            pUboCamPositionData_ = uboCameraBuffer_.mapMemory(sizeof(glm::mat4) * 2, sizeof(glm::vec3));
+            pUboMapped_ = uboCameraBuffer_.mapMemory(0, 2 * sizeof(glm::mat4) + sizeof(glm::vec3));
+
+            // Получить указатели на разные части размеченной области
+            pUboViewMatrixData_ = pUboMapped_;
+            pUboProjectionMatrixData_ = reinterpret_cast<glm::mat4*>(pUboMapped_) + 1;
+            pUboCamPositionData_ = reinterpret_cast<glm::mat4*>(pUboMapped_) + 2;
 
             // Выделить дескрипторный набор
             vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
@@ -208,6 +216,7 @@ namespace vk
                 pUboViewMatrixData_ = nullptr;
                 pUboProjectionMatrixData_ = nullptr;
                 pUboCamPositionData_ = nullptr;
+                pUboMapped_ = nullptr;
 
                 // Объект де-инициализирован
                 isReady_ = false;

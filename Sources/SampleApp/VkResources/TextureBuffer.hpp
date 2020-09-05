@@ -86,27 +86,28 @@ namespace vk
                 {
                     // Перед копированием информации нужно подготовить макет размещения конкретного мип уровня
                     // Макет ПРЕДЫДУЩЕГО мип-уровня должен быть переведен в состояние vk::AccessFlagBits::eTransferRead
-                    vk::ImageMemoryBarrier imageMemoryBarrierTransfer{};
-                    imageMemoryBarrierTransfer.image = image;
-                    imageMemoryBarrierTransfer.subresourceRange = {vk::ImageAspectFlagBits::eColor, i - 1, 1};
-                    imageMemoryBarrierTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    imageMemoryBarrierTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    imageMemoryBarrierTransfer.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-                    imageMemoryBarrierTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-                    imageMemoryBarrierTransfer.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-                    imageMemoryBarrierTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+                    vk::ImageMemoryBarrier imageMemoryBarrierTransferPrev{};
+                    imageMemoryBarrierTransferPrev.image = image;
+                    imageMemoryBarrierTransferPrev.subresourceRange = {vk::ImageAspectFlagBits::eColor, i - 1, 1, 0, 1};
+                    imageMemoryBarrierTransferPrev.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrierTransferPrev.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrierTransferPrev.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                    imageMemoryBarrierTransferPrev.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+                    imageMemoryBarrierTransferPrev.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                    imageMemoryBarrierTransferPrev.dstAccessMask = vk::AccessFlagBits::eTransferRead;
 
                     // Описываем параметры команды blit (команда копирует изображение, меняет его размер и вставляет)
                     vk::ImageBlit imageBlit{};
                     imageBlit.srcOffsets[0] = vk::Offset3D(0,0,0);
                     imageBlit.srcOffsets[1] = vk::Offset3D(mipWidth,mipHeight,1);
                     imageBlit.srcSubresource = {vk::ImageAspectFlagBits::eColor,i-1,0,1};
+
                     imageBlit.dstOffsets[0] = vk::Offset3D(0,0,0);
                     imageBlit.dstOffsets[1] = vk::Offset3D( mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1,1);
                     imageBlit.dstSubresource = {vk::ImageAspectFlagBits::eColor,i,0,1};
 
                     // Запись команд в буфер
-                    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierTransfer);
+                    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierTransferPrev);
                     cmdBuffers[0].blitImage(image,vk::ImageLayout::eTransferSrcOptimal,image,vk::ImageLayout::eTransferDstOptimal,{imageBlit},vk::Filter::eLinear);
 
                     // Уменьшить размер мип-уровня в 2 раза
@@ -114,18 +115,30 @@ namespace vk
                     if (mipHeight > 1) mipHeight /= 2;
                 }
 
+                // Смена размещения для последнего мип-уровня (в цикле затрагиваются только предыдущие уровни, последний остается не тронутым)
+                vk::ImageMemoryBarrier imageMemoryBarrierTransferLast{};
+                imageMemoryBarrierTransferLast.image = image;
+                imageMemoryBarrierTransferLast.subresourceRange = {vk::ImageAspectFlagBits::eColor, mipLevelsCount - 1, 1, 0, 1};
+                imageMemoryBarrierTransferLast.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierTransferLast.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrierTransferLast.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                imageMemoryBarrierTransferLast.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+                imageMemoryBarrierTransferLast.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                imageMemoryBarrierTransferLast.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+
                 // Барьер памяти для смены размещения всех мип-уровней изображения (подготовка к использованию в шейдере)
                 vk::ImageMemoryBarrier imageMemoryBarrierFinalize{};
                 imageMemoryBarrierFinalize.image = image;
-                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, mipLevelsCount};
+                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, mipLevelsCount,0,1};
                 imageMemoryBarrierFinalize.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierFinalize.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                imageMemoryBarrierFinalize.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+                imageMemoryBarrierFinalize.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
                 imageMemoryBarrierFinalize.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                 imageMemoryBarrierFinalize.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
                 imageMemoryBarrierFinalize.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
                 // Записать команду смены размещения и завершить работу с буфером
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierTransferLast);
                 cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eFragmentShader,{},{},{},imageMemoryBarrierFinalize);
                 cmdBuffers[0].end();
 
@@ -158,7 +171,7 @@ namespace vk
                 // Барьер памяти для смены размещения исходного (временного) изображения
                 vk::ImageMemoryBarrier imageMemoryBarrierSrc{};
                 imageMemoryBarrierSrc.image = srcImage;
-                imageMemoryBarrierSrc.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,1};
+                imageMemoryBarrierSrc.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,1,0,1};
                 imageMemoryBarrierSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierSrc.oldLayout = vk::ImageLayout::ePreinitialized;
@@ -169,7 +182,7 @@ namespace vk
                 // Барьер памяти для смены размещения целевого изображения
                 vk::ImageMemoryBarrier imageMemoryBarrierDst{};
                 imageMemoryBarrierDst.image = dstImage;
-                imageMemoryBarrierDst.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,1};
+                imageMemoryBarrierDst.subresourceRange = {vk::ImageAspectFlagBits::eColor,0,VK_REMAINING_MIP_LEVELS,0,1};
                 imageMemoryBarrierDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierDst.oldLayout = vk::ImageLayout::ePreinitialized;
@@ -193,7 +206,7 @@ namespace vk
                 // Барьер памяти для смены размещения целевого изображения (подготовка к использованию в шейдере)
                 vk::ImageMemoryBarrier imageMemoryBarrierFinalize{};
                 imageMemoryBarrierFinalize.image = dstImage;
-                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1};
+                imageMemoryBarrierFinalize.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1,0,1};
                 imageMemoryBarrierFinalize.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierFinalize.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 imageMemoryBarrierFinalize.oldLayout = vk::ImageLayout::eTransferDstOptimal;
@@ -205,8 +218,8 @@ namespace vk
                 cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
                 // Запись команд
-                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierSrc);
-                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierDst);
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierSrc);
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eTransfer,{},{},{},imageMemoryBarrierDst);
                 cmdBuffers[0].copyImage(srcImage,vk::ImageLayout::eTransferSrcOptimal,dstImage,vk::ImageLayout::eTransferDstOptimal,copyRegions);
 
                 // Если нужно подготовить макет размещения к использованию
@@ -364,7 +377,7 @@ namespace vk
                         vk::ImageType::e2D,                       //TODO: добавить зависимость от типа
                         this->getImageFormat(bpp_,sRgb),
                         {width_,height_,1},
-                        vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst,
+                        vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eSampled,
                         vk::ImageAspectFlagBits::eColor,
                         vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent,
                         vk::SharingMode::eExclusive,
@@ -376,7 +389,7 @@ namespace vk
                         vk::ImageType::e2D,                       //TODO: добавить зависимость от типа
                         this->getImageFormat(bpp_,sRgb),
                         {width_,height_,1},
-                        vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eSampled,
+                        vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eSampled,
                         vk::ImageAspectFlagBits::eColor,
                         vk::MemoryPropertyFlagBits::eDeviceLocal,
                         vk::SharingMode::eExclusive,

@@ -81,11 +81,13 @@ namespace vk
              * @param size Размер буфера
              * @param usageFlags Флаги использования (назначения) буфера
              * @param memoryPropertyFlags Тип и доступ к памяти (память устройства, хоста, видима ли хостом и тд.)
+             * @param memoryRequirements Требования к памяти. Если передан указатель на структуры будут использованы они
              */
             Buffer(const vk::tools::Device* pDevice,
                    const vk::DeviceSize& size,
                    const vk::BufferUsageFlags& usageFlags,
-                   const vk::MemoryPropertyFlags& memoryPropertyFlags):
+                   const vk::MemoryPropertyFlags& memoryPropertyFlags,
+                   vk::MemoryRequirements* memoryRequirements = nullptr):
                     isReady_(false),
                     pDevice_(pDevice),
                     size_(size)
@@ -106,7 +108,7 @@ namespace vk
                 buffer_ = pDevice->getLogicalDevice()->createBufferUnique(bufferCreateInfo);
 
                 // Получить требования к памяти для данного буфера
-                const auto memRequirements = pDevice->getLogicalDevice()->getBufferMemoryRequirements(buffer_.get());
+                const auto memRequirements = (memoryRequirements != nullptr ? *memoryRequirements : pDevice->getLogicalDevice()->getBufferMemoryRequirements(buffer_.get()));
 
                 // Получить индекс типа памяти
                 const auto memoryTypeIndex = pDevice->getMemoryTypeIndex(memRequirements.memoryTypeBits,memoryPropertyFlags);
@@ -116,6 +118,15 @@ namespace vk
                 vk::MemoryAllocateInfo memoryAllocateInfo;
                 memoryAllocateInfo.allocationSize = memRequirements.size;
                 memoryAllocateInfo.memoryTypeIndex = static_cast<uint32_t>(memoryTypeIndex);
+
+                // Флаги выделения памяти - eDeviceAddress, используются если буфер создается с флагом eShaderDeviceAddress
+                vk::MemoryAllocateFlagsInfoKHR memoryAllocateFlagsInfoKhr{};
+                memoryAllocateFlagsInfoKhr.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+
+                if(usageFlags & vk::BufferUsageFlagBits::eShaderDeviceAddress){
+                    memoryAllocateInfo.pNext = &memoryAllocateFlagsInfoKhr;
+                }
+
                 memory_ = pDevice->getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
 
                 // Связать объект буфера и память
