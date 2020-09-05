@@ -25,6 +25,11 @@ namespace vk
             /// Кол-во индексов
             size_t indexCount_;
 
+            /// Структура ускорения нижнего уровня (BLAS) для трассировки геометрии лучами (Ray Tracing)
+            vk::UniqueAccelerationStructureKHR accelerationStructureKhr_;
+            /// Память для структуры ускорения нижнего уровня
+            vk::UniqueDeviceMemory accelerationStructureMemory_;
+
             /**
              * Копирование содержимого из временного буфера в основной
              * @param srcBuffer Исходный буфер
@@ -58,6 +63,156 @@ namespace vk
 
                 // Очищаем буфер команд
                 pDevice_->getLogicalDevice()->free(pDevice_->getCommandGfxPool().get(),cmdBuffers.size(),cmdBuffers.data());
+            }
+
+            /**
+             * Построение структуры ускорения нижнего уровня (BLAS) для трассировки геометрии лучами (Ray Tracing)
+             * @param buildFlags Флаги построения
+             *
+             * @details Структура ускорения нижнего уровня связана с самой геометрией. Структуру можно считать некой надстройкой над
+             * обычным геометрическим буфером, которая позволяет ускорить перебор треугольников в нем за счет деления пространства и
+             * группировки треугольников. Построение структуры происходит на устройстве
+             */
+            void buildBottomLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR& buildFlags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+            {
+                // Описание типа геометрии которая используется для построения BLAS
+                std::vector<vk::AccelerationStructureCreateGeometryTypeInfoKHR> geometryTypeInfos;
+                vk::AccelerationStructureCreateGeometryTypeInfoKHR asCreateGeometryTypeInfo;
+                asCreateGeometryTypeInfo.setGeometryType(vk::GeometryTypeKHR::eTriangles);
+                asCreateGeometryTypeInfo.setIndexType(vk::IndexType::eUint32);
+                asCreateGeometryTypeInfo.setVertexFormat(vk::Format::eR32G32B32Sfloat);
+                asCreateGeometryTypeInfo.setMaxPrimitiveCount(static_cast<uint32_t>(indexCount_ / 3));
+                asCreateGeometryTypeInfo.setMaxVertexCount(static_cast<uint32_t>(vertexCount_));
+                asCreateGeometryTypeInfo.setAllowsTransforms(VK_FALSE);
+                geometryTypeInfos.push_back(asCreateGeometryTypeInfo);
+
+                // Адреса вершинного и индексного буфера
+                vk::DeviceAddress vertexBufferAddress = pDevice_->getLogicalDevice()->getBufferAddress({vertexBuffer_.getBuffer().get()});
+                vk::DeviceAddress indexBufferAddress  = pDevice_->getLogicalDevice()->getBufferAddress({indexBuffer_.getBuffer().get()});
+
+                // Описание треугольников BLAS, связь с реальными буферами геометрии
+                vk::AccelerationStructureGeometryTrianglesDataKHR triangles;
+                triangles.setVertexFormat(asCreateGeometryTypeInfo.vertexFormat);
+                triangles.setVertexData(vertexBufferAddress);
+                triangles.setVertexStride(sizeof(tools::Vertex));
+                triangles.setIndexType(asCreateGeometryTypeInfo.indexType);
+                triangles.setIndexData(indexBufferAddress);
+                triangles.setTransformData({});
+
+                // Описание геометрии
+                std::vector<vk::AccelerationStructureGeometryKHR> geometries;
+                vk::AccelerationStructureGeometryKHR asGeom;
+                asGeom.setGeometryType(asCreateGeometryTypeInfo.geometryType);
+                asGeom.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+                asGeom.geometry.setTriangles(triangles);
+                geometries.push_back(asGeom);
+
+                // Смещение (по сути описание одного объекта)
+                std::vector<vk::AccelerationStructureBuildOffsetInfoKHR> offsets;
+                vk::AccelerationStructureBuildOffsetInfoKHR offset;
+                offset.setFirstVertex(0);
+                offset.setPrimitiveCount(asCreateGeometryTypeInfo.maxPrimitiveCount);
+                offset.setPrimitiveOffset(0);
+                offset.setTransformOffset(0);
+                offsets.push_back(offset);
+
+                // Создание структуры ускорения
+                {
+                    // 1 - Создать сам идентификатор структуры
+                    vk::AccelerationStructureCreateInfoKHR asCreateInfo{};
+                    asCreateInfo.setType(vk::AccelerationStructureTypeKHR::eBottomLevel);
+                    asCreateInfo.setFlags(buildFlags);
+                    asCreateInfo.setMaxGeometryCount(static_cast<uint32_t>(geometryTypeInfos.size()));
+                    asCreateInfo.setPGeometryInfos(geometryTypeInfos.data());
+                    accelerationStructureKhr_ = pDevice_->getLogicalDevice()->createAccelerationStructureKHRUnique(asCreateInfo);
+
+                    // 2 - Получить требования к памяти
+                    vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfo{};
+                    memReqInfo.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
+                    memReqInfo.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eObject);
+                    memReqInfo.setAccelerationStructure(accelerationStructureKhr_.get());
+                    auto memReq = pDevice_->getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfo);
+
+                    // 3 - Выделение памяти
+                    vk::MemoryAllocateFlagsInfoKHR memoryAllocateFlagsInfoKhr{};
+                    memoryAllocateFlagsInfoKhr.setFlags(vk::MemoryAllocateFlagBits::eDeviceAddress);
+
+                    vk::MemoryAllocateInfo memoryAllocateInfo{};
+                    memoryAllocateInfo.setAllocationSize(memReq.memoryRequirements.size);
+                    memoryAllocateInfo.setMemoryTypeIndex(static_cast<uint32_t>(pDevice_->getMemoryTypeIndex(memReq.memoryRequirements.memoryTypeBits,vk::MemoryPropertyFlagBits::eDeviceLocal)));
+                    //memoryAllocateInfo.setPNext(&memoryAllocateFlagsInfoKhr);
+                    accelerationStructureMemory_ = pDevice_->getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
+
+                    // 4 - связать память и BLAS
+                    vk::BindAccelerationStructureMemoryInfoKHR bindInfo{};
+                    bindInfo.setAccelerationStructure(accelerationStructureKhr_.get());
+                    bindInfo.setMemory(accelerationStructureMemory_.get());
+                    bindInfo.setMemoryOffset(0);
+                    pDevice_->getLogicalDevice()->bindAccelerationStructureMemoryKHR({bindInfo});
+                }
+
+                // Получить требования к памяти рабочего буфера (используемого для построения BLAS)
+                vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfoScratch{};
+                memReqInfoScratch.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
+                memReqInfoScratch.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eBuildScratch);
+                memReqInfoScratch.setAccelerationStructure(accelerationStructureKhr_.get());
+                auto memReqScratch = pDevice_->getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfoScratch);
+
+                // Создать рабочий буфер
+                vk::tools::Buffer scratchBuffer(pDevice_,
+                        memReqScratch.memoryRequirements.size,
+                        vk::BufferUsageFlagBits::eRayTracingKHR|vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+                // Адрес буфера
+                vk::DeviceAddress scratchBufferAddress = pDevice_->getLogicalDevice()->getBufferAddress({scratchBuffer.getBuffer().get()});
+
+                // Выделить командный буфер для исполнения команды построения
+                vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
+                commandBufferAllocateInfo.commandBufferCount = 1;
+                commandBufferAllocateInfo.commandPool = pDevice_->getCommandGfxPool().get();
+                commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+                auto cmdBuffers = pDevice_->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
+
+                // Начало записи команд в буфер
+                cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+                // Информация для команды построения
+                const vk::AccelerationStructureGeometryKHR* pGeometry = geometries.data();
+                vk::AccelerationStructureBuildGeometryInfoKHR asBuildGeometryInfo{};
+                asBuildGeometryInfo.setType(vk::AccelerationStructureTypeKHR::eBottomLevel);
+                asBuildGeometryInfo.setFlags(buildFlags);
+                asBuildGeometryInfo.setUpdate(VK_FALSE);
+                asBuildGeometryInfo.setSrcAccelerationStructure(nullptr);
+                asBuildGeometryInfo.setDstAccelerationStructure(accelerationStructureKhr_.get());
+                asBuildGeometryInfo.setGeometryArrayOfPointers(VK_FALSE);
+                asBuildGeometryInfo.setGeometryCount(static_cast<uint32_t>(geometries.size()));
+                asBuildGeometryInfo.setPpGeometries(&pGeometry);
+                asBuildGeometryInfo.scratchData.setDeviceAddress(scratchBufferAddress);
+
+                // Массив указателей на смещения
+                std::vector<const vk::AccelerationStructureBuildOffsetInfoKHR*> pBuildOffset(offsets.size());
+                for(size_t i = 0; i < offsets.size(); i++) pBuildOffset[i] = &(offsets[i]);
+
+                // Барьер памяти (на всякий случай)
+                vk::MemoryBarrier memoryBarrier{};
+                memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureWriteKHR);
+                memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureReadKHR);
+
+                // Запись команды построения BLAS, барьер и завершение
+                cmdBuffers[0].buildAccelerationStructureKHR({asBuildGeometryInfo},pBuildOffset);
+                cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,{},{memoryBarrier},{},{});
+                cmdBuffers[0].end();
+
+                // Отправить команду в очередь и подождать выполнения
+                vk::SubmitInfo submitInfo{};
+                submitInfo.commandBufferCount = cmdBuffers.size();
+                submitInfo.pCommandBuffers = cmdBuffers.data();
+                pDevice_->getGraphicsQueue().submit({submitInfo},{});
+                pDevice_->getGraphicsQueue().waitIdle();
+
+                // Очистить рабочий буфер
+                scratchBuffer.destroyVulkanResources();
             }
 
         public:
@@ -99,6 +254,9 @@ namespace vk
 
                 vertexBuffer_ = std::move(other.vertexBuffer_);
                 indexBuffer_ = std::move(other.indexBuffer_);
+
+                accelerationStructureKhr_.swap(other.accelerationStructureKhr_);
+                accelerationStructureMemory_.swap(other.accelerationStructureMemory_);
             }
 
             /**
@@ -125,6 +283,9 @@ namespace vk
 
                 vertexBuffer_ = std::move(other.vertexBuffer_);
                 indexBuffer_ = std::move(other.indexBuffer_);
+
+                accelerationStructureKhr_.swap(other.accelerationStructureKhr_);
+                accelerationStructureMemory_.swap(other.accelerationStructureMemory_);
 
                 return *this;
             }
@@ -167,7 +328,7 @@ namespace vk
                     // Данный буфер может быть также использован при трассировке лучей, как часть BLAS (флаг eRayTracingKHR)
                     vertexBuffer_ = vk::tools::Buffer(pDevice_,
                             sizeof(tools::Vertex) * vertexCount_,
-                            vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eVertexBuffer,
+                            vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eShaderDeviceAddressKHR,
                             vk::MemoryPropertyFlagBits::eDeviceLocal);
 
                     // Заполнить временный буфер вершин
@@ -198,7 +359,7 @@ namespace vk
                     // Данный буфер может быть также использован при трассировке лучей, как часть BLAS (флаг eRayTracingKHR)
                     indexBuffer_ = vk::tools::Buffer(pDevice_,
                             sizeof(size_t) * indexCount_,
-                            vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eIndexBuffer,
+                            vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eShaderDeviceAddress,
                             vk::MemoryPropertyFlagBits::eDeviceLocal);
 
                     // Заполнить временный буфер индексов
@@ -216,6 +377,9 @@ namespace vk
                     stagingIndexBuffer.destroyVulkanResources();
                 }
 
+                // Построить структуру ускорения нижнего уровня (BLAS) для трассировки лучей
+                this->buildBottomLevelAccelerationStructure();
+
                 // Объект готов
                 isReady_ = true;
             }
@@ -230,6 +394,13 @@ namespace vk
                 {
                     vertexBuffer_.destroyVulkanResources();
                     indexBuffer_.destroyVulkanResources();
+
+                    pDevice_->getLogicalDevice()->destroyAccelerationStructureKHR(accelerationStructureKhr_.get());
+                    accelerationStructureKhr_.release();
+
+                    pDevice_->getLogicalDevice()->freeMemory(accelerationStructureMemory_.get());
+                    accelerationStructureMemory_.release();
+
                     isReady_ = false;
                 }
             }

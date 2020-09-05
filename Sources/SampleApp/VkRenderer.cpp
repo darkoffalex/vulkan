@@ -912,13 +912,13 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
 isEnabled_(true),
 isCommandsReady_(false),
 inputDataInOpenGlStyle_(true),
-useValidation_(false)
+useValidation_(true)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
             VK_KHR_SURFACE_EXTENSION_NAME,
             VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-//            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
     };
     std::vector<const char*> instanceValidationLayerNames = {};
 
@@ -951,14 +951,14 @@ useValidation_(false)
     std::vector<const char*> deviceExtensionNames = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-//            VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+            VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
 
             // Расширения для аппаратной трассировки лучей
-//            VK_KHR_RAY_TRACING_EXTENSION_NAME,
-//            VK_KHR_MAINTENANCE3_EXTENSION_NAME,
-//            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-//            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-//            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+            VK_KHR_RAY_TRACING_EXTENSION_NAME,
+            VK_KHR_MAINTENANCE3_EXTENSION_NAME,
+            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
     };
 
     std::vector<const char*> deviceValidationLayerNames = {};
