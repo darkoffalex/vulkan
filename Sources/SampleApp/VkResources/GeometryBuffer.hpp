@@ -164,6 +164,7 @@ namespace vk
                             vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
                     // Создать основной буфер вершин (память устройства)
+                    // Данный буфер может быть также использован при трассировке лучей, как часть BLAS (флаг eRayTracingKHR)
                     vertexBuffer_ = vk::tools::Buffer(pDevice_,
                             sizeof(tools::Vertex) * vertexCount_,
                             vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eVertexBuffer,
@@ -184,7 +185,6 @@ namespace vk
                     stagingVertexBuffer.destroyVulkanResources();
                 }
 
-
                 // Загрузка буфера индексов в память (если индексы были переданы)
                 if(isIndexed_)
                 {
@@ -195,6 +195,7 @@ namespace vk
                             vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
                     // Создать основной буфер вершин (память устройства)
+                    // Данный буфер может быть также использован при трассировке лучей, как часть BLAS (флаг eRayTracingKHR)
                     indexBuffer_ = vk::tools::Buffer(pDevice_,
                             sizeof(size_t) * indexCount_,
                             vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eIndexBuffer,

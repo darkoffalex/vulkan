@@ -160,16 +160,21 @@ namespace vk
                     mipLevels_ = static_cast<uint32_t>(std::floor(std::log2((std::max)(extent.width, extent.height)))) + 1;
                 }
 
+                // Индексы семейств очередей участвующих в рендеринге и показе
+                auto renderingQueueFamilies = pDevice_->getQueueFamilyIndices();
+
                 // Создать изображение
                 vk::ImageCreateInfo imageCreateInfo{};
                 imageCreateInfo.imageType = type;
                 imageCreateInfo.extent = extent;
                 imageCreateInfo.format = format;
-                imageCreateInfo.mipLevels = mipLevels_;
+                imageCreateInfo.mipLevels = static_cast<uint32_t>(mipLevels_);
                 imageCreateInfo.arrayLayers = 1;
                 imageCreateInfo.samples = vk::SampleCountFlagBits::e1; // TODO: добавить параметр
                 imageCreateInfo.tiling = imageTiling;
                 imageCreateInfo.sharingMode = sharingMode;
+                imageCreateInfo.queueFamilyIndexCount = (sharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.size() : 0);
+                imageCreateInfo.pQueueFamilyIndices = (sharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.data() : nullptr);
                 imageCreateInfo.usage = usage;
                 imageCreateInfo.initialLayout = layout;
                 image_ = pDevice_->getLogicalDevice()->createImageUnique(imageCreateInfo);
