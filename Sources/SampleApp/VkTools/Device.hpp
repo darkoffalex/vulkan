@@ -515,15 +515,6 @@ namespace vk
 
                 auto memoryProperties = this->physicalDevice_.getMemoryProperties();
 
-//                for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++){
-//                    if ((typeBits & 1) == 1){
-//                        if ((memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlag) == memoryPropertyFlag){
-//                            return i;
-//                        }
-//                    }
-//                    typeBits >>= 1;
-//                }
-
                 for(uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
                 {
                     if(((typeBits & (1 << i)) > 0) && (memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlag) == memoryPropertyFlag)
@@ -554,6 +545,44 @@ namespace vk
                     static_cast<uint32_t>(queueFamilyGraphicsIndex_),
                     static_cast<uint32_t>(queueFamilyPresentIndex_)
                 };
+            }
+
+            /**
+             * Копирование содержимого из одного буфера в другой
+             * @param srcBuffer Исходный буфер
+             * @param dstBuffer Целевой буфер
+             * @param size Размер
+             *
+             * @details Функция использует команду копирования буфера. Для ее выполнения необходимо выделить командный буфер
+             * и отправить его в очередь. Очередь должна поддерживать команды копирования данных, благо семейство команд рисования
+             * по умолчанию поддерживает копирование данных, и нет нужны в отдельном семействе
+             */
+            void copyBuffer(const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, vk::DeviceSize size) const
+            {
+                // Выполнять дальнейший код только если устройство готово
+                if(!isReady_) return;
+
+                // Выделить командный буфер для исполнения команды копирования
+                vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
+                commandBufferAllocateInfo.commandBufferCount = 1;
+                commandBufferAllocateInfo.commandPool = this->getCommandGfxPool().get();
+                commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+                auto cmdBuffers = this->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
+
+                // Записать команду в буфер
+                cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+                cmdBuffers[0].copyBuffer(srcBuffer,dstBuffer,vk::BufferCopy(0,0,size));
+                cmdBuffers[0].end();
+
+                // Отправить команду в очередь и подождать выполнения
+                vk::SubmitInfo submitInfo{};
+                submitInfo.commandBufferCount = cmdBuffers.size();
+                submitInfo.pCommandBuffers = cmdBuffers.data();
+                this->getGraphicsQueue().submit({submitInfo},{});
+                this->getGraphicsQueue().waitIdle();
+
+                // Очищаем буфер команд
+                this->getLogicalDevice()->free(this->getCommandGfxPool().get(),cmdBuffers.size(),cmdBuffers.data());
             }
         };
     }

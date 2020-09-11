@@ -912,7 +912,8 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
 isEnabled_(true),
 isCommandsReady_(false),
 inputDataInOpenGlStyle_(true),
-useValidation_(true)
+useValidation_(true),
+topLevelAccelerationStructureReady_(false)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
@@ -1104,6 +1105,10 @@ VkRenderer::~VkRenderer()
     // Очистить все выделенные буферы геометрии
     this->freeGeometryBuffers();
     std::cout << "All allocated geometry buffers freed." << std::endl;
+
+    // Очистить структуру ускорения верхнего уровня (если была создана)
+    this->deInitTopLevelAccelerationStructure();
+    std::cout << "TLAS destroyed." << std::endl;
 
     // Уничтожение устройства
     device_.destroyVulkanResources();
@@ -1478,4 +1483,215 @@ void VkRenderer::draw()
     presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
     presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
     (void)device_.getPresentQueue().presentKHR(presentInfoKhr);              // Осуществить показ
+}
+
+/**
+ * Построение структуры ускорения верхнего уровня
+ * @param buildFlags Флаги построения структуры
+ */
+void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR &buildFlags)
+{
+    // Описание типа геометрии которая используется для построения TLAS
+    // Структура верхнего уровня не использует геометрию, но хранит в себе набор instance'ов отдельных мешей
+    // Каждый instance ссылается на соответствующий BLAS и обладает своей матрицей определяющей положение геометрии в пространстве
+    std::vector<vk::AccelerationStructureCreateGeometryTypeInfoKHR> geometryTypeInfos;
+    vk::AccelerationStructureCreateGeometryTypeInfoKHR asCreateGeometryTypeInfo;
+    asCreateGeometryTypeInfo.setGeometryType(vk::GeometryTypeKHR::eInstances);
+    asCreateGeometryTypeInfo.setMaxPrimitiveCount(static_cast<uint32_t>(sceneMeshes_.size()));
+    asCreateGeometryTypeInfo.setAllowsTransforms(VK_TRUE);
+    geometryTypeInfos.push_back(asCreateGeometryTypeInfo);
+
+    // Создание структуры ускорения
+    {
+        // 1 - Создать сам идентификатор структуры
+        vk::AccelerationStructureCreateInfoKHR asCreateInfo{};
+        asCreateInfo.setType(vk::AccelerationStructureTypeKHR::eTopLevel);
+        asCreateInfo.setFlags(buildFlags);
+        asCreateInfo.setMaxGeometryCount(static_cast<uint32_t>(geometryTypeInfos.size()));
+        asCreateInfo.setPGeometryInfos(geometryTypeInfos.data());
+        topLevelAccelerationStructureKhr_ = device_.getLogicalDevice()->createAccelerationStructureKHRUnique(asCreateInfo);
+
+        // 2 - Получить требования к памяти
+        vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfo{};
+        memReqInfo.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
+        memReqInfo.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eObject);
+        memReqInfo.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+        auto memReq = device_.getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfo);
+
+        // 3 - Выделение памяти
+        vk::MemoryAllocateInfo memoryAllocateInfo{};
+        memoryAllocateInfo.setAllocationSize(memReq.memoryRequirements.size);
+        memoryAllocateInfo.setMemoryTypeIndex(static_cast<uint32_t>(device_.getMemoryTypeIndex(memReq.memoryRequirements.memoryTypeBits,vk::MemoryPropertyFlagBits::eDeviceLocal)));
+        topLevelAccelerationStructureMemory_ = device_.getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
+
+        // 4 - связать память и BLAS
+        vk::BindAccelerationStructureMemoryInfoKHR bindInfo{};
+        bindInfo.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+        bindInfo.setMemory(topLevelAccelerationStructureMemory_.get());
+        bindInfo.setMemoryOffset(0);
+        device_.getLogicalDevice()->bindAccelerationStructureMemoryKHR({bindInfo});
+    }
+
+    // Получить требования к памяти рабочего буфера (используемого для построения BLAS)
+    vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfoScratch{};
+    memReqInfoScratch.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
+    memReqInfoScratch.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eBuildScratch);
+    memReqInfoScratch.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+    auto memReqScratch = device_.getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfoScratch);
+
+    // Создать рабочий буфер
+    vk::tools::Buffer scratchBuffer(&device_,
+            memReqScratch.memoryRequirements.size,
+            vk::BufferUsageFlagBits::eRayTracingKHR|vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    // Адрес рабочего буфера
+    vk::DeviceAddress scratchBufferAddress = device_.getLogicalDevice()->getBufferAddress({scratchBuffer.getBuffer().get()});
+
+    // Instances
+    {
+        // Набор instance'ов для каждого меша сцены
+        std::vector<vk::AccelerationStructureInstanceKHR> instances;
+
+        // Пройтись по добавленным мешам сцены и создать instance
+        for(uint32_t i = 0; i < static_cast<uint32_t>(sceneMeshes_.size()); i++)
+        {
+            // Получить адрес структуры ускорения нижнего уровня (BLAS) у геометрического буфера меша
+            auto blasAddress = device_.getLogicalDevice()->getAccelerationStructureAddressKHR({sceneMeshes_[i]->getGeometryBuffer()->getAccelerationStructure().get()});
+
+            // Трансформация текущего instance
+            vk::TransformMatrixKHR matrixKhr{};
+            // Матрица, в отличии от матриц используемых в остальных частях приложения, не column-major, а row-major
+            // Поэтому нужно транспонировать матрицу модели меша, перед использованием
+            auto modelMatTranspose = glm::transpose(sceneMeshes_[i]->getModelMatrix());
+            // TransformMatrixKHR хранит только 12 значений, соответствуя матрице to a 4x3
+            // Поскольку последний ряд всегда (0,0,0,1), его можно не передавать.
+            // Матрица row-major, и мы копируем первые 12 значений в matrixKhr из modelMatTranspose
+            memcpy(reinterpret_cast<void*>(&matrixKhr), &modelMatTranspose, sizeof(vk::TransformMatrixKHR)); /// void??
+
+            // Заполнить структуру описывающую одиночный instance
+            vk::AccelerationStructureInstanceKHR instanceKhr{};
+            instanceKhr.setTransform(matrixKhr);
+            instanceKhr.setInstanceCustomIndex(i);
+            instanceKhr.setMask(0xFF);
+            instanceKhr.setInstanceShaderBindingTableRecordOffset(0); // Hit-группа
+            instanceKhr.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
+            instanceKhr.setAccelerationStructureReference(blasAddress);
+
+            // Добавить в массив
+            instances.push_back(instanceKhr);
+        }
+
+        // Теперь необходимо создать буфер instance'ов, который будет использован структурой, в котором будет информация массива instances
+        // Буфер должен находится в памяти устройства, по этой причине используем временный буфер для переноса данных
+        vk::DeviceSize bufferSize = instances.size() * sizeof(vk::AccelerationStructureInstanceKHR);
+
+        // Создать временный буфер (память хоста)
+        vk::tools::Buffer stagingInstanceBuffer = vk::tools::Buffer(&device_,
+                bufferSize,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
+        // Создать основной буфер (память устройства)
+        topLevelAccelerationStructureInstanceBuffer_ = vk::tools::Buffer(&device_,
+                bufferSize,
+                vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eRayTracingKHR|vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+        // Заполнить временный буфер
+        auto pStagingVertexBufferData = stagingInstanceBuffer.mapMemory(0,instances.size() * sizeof(vk::AccelerationStructureInstanceKHR));
+        memcpy(pStagingVertexBufferData,instances.data(),bufferSize);
+        stagingInstanceBuffer.unmapMemory();
+
+        // Копировать из временного буфера в основной
+        device_.copyBuffer(stagingInstanceBuffer.getBuffer().get(),topLevelAccelerationStructureInstanceBuffer_.getBuffer().get(),bufferSize);
+
+        // Очищаем временный буфер (не обязательно, все равно очистится, но можно для ясности)
+        stagingInstanceBuffer.destroyVulkanResources();
+    }
+
+    // Адрес буфера instance'ов
+    vk::DeviceAddress instanceBufferAddress = device_.getLogicalDevice()->getBufferAddress({topLevelAccelerationStructureInstanceBuffer_.getBuffer().get()});
+
+    // Выделить командный буфер для исполнения команды построения
+    vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
+    commandBufferAllocateInfo.commandBufferCount = 1;
+    commandBufferAllocateInfo.commandPool = device_.getCommandComputePool().get();
+    commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+    auto cmdBuffers = device_.getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
+
+    // Начало записи команд в буфер
+    cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    // Необходимо убедиться что буфер instance'ов был скопирован до начала построения TLAS
+    // Для этого используем барьер
+    vk::MemoryBarrier memoryBarrierInstanceBufferReady{};
+    memoryBarrierInstanceBufferReady.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+    memoryBarrierInstanceBufferReady.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureWriteKHR);
+    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,{},{memoryBarrierInstanceBufferReady},{},{});
+
+
+    vk::AccelerationStructureGeometryDataKHR geometryDataKhr{};
+    geometryDataKhr.instances.setArrayOfPointers(VK_FALSE);
+    geometryDataKhr.instances.data.setDeviceAddress(instanceBufferAddress);
+
+    vk::AccelerationStructureGeometryKHR topAsGeometry{};
+    topAsGeometry.setGeometryType(vk::GeometryTypeKHR::eInstances);
+    topAsGeometry.setGeometry(geometryDataKhr);
+
+    const vk::AccelerationStructureGeometryKHR* pGeometry = &topAsGeometry;
+    vk::AccelerationStructureBuildGeometryInfoKHR asBuildGeometryInfo{};
+    asBuildGeometryInfo.setType(vk::AccelerationStructureTypeKHR::eTopLevel);
+    asBuildGeometryInfo.setFlags(buildFlags);
+    asBuildGeometryInfo.setUpdate(VK_FALSE);
+    asBuildGeometryInfo.setSrcAccelerationStructure(nullptr);
+    asBuildGeometryInfo.setDstAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+    asBuildGeometryInfo.setGeometryArrayOfPointers(VK_FALSE);
+    asBuildGeometryInfo.setGeometryCount(1);
+    asBuildGeometryInfo.setPpGeometries(&pGeometry);
+    asBuildGeometryInfo.scratchData.setDeviceAddress(scratchBufferAddress);
+
+    // Массив указателей на смещения
+    vk::AccelerationStructureBuildOffsetInfoKHR buildOffsetInfoKhr{static_cast<uint32_t>(sceneMeshes_.size()),0,0,0};
+    const vk::AccelerationStructureBuildOffsetInfoKHR* pBuildOffset = &buildOffsetInfoKhr;
+
+    // Барьер памяти
+    vk::MemoryBarrier memoryBarrier{};
+    memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureWriteKHR);
+    memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureReadKHR);
+
+    // Запись команды построения TLAS, барьер и завершение
+    cmdBuffers[0].buildAccelerationStructureKHR({asBuildGeometryInfo},pBuildOffset);
+    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,{},{memoryBarrier},{},{});
+    cmdBuffers[0].end();
+
+    // Отправить команду в очередь и подождать выполнения
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = cmdBuffers.size();
+    submitInfo.pCommandBuffers = cmdBuffers.data();
+    device_.getComputeQueue().submit({submitInfo},{});
+    device_.getComputeQueue().waitIdle();
+
+    // Очистить рабочий буфер
+    scratchBuffer.destroyVulkanResources();
+
+    // Структура ускорения верхнего уровня готова к использованию
+    topLevelAccelerationStructureReady_ = true;
+}
+
+/**
+ * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
+ */
+void VkRenderer::deInitTopLevelAccelerationStructure()
+{
+    if(topLevelAccelerationStructureReady_)
+    {
+        device_.getLogicalDevice()->destroyAccelerationStructureKHR(topLevelAccelerationStructureKhr_.get());
+        topLevelAccelerationStructureKhr_.release();
+
+        device_.getLogicalDevice()->freeMemory(topLevelAccelerationStructureMemory_.get());
+        topLevelAccelerationStructureMemory_.release();
+
+        topLevelAccelerationStructureInstanceBuffer_.destroyVulkanResources();
+    }
 }

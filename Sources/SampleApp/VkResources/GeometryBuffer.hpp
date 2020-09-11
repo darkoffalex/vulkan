@@ -31,41 +31,6 @@ namespace vk
             vk::UniqueDeviceMemory accelerationStructureMemory_;
 
             /**
-             * Копирование содержимого из временного буфера в основной
-             * @param srcBuffer Исходный буфер
-             * @param dstBuffer Целевой буфер
-             * @param size Размер
-             *
-             * @details Функция использует команду копирования буфера. Для ее выполнения необходимо выделить командный буфер
-             * и отправить его в очередь. Очередь должна поддерживать команды копирования данных, благо семейство команд рисования
-             * по умолчанию поддерживает копирование данных, и нет нужны в отдельном семействе
-             */
-            void copyTmpToDst(const vk::Buffer& srcBuffer, const vk::Buffer& dstBuffer, vk::DeviceSize size)
-            {
-                // Выделить командный буфер для исполнения команды копирования
-                vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
-                commandBufferAllocateInfo.commandBufferCount = 1;
-                commandBufferAllocateInfo.commandPool = pDevice_->getCommandGfxPool().get();
-                commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
-                auto cmdBuffers = pDevice_->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
-
-                // Записать команду в буфер
-                cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-                cmdBuffers[0].copyBuffer(srcBuffer,dstBuffer,vk::BufferCopy(0,0,size));
-                cmdBuffers[0].end();
-
-                // Отправить команду в очередь и подождать выполнения
-                vk::SubmitInfo submitInfo{};
-                submitInfo.commandBufferCount = cmdBuffers.size();
-                submitInfo.pCommandBuffers = cmdBuffers.data();
-                pDevice_->getGraphicsQueue().submit({submitInfo},{});
-                pDevice_->getGraphicsQueue().waitIdle();
-
-                // Очищаем буфер команд
-                pDevice_->getLogicalDevice()->free(pDevice_->getCommandGfxPool().get(),cmdBuffers.size(),cmdBuffers.data());
-            }
-
-            /**
              * Построение структуры ускорения нижнего уровня (BLAS) для трассировки геометрии лучами (Ray Tracing)
              * @param buildFlags Флаги построения
              *
@@ -170,7 +135,7 @@ namespace vk
                 // Выделить командный буфер для исполнения команды построения
                 vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
                 commandBufferAllocateInfo.commandBufferCount = 1;
-                commandBufferAllocateInfo.commandPool = pDevice_->getCommandGfxPool().get();
+                commandBufferAllocateInfo.commandPool = pDevice_->getCommandComputePool().get();
                 commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
                 auto cmdBuffers = pDevice_->getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
 
@@ -194,7 +159,7 @@ namespace vk
                 std::vector<const vk::AccelerationStructureBuildOffsetInfoKHR*> pBuildOffset(offsets.size());
                 for(size_t i = 0; i < offsets.size(); i++) pBuildOffset[i] = &(offsets[i]);
 
-                // Барьер памяти (на всякий случай)
+                // Барьер памяти
                 vk::MemoryBarrier memoryBarrier{};
                 memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureWriteKHR);
                 memoryBarrier.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureReadKHR);
@@ -208,8 +173,8 @@ namespace vk
                 vk::SubmitInfo submitInfo{};
                 submitInfo.commandBufferCount = cmdBuffers.size();
                 submitInfo.pCommandBuffers = cmdBuffers.data();
-                pDevice_->getGraphicsQueue().submit({submitInfo},{});
-                pDevice_->getGraphicsQueue().waitIdle();
+                pDevice_->getComputeQueue().submit({submitInfo},{});
+                pDevice_->getComputeQueue().waitIdle();
 
                 // Очистить рабочий буфер
                 scratchBuffer.destroyVulkanResources();
@@ -337,7 +302,7 @@ namespace vk
                     stagingVertexBuffer.unmapMemory();
 
                     // Копировать из временного буфера в основной
-                    this->copyTmpToDst(
+                    this->pDevice_->copyBuffer(
                             stagingVertexBuffer.getBuffer().get(),
                             vertexBuffer_.getBuffer().get(),
                             stagingVertexBuffer.getSize());
@@ -368,7 +333,7 @@ namespace vk
                     stagingIndexBuffer.unmapMemory();
 
                     // Копировать из временного буфера в основной
-                    this->copyTmpToDst(
+                    this->pDevice_->copyBuffer(
                             stagingIndexBuffer.getBuffer().get(),
                             indexBuffer_.getBuffer().get(),
                             stagingIndexBuffer.getSize());
@@ -473,6 +438,15 @@ namespace vk
             const vk::tools::Device* getOwnerDevice() const
             {
                 return pDevice_;
+            }
+
+            /**
+             * Получить структуру ускорения
+             * @return Константная ссылка на unique-smart-pointer
+             */
+            const vk::UniqueAccelerationStructureKHR& getAccelerationStructure() const
+            {
+                return accelerationStructureKhr_;
             }
         };
 

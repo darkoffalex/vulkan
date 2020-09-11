@@ -83,6 +83,15 @@ private:
     /// Ресурсы по умолчанию - текстуры
     vk::resources::TextureBufferPtr blackPixelTexture_;
 
+    /// Структура ускорения верхнего уровня для трассировки лучей
+    vk::UniqueAccelerationStructureKHR topLevelAccelerationStructureKhr_;
+    ///Память для структуры ускорения верхнего уровня
+    vk::UniqueDeviceMemory topLevelAccelerationStructureMemory_;
+    /// Буфер содержащий информацию об instance'ах используемых структурой ускорения
+    vk::tools::Buffer topLevelAccelerationStructureInstanceBuffer_;
+    /// Структура ускорения верхнего уровня построена
+    bool topLevelAccelerationStructureReady_;
+
 
     /**
      * Инициализация проходов рендеринга
@@ -202,6 +211,11 @@ private:
      */
     void freeMeshes();
 
+    /**
+     * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
+     */
+    void deInitTopLevelAccelerationStructure();
+
 public:
     /**
      * Конструктор
@@ -312,4 +326,16 @@ public:
      * Рендеринг кадра
      */
     void draw();
+
+    /**
+     * Построение структуры ускорения верхнего уровня (для трассировки лучей)
+     * @param buildFlags Флаги построения структуры
+     *
+     * @details Подразумевается что данный метод будет вызываться после добавления мешей на сцену, поскольку для формирования
+     * структуры ускорения верхнего уровня нужны структуры нижнего уровня (геометрия) и матрицы описывающие положения в пространстве.
+     *
+     * В перспективе данные метод станет приватным, а структура верхнего уровня будет обновляться всякий раз, когда происходит добавление
+     * или удаление мешей на сцену.
+     */
+    void buildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR& buildFlags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace | vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate);
 };
