@@ -51,6 +51,8 @@ private:
     vk::UniqueDescriptorPool descriptorPoolMeshes_;
     /// Объект дескрипторного пула для выделения набора для источников света
     vk::UniqueDescriptorPool descriptorPoolLightSources_;
+    /// Объект дескрипторного пула для трассировки лучей
+    vk::UniqueDescriptorPool descriptorPoolRayTracing_;
 
     /// Макет размещения дескрипторного набора для камеры (матрицы)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
@@ -58,6 +60,8 @@ private:
     vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshes_;
     /// Макет размещения дескрипторного набора для источников света (кол-во, массив источников)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutLightSources_;
+    /// Макет размещения дескрипторного набора для трассировки лучей
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutRayTracing_;
 
     /// Макет размещения графического конвейера
     vk::UniquePipelineLayout pipelineLayout_;

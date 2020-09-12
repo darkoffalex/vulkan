@@ -399,7 +399,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
 
     // Создать пул для набора описывающего источники света сцены
     {
-        // Размеры пула для наборов типа "материал меша"
+        // Размеры пула для наборов типа "параметры камеры"
         std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
                 // Дескриптор кол-ва источников
                 {vk::DescriptorType::eUniformBuffer,1},
@@ -414,6 +414,25 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.maxSets = 1;
         descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolLightSources_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    }
+
+    // Создать пул для набора используемого в трассировке лучей
+    {
+        // Размеры пула для наборов типа "набор для трассировки лучей"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Дескриптор структуры ускорения верхнего уровня
+                {vk::DescriptorType::eAccelerationStructureKHR, 1},
+                // Дескриптор структуры итогового изображения (результат трассировки)
+                {vk::DescriptorType::eStorageImage, 1}
+        };
+
+        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр (кол-во источников и массив источников)
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+        descriptorPoolRayTracing_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
     // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
@@ -519,7 +538,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         0,
                         vk::DescriptorType::eUniformBuffer,
                         1,
-                        vk::ShaderStageFlagBits::eFragment,
+                        vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
                         nullptr,
                 },
                 // Обычный UBO буфер (для массива источников)
@@ -527,7 +546,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         1,
                         vk::DescriptorType::eUniformBuffer,
                         1,
-                        vk::ShaderStageFlagBits::eFragment,
+                        vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
                         nullptr,
                 },
         };
@@ -537,6 +556,35 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
         descriptorSetLayoutLightSources_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
+
+    // Макет размещения набора используемого в трассировке лучей
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Структура ускорения верхнего уровня
+                {
+                        0,
+                        vk::DescriptorType::eAccelerationStructureKHR,
+                        1,
+                        vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                        nullptr,
+                },
+                // Хранимое изображение, результат трассировки
+                {
+                        1,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eRaygenKHR,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutRayTracing_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
 }
 
@@ -554,6 +602,7 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolCamera_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshes_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolLightSources_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolRayTracing_.get());
     }
 	catch(std::exception&){}
 
@@ -561,9 +610,11 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutLightSources_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutRayTracing_.get());
     descriptorSetLayoutCamera_.release();
     descriptorSetLayoutMeshes_.release();
     descriptorSetLayoutLightSources_.release();
+    descriptorSetLayoutRayTracing_.release();
 
     // Уничтожить пулы дескрипторов
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
@@ -572,6 +623,7 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     descriptorPoolCamera_.release();
     descriptorPoolMeshes_.release();
     descriptorPoolLightSources_.release();
+    descriptorPoolRayTracing_.release();
 }
 
 /**
@@ -1582,7 +1634,7 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
             instances.push_back(instanceKhr);
         }
 
-        // Теперь необходимо создать буфер instance'ов, который будет использован структурой, в котором будет информация массива instances
+        // Теперь необходимо создать буфер instance'ов, который будет использован структурой и в котором будет информация массива instances
         // Буфер должен находится в памяти устройства, по этой причине используем временный буфер для переноса данных
         vk::DeviceSize bufferSize = instances.size() * sizeof(vk::AccelerationStructureInstanceKHR);
 
@@ -1630,7 +1682,7 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
     memoryBarrierInstanceBufferReady.setSrcAccessMask(vk::AccessFlagBits::eAccelerationStructureWriteKHR);
     cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,{},{memoryBarrierInstanceBufferReady},{},{});
 
-
+    // Информация для построения структуры
     vk::AccelerationStructureGeometryDataKHR geometryDataKhr{};
     geometryDataKhr.instances.setArrayOfPointers(VK_FALSE);
     geometryDataKhr.instances.data.setDeviceAddress(instanceBufferAddress);
