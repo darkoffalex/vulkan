@@ -150,7 +150,8 @@ int main(int argc, char* argv[])
         head->setPosition({0.0f,0.75f,0.15f});
 
         // Построение TLAS на основе добавленных мешей (для трассировки лучей)
-        _vkRenderer->buildTopLevelAccelerationStructure();
+        _vkRenderer->rtBuildTopLevelAccelerationStructure();
+        _vkRenderer->rtPrepareDescriptorSet();
 
         // Ar2r-Devil-Pinky (первая версия)
 //        auto Ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);

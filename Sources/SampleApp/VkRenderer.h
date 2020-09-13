@@ -40,8 +40,6 @@ private:
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
 
-    /// UBO буфер для матриц вида и проекции
-    vk::tools::Buffer uboBufferViewProjection_;
     /// Текстурный семплер по умолчанию, используемый для всех создаваемых текстур
     vk::UniqueSampler textureSamplerDefault_;
 
@@ -88,13 +86,20 @@ private:
     vk::resources::TextureBufferPtr blackPixelTexture_;
 
     /// Структура ускорения верхнего уровня для трассировки лучей
-    vk::UniqueAccelerationStructureKHR topLevelAccelerationStructureKhr_;
+    vk::UniqueAccelerationStructureKHR rtTopLevelAccelerationStructureKhr_;
     ///Память для структуры ускорения верхнего уровня
-    vk::UniqueDeviceMemory topLevelAccelerationStructureMemory_;
+    vk::UniqueDeviceMemory rtTopLevelAccelerationStructureMemory_;
     /// Буфер содержащий информацию об instance'ах используемых структурой ускорения
-    vk::tools::Buffer topLevelAccelerationStructureInstanceBuffer_;
+    vk::tools::Buffer rtTopLevelAccelerationStructureInstanceBuffer_;
     /// Структура ускорения верхнего уровня построена
-    bool topLevelAccelerationStructureReady_;
+    bool rtTopLevelAccelerationStructureReady_;
+
+    /// Итоговое изображение хранящее результат трассировки сцены
+    vk::tools::Image rtOffscreenBufferImage_;
+    /// Дескрипторный набор для трассировки сцены
+    vk::UniqueDescriptorSet rtDescriptorSet_;
+    /// Готов ли дескрипторный набор к использованию
+    bool rtDescriptorSetReady_;
 
 
     /**
@@ -143,20 +148,16 @@ private:
      */
     void deInitFrameBuffers() noexcept;
 
+    /**
+     * Инициализация изображения хранящего результат трассировки лучами сцены
+     * @param colorAttachmentFormat Формат цветового вложения
+     */
+    void initRtOffscreenBuffer(const vk::Format& colorAttachmentFormat);
 
     /**
-     * Инициализация UBO буферов
-     * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на размер буфера матриц моделей)
-     *
-     * @details UBO буферы используются для передачи информации в шейдер во время рендеринга.
-     * Например, матрицы (проекции, вида, модели), источники света и другое.
+     * Де-инициализация кадрового буфера для трассировки лучей
      */
-    void initUboBuffers(size_t maxMeshes);
-
-    /**
-     * Де-инициализация UBO буферов
-     */
-    void deInitUboBuffers() noexcept;
+    void deInitRtOffscreenBuffer();
 
 
     /**
@@ -218,7 +219,7 @@ private:
     /**
      * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
      */
-    void deInitTopLevelAccelerationStructure();
+    void rtDeInitTopLevelAccelerationStructure();
 
 public:
     /**
@@ -341,5 +342,19 @@ public:
      * В перспективе данные метод станет приватным, а структура верхнего уровня будет обновляться всякий раз, когда происходит добавление
      * или удаление мешей на сцену.
      */
-    void buildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR& buildFlags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace | vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate);
+    void rtBuildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR& buildFlags =
+    vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace |
+    vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate);
+
+    /**
+     * Подготовка дескрипторного набора для трассировки лучей
+     *
+     * @details Поскольку при инициализации дескрипторного набора, в качестве одного из дескрипторов используется структура ускорения
+     * верхнего уровня, которая создается методом rtBuildTopLevelAccelerationStructure (который вызывается после наполнения сцены),
+     * данный метод также нужно вызывать явно.
+     *
+     * В перспективе он также будет приватным, и набор дескрипторов будет всякий раз обновляться при обновлении объекта
+     * структуры ускорения (при добавлении или удалении мешей)
+     */
+    void rtPrepareDescriptorSet();
 };

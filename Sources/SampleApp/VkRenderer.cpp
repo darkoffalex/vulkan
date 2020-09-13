@@ -305,31 +305,39 @@ void VkRenderer::deInitFrameBuffers() noexcept
 }
 
 /**
- * Инициализация UBO буферов
- * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей
+ * Инициализация изображения хранящего результат трассировки лучами сцены
+ * @param colorAttachmentFormat Формат цветового вложения
  */
-void VkRenderer::initUboBuffers(size_t maxMeshes)
+void VkRenderer::initRtOffscreenBuffer(const vk::Format &colorAttachmentFormat)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't initialize UBO buffers. Device not ready");
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Device not ready");
+    }
+    // Проверяем готовность поверхности
+    if(!surface_.get()){
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Surface not ready");
     }
 
-    // Создаем UBO буферы для матриц вида и проекции
-    uboBufferViewProjection_ = vk::tools::Buffer(
+    // Получить возможности устройства для поверхности
+    auto capabilities = device_.getPhysicalDevice().getSurfaceCapabilitiesKHR(surface_.get());
+
+    // Создать изображение
+    rtOffscreenBufferImage_ = vk::tools::Image(
             &device_,
-            sizeof(glm::mat4)*2,
-            vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+            vk::ImageType::e2D,
+            colorAttachmentFormat,
+            {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
+            vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eStorage,
+            vk::ImageAspectFlagBits::eColor,vk::MemoryPropertyFlagBits::eDeviceLocal);
 }
 
 /**
- * Де-инициализация UBO буферов
+ * Де-инициализация кадрового буфера для трассировки лучей
  */
-void VkRenderer::deInitUboBuffers() noexcept
+void VkRenderer::deInitRtOffscreenBuffer()
 {
-    // Уничтожаем ресурсы Vulkan
-    uboBufferViewProjection_.destroyVulkanResources();
+    rtOffscreenBufferImage_.destroyVulkanResources();
 }
 
 /**
@@ -341,10 +349,6 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
     // Проверяем готовность устройства
     if(!device_.isReady()){
         throw vk::InitializationFailedError("Can't initialize descriptors. Device not ready");
-    }
-    // Проверить готовность буферов UBO
-    if(!uboBufferViewProjection_.isReady()){
-        throw vk::InitializationFailedError("Can't initialize descriptors. UBO buffers not ready");
     }
 
     // Д Е С К Р И П Т О Р Н Ы Е  П У Л Ы
@@ -448,7 +452,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         0,
                         vk::DescriptorType::eUniformBuffer,
                         1,
-                        vk::ShaderStageFlagBits::eVertex|vk::ShaderStageFlagBits::eFragment,
+                        vk::ShaderStageFlagBits::eVertex|vk::ShaderStageFlagBits::eFragment|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR|vk::ShaderStageFlagBits::eRaygenKHR,
                         nullptr,
                 },
         };
@@ -573,7 +577,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Хранимое изображение, результат трассировки
                 {
                         1,
-                        vk::DescriptorType::eUniformBuffer,
+                        vk::DescriptorType::eStorageImage,
                         1,
                         vk::ShaderStageFlagBits::eRaygenKHR,
                         nullptr,
@@ -620,10 +624,17 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolLightSources_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolRayTracing_.get());
     descriptorPoolCamera_.release();
     descriptorPoolMeshes_.release();
     descriptorPoolLightSources_.release();
     descriptorPoolRayTracing_.release();
+
+    // Освободить объект дескрипторного набора для трассировки лучей
+    // Сам дескрипторный набор был удален во время resetDescriptorPool соответствующего пула
+    if(rtDescriptorSetReady_){
+        rtDescriptorSet_.release();
+    }
 }
 
 /**
@@ -965,7 +976,8 @@ isEnabled_(true),
 isCommandsReady_(false),
 inputDataInOpenGlStyle_(true),
 useValidation_(true),
-topLevelAccelerationStructureReady_(false)
+rtTopLevelAccelerationStructureReady_(false),
+rtDescriptorSetReady_(false)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
@@ -1035,6 +1047,10 @@ topLevelAccelerationStructureReady_(false)
     this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
     std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
 
+    // Создание буфера изображения для трассировки лучей
+    this->initRtOffscreenBuffer(vk::Format::eR32G32B32A32Sfloat);
+    std::cout << "Ray tracing offscreen buffer initialized" << std::endl;
+
     // Выделение командных буферов
     // Командный буфер может быть и один, но в таком случае придется ожидать его выполнения перед тем, как начинать запись
     // в очередное изображение swap-chain'а (что не есть оптимально). Поэтому лучше использовать отдельные буферы, для каждого
@@ -1042,10 +1058,6 @@ topLevelAccelerationStructureReady_(false)
     auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
-
-    // Выделение UBO буферов
-    this->initUboBuffers(maxMeshes);
-    std::cout << "UBO-buffer allocated (" << uboBufferViewProjection_.getSize() << ")." << std::endl;
 
     // Создать текстурный семплер по умолчанию
     textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 2);
@@ -1130,14 +1142,14 @@ VkRenderer::~VkRenderer()
     textureSamplerDefault_.release();
     std::cout << "Default texture sampler destroyed." << std::endl;
 
-    // Освобождение UBO буферов
-    this->deInitUboBuffers();
-    std::cout << "UBO-buffers freed." << std::endl;
-
     // Освобождение командных буферов
     device_.getLogicalDevice()->freeCommandBuffers(device_.getCommandGfxPool().get(),commandBuffers_);
     commandBuffers_.clear();
     std::cout << "Command-buffers freed." << std::endl;
+
+    // Уничтожения буфера изображения для трассировки лучей
+    this->deInitRtOffscreenBuffer();
+    std::cout << "Ray tracing offscreen buffer destroyed." << std::endl;
 
     // Уничтожение кадровых буферов
     this->deInitFrameBuffers();
@@ -1159,7 +1171,7 @@ VkRenderer::~VkRenderer()
     std::cout << "All allocated geometry buffers freed." << std::endl;
 
     // Очистить структуру ускорения верхнего уровня (если была создана)
-    this->deInitTopLevelAccelerationStructure();
+    this->rtDeInitTopLevelAccelerationStructure();
     std::cout << "TLAS destroyed." << std::endl;
 
     // Уничтожение устройства
@@ -1541,7 +1553,7 @@ void VkRenderer::draw()
  * Построение структуры ускорения верхнего уровня
  * @param buildFlags Флаги построения структуры
  */
-void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR &buildFlags)
+void VkRenderer::rtBuildTopLevelAccelerationStructure(const vk::BuildAccelerationStructureFlagsKHR &buildFlags)
 {
     // Описание типа геометрии которая используется для построения TLAS
     // Структура верхнего уровня не использует геометрию, но хранит в себе набор instance'ов отдельных мешей
@@ -1561,25 +1573,25 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
         asCreateInfo.setFlags(buildFlags);
         asCreateInfo.setMaxGeometryCount(static_cast<uint32_t>(geometryTypeInfos.size()));
         asCreateInfo.setPGeometryInfos(geometryTypeInfos.data());
-        topLevelAccelerationStructureKhr_ = device_.getLogicalDevice()->createAccelerationStructureKHRUnique(asCreateInfo);
+        rtTopLevelAccelerationStructureKhr_ = device_.getLogicalDevice()->createAccelerationStructureKHRUnique(asCreateInfo);
 
         // 2 - Получить требования к памяти
         vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfo{};
         memReqInfo.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
         memReqInfo.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eObject);
-        memReqInfo.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+        memReqInfo.setAccelerationStructure(rtTopLevelAccelerationStructureKhr_.get());
         auto memReq = device_.getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfo);
 
         // 3 - Выделение памяти
         vk::MemoryAllocateInfo memoryAllocateInfo{};
         memoryAllocateInfo.setAllocationSize(memReq.memoryRequirements.size);
         memoryAllocateInfo.setMemoryTypeIndex(static_cast<uint32_t>(device_.getMemoryTypeIndex(memReq.memoryRequirements.memoryTypeBits,vk::MemoryPropertyFlagBits::eDeviceLocal)));
-        topLevelAccelerationStructureMemory_ = device_.getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
+        rtTopLevelAccelerationStructureMemory_ = device_.getLogicalDevice()->allocateMemoryUnique(memoryAllocateInfo);
 
         // 4 - связать память и BLAS
         vk::BindAccelerationStructureMemoryInfoKHR bindInfo{};
-        bindInfo.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
-        bindInfo.setMemory(topLevelAccelerationStructureMemory_.get());
+        bindInfo.setAccelerationStructure(rtTopLevelAccelerationStructureKhr_.get());
+        bindInfo.setMemory(rtTopLevelAccelerationStructureMemory_.get());
         bindInfo.setMemoryOffset(0);
         device_.getLogicalDevice()->bindAccelerationStructureMemoryKHR({bindInfo});
     }
@@ -1588,7 +1600,7 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
     vk::AccelerationStructureMemoryRequirementsInfoKHR memReqInfoScratch{};
     memReqInfoScratch.setBuildType(vk::AccelerationStructureBuildTypeKHR::eDevice);
     memReqInfoScratch.setType(vk::AccelerationStructureMemoryRequirementsTypeKHR::eBuildScratch);
-    memReqInfoScratch.setAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+    memReqInfoScratch.setAccelerationStructure(rtTopLevelAccelerationStructureKhr_.get());
     auto memReqScratch = device_.getLogicalDevice()->getAccelerationStructureMemoryRequirementsKHR(memReqInfoScratch);
 
     // Создать рабочий буфер
@@ -1645,7 +1657,7 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
                 vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
         // Создать основной буфер (память устройства)
-        topLevelAccelerationStructureInstanceBuffer_ = vk::tools::Buffer(&device_,
+        rtTopLevelAccelerationStructureInstanceBuffer_ = vk::tools::Buffer(&device_,
                 bufferSize,
                 vk::BufferUsageFlagBits::eTransferDst|vk::BufferUsageFlagBits::eRayTracingKHR|vk::BufferUsageFlagBits::eShaderDeviceAddress,
                 vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -1656,14 +1668,14 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
         stagingInstanceBuffer.unmapMemory();
 
         // Копировать из временного буфера в основной
-        device_.copyBuffer(stagingInstanceBuffer.getBuffer().get(),topLevelAccelerationStructureInstanceBuffer_.getBuffer().get(),bufferSize);
+        device_.copyBuffer(stagingInstanceBuffer.getBuffer().get(),rtTopLevelAccelerationStructureInstanceBuffer_.getBuffer().get(),bufferSize);
 
         // Очищаем временный буфер (не обязательно, все равно очистится, но можно для ясности)
         stagingInstanceBuffer.destroyVulkanResources();
     }
 
     // Адрес буфера instance'ов
-    vk::DeviceAddress instanceBufferAddress = device_.getLogicalDevice()->getBufferAddress({topLevelAccelerationStructureInstanceBuffer_.getBuffer().get()});
+    vk::DeviceAddress instanceBufferAddress = device_.getLogicalDevice()->getBufferAddress({rtTopLevelAccelerationStructureInstanceBuffer_.getBuffer().get()});
 
     // Выделить командный буфер для исполнения команды построения
     vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
@@ -1697,7 +1709,7 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
     asBuildGeometryInfo.setFlags(buildFlags);
     asBuildGeometryInfo.setUpdate(VK_FALSE);
     asBuildGeometryInfo.setSrcAccelerationStructure(nullptr);
-    asBuildGeometryInfo.setDstAccelerationStructure(topLevelAccelerationStructureKhr_.get());
+    asBuildGeometryInfo.setDstAccelerationStructure(rtTopLevelAccelerationStructureKhr_.get());
     asBuildGeometryInfo.setGeometryArrayOfPointers(VK_FALSE);
     asBuildGeometryInfo.setGeometryCount(1);
     asBuildGeometryInfo.setPpGeometries(&pGeometry);
@@ -1728,22 +1740,78 @@ void VkRenderer::buildTopLevelAccelerationStructure(const vk::BuildAccelerationS
     scratchBuffer.destroyVulkanResources();
 
     // Структура ускорения верхнего уровня готова к использованию
-    topLevelAccelerationStructureReady_ = true;
+    rtTopLevelAccelerationStructureReady_ = true;
 }
 
 /**
  * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
  */
-void VkRenderer::deInitTopLevelAccelerationStructure()
+void VkRenderer::rtDeInitTopLevelAccelerationStructure()
 {
-    if(topLevelAccelerationStructureReady_)
+    if(rtTopLevelAccelerationStructureReady_)
     {
-        device_.getLogicalDevice()->destroyAccelerationStructureKHR(topLevelAccelerationStructureKhr_.get());
-        topLevelAccelerationStructureKhr_.release();
+        device_.getLogicalDevice()->destroyAccelerationStructureKHR(rtTopLevelAccelerationStructureKhr_.get());
+        rtTopLevelAccelerationStructureKhr_.release();
 
-        device_.getLogicalDevice()->freeMemory(topLevelAccelerationStructureMemory_.get());
-        topLevelAccelerationStructureMemory_.release();
+        device_.getLogicalDevice()->freeMemory(rtTopLevelAccelerationStructureMemory_.get());
+        rtTopLevelAccelerationStructureMemory_.release();
 
-        topLevelAccelerationStructureInstanceBuffer_.destroyVulkanResources();
+        rtTopLevelAccelerationStructureInstanceBuffer_.destroyVulkanResources();
+    }
+}
+
+/**
+ * Подготовка дескрипторного набора для трассировки лучей
+ */
+void VkRenderer::rtPrepareDescriptorSet()
+{
+    if(!rtDescriptorSetReady_ && rtTopLevelAccelerationStructureReady_)
+    {
+        // Выделить дескрипторный набор
+        vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+        descriptorSetAllocateInfo.descriptorPool = descriptorPoolRayTracing_.get();
+        descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutRayTracing_.get());
+        descriptorSetAllocateInfo.descriptorSetCount = 1;
+        auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+        rtDescriptorSet_ = vk::UniqueDescriptorSet(allocatedSets[0]);
+
+
+        // Информация об структуре ускорения для дескрипторного набора
+        vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo{};
+        accelerationStructureInfo.setAccelerationStructureCount(1);
+        accelerationStructureInfo.setPAccelerationStructures(&(rtTopLevelAccelerationStructureKhr_.get()));
+
+        // Информация об буфере изображения
+        vk::DescriptorImageInfo offscreenImageInfo{};
+        offscreenImageInfo.setImageView(rtOffscreenBufferImage_.getImageView().get());
+        offscreenImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
+
+
+        // Описываем связи дескрипторов с буферами (описание "записей")
+        std::vector<vk::WriteDescriptorSet> writes = {};
+
+        vk::WriteDescriptorSet writeAs{};
+        writeAs.setDstSet(rtDescriptorSet_.get());
+        writeAs.setDstBinding(0);
+        writeAs.setDstArrayElement(0);
+        writeAs.setDescriptorCount(1);
+        writeAs.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR);
+        writeAs.setPNext(&accelerationStructureInfo);
+        writes.push_back(writeAs);
+
+        vk::WriteDescriptorSet writeImg{};
+        writeImg.setDstSet(rtDescriptorSet_.get());
+        writeImg.setDstBinding(1);
+        writeImg.setDstArrayElement(0);
+        writeImg.setDescriptorCount(1);
+        writeImg.setDescriptorType(vk::DescriptorType::eStorageImage);
+        writeImg.setPImageInfo(&offscreenImageInfo);
+        writes.push_back(writeImg);
+
+        // Связываем дескрипторы с ресурсами
+        device_.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
+
+        // Дескрипторный набор готов к использованию
+        rtDescriptorSetReady_ = true;
     }
 }
