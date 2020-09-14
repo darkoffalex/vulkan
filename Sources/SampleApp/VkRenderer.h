@@ -63,8 +63,12 @@ private:
 
     /// Макет размещения графического конвейера
     vk::UniquePipelineLayout pipelineLayout_;
+    /// Макет размещения ray-tracing конвейера
+    vk::UniquePipelineLayout rtPipelineLayout_;
     /// Графический конвейер
     vk::UniquePipeline pipeline_;
+    /// Ray-tracing конвейер
+    vk::UniquePipeline rtPipeline_;
 
     /// Примитивы синхронизации - семафор сигнализирующий о готовности к рендерингу
     vk::UniqueSemaphore semaphoreReadyToRender_;
@@ -157,7 +161,7 @@ private:
     /**
      * Де-инициализация кадрового буфера для трассировки лучей
      */
-    void deInitRtOffscreenBuffer();
+    void deInitRtOffscreenBuffer() noexcept;
 
 
     /**
@@ -191,6 +195,21 @@ private:
      */
     void deInitPipeline() noexcept;
 
+    /**
+     * Инициализация конвейера трассировки лучей
+     * @param rayGenShaderCodeBytes Код шейдера генерации лучей
+     * @param rayMissShaderCodeBytes Код шейдера промаха лучей
+     * @param rayHitShaderCodeBytes Код шейдера попадания луча
+     */
+    void initRtPipeline(
+            const std::vector<unsigned char>& rayGenShaderCodeBytes,
+            const std::vector<unsigned char>& rayMissShaderCodeBytes,
+            const std::vector<unsigned char>& rayHitShaderCodeBytes);
+
+    /**
+     * Де-инициализация конвейера ray tracing
+     */
+    void deInitRtPipeline() noexcept;
 
     /**
      * Освобождение геометрических буферов
@@ -219,7 +238,7 @@ private:
     /**
      * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
      */
-    void rtDeInitTopLevelAccelerationStructure();
+    void rtDeInitTopLevelAccelerationStructure() noexcept;
 
 public:
     /**
@@ -229,14 +248,20 @@ public:
      * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
      * @param geometryShaderCodeBytes Код геометрического шейдера (байты)
      * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
+     * @param rayGenShaderCodeBytes Код шейдера генерации луча (байты)
+     * @param rayMissShaderCodeBytes Код шейдера промаха луча (байты)
+     * @param rayHitShaderCodeBytes Rод шейдера попадания луча(байты)
      * @param maxMeshes Максимальное кол-во мешей
      */
     VkRenderer(HINSTANCE hInstance,
-            HWND hWnd,
-            const std::vector<unsigned char>& vertexShaderCodeBytes,
-            const std::vector<unsigned char>& geometryShaderCodeBytes,
-            const std::vector<unsigned char>& fragmentShaderCodeBytes,
-            size_t maxMeshes = 1000);
+               HWND hWnd,
+               const std::vector<unsigned char>& vertexShaderCodeBytes,
+               const std::vector<unsigned char>& geometryShaderCodeBytes,
+               const std::vector<unsigned char>& fragmentShaderCodeBytes,
+               const std::vector<unsigned char>& rayGenShaderCodeBytes,
+               const std::vector<unsigned char>& rayMissShaderCodeBytes,
+               const std::vector<unsigned char>& rayHitShaderCodeBytes,
+               size_t maxMeshes = 1000);
 
     /**
      * Деструктор

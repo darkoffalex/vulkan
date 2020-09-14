@@ -335,9 +335,13 @@ void VkRenderer::initRtOffscreenBuffer(const vk::Format &colorAttachmentFormat)
 /**
  * Де-инициализация кадрового буфера для трассировки лучей
  */
-void VkRenderer::deInitRtOffscreenBuffer()
+void VkRenderer::deInitRtOffscreenBuffer() noexcept
 {
-    rtOffscreenBufferImage_.destroyVulkanResources();
+	try
+	{
+        rtOffscreenBufferImage_.destroyVulkanResources();
+	}
+    catch (std::exception&) {}
 }
 
 /**
@@ -914,6 +918,121 @@ void VkRenderer::deInitPipeline() noexcept
 }
 
 /**
+ * Инициализация конвейера трассировки лучей
+ * @param rayGenShaderCodeBytes Код шейдера генерации лучей
+ * @param rayMissShaderCodeBytes Код шейдера промаха лучей
+ * @param rayHitShaderCodeBytes Код шейдера попадания луча
+ */
+void VkRenderer::initRtPipeline(
+        const std::vector<unsigned char> &rayGenShaderCodeBytes,
+        const std::vector<unsigned char> &rayMissShaderCodeBytes,
+        const std::vector<unsigned char> &rayHitShaderCodeBytes)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize pipeline. Device not ready");
+    }
+
+    // М А К Е Т  Р А З М Е Щ Е Н И Я  К О Н В Е Й Е Р А
+
+    // Массив макетов размещения дескрипторов
+    // ВНИМАНИЕ! Порядок следования наборов в шейдере (индексы дескрипторных наборов) зависит от порядка указания
+    // макетов размещения в данном массиве.
+    std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
+            descriptorSetLayoutRayTracing_.get(),
+            descriptorSetLayoutLightSources_.get(),
+            descriptorSetLayoutCamera_.get(),
+    };
+
+    // Создать макет размещения конвейера
+    rtPipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
+            {},
+            static_cast<uint32_t>(descriptorSetLayouts.size()),
+            descriptorSetLayouts.data()
+    });
+
+    // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
+
+    // Убеждаемся что шейдерный код был предоставлен
+    if(rayGenShaderCodeBytes.empty() || rayMissShaderCodeBytes.empty() || rayHitShaderCodeBytes.empty()){
+        throw vk::InitializationFailedError("No shader code provided");
+    }
+
+    // Вершинный шейдер
+    vk::ShaderModule shaderModuleRg = device_.getLogicalDevice()->createShaderModule({
+            {},
+            rayGenShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(rayGenShaderCodeBytes.data())});
+
+    // Геометрический шейдер
+    vk::ShaderModule shaderModuleRm = device_.getLogicalDevice()->createShaderModule({
+            {},
+            rayMissShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(rayMissShaderCodeBytes.data())});
+
+    // Фрагментный шейдер
+    vk::ShaderModule shaderModuleRh = device_.getLogicalDevice()->createShaderModule({
+            {},
+            rayHitShaderCodeBytes.size(),
+            reinterpret_cast<const uint32_t*>(rayHitShaderCodeBytes.data())});
+
+    // Описываем стадии
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eRaygenKHR,shaderModuleRg,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eMissKHR,shaderModuleRm,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eClosestHitKHR,shaderModuleRh,"main")
+    };
+
+    // Ш Е Й Д Е Р Н Ы Е  Г Р У П П Ы
+
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups;
+    // Группа генерации лучей (ссылка на шейдерный модуль 0)
+    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,0,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    // Группа промаха лучей (ссылка на шейдерный модуль 1)
+    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,1,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    // Группа попадания лучей (ближнее пересечение + любое пересечение)
+    // Данную группу составляют шейдеры "ближайшего попадания","любого попадания","пересечения с геометрией"
+    // Мы используем встроенный шейдер пересечения с треугольником для типа eTrianglesHitGroup, поэтому указывается только closestHit и anyHit (если нужно)
+    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,VK_SHADER_UNUSED_KHR,2,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+
+    // О П И С А Н И Е  К О Н В Е Й Е Р А  Т Р А С С И Р О В К И
+
+    vk::RayTracingPipelineCreateInfoKHR rayTracingPipelineCreateInfoKhr{};
+    rayTracingPipelineCreateInfoKhr.setStageCount(shaderStages.size());
+    rayTracingPipelineCreateInfoKhr.setPStages(shaderStages.data());
+    rayTracingPipelineCreateInfoKhr.setGroupCount(groups.size());
+    rayTracingPipelineCreateInfoKhr.setPGroups(groups.data());
+    rayTracingPipelineCreateInfoKhr.setMaxRecursionDepth(2);
+    rayTracingPipelineCreateInfoKhr.setLayout(rtPipelineLayout_.get());
+    auto pipeline = device_.getLogicalDevice()->createRayTracingPipelineKHR(nullptr,rayTracingPipelineCreateInfoKhr);
+
+    // Уничтожить шейдерные модули (конвейер создан, они не нужны)
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleRg);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleRm);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleRh);
+
+    // Получить указатель
+    //rtPipeline_ = vk::UniquePipeline(static_cast<vk::Pipeline&>(pipeline.value));
+}
+
+/**
+ * Де-инициализация конвейера ray tracing
+ */
+void VkRenderer::deInitRtPipeline() noexcept
+{
+    // Проверяем готовность устройства
+    assert(device_.isReady());
+
+    // Уничтожить конвейер
+    device_.getLogicalDevice()->destroyPipeline(rtPipeline_.get());
+    rtPipeline_.release();
+
+    // Уничтожить размещение конвейера
+    device_.getLogicalDevice()->destroyPipelineLayout(rtPipelineLayout_.get());
+    rtPipelineLayout_.release();
+}
+
+/**
  * Освобождение геометрических буферов
  */
 void VkRenderer::freeGeometryBuffers()
@@ -964,6 +1083,9 @@ void VkRenderer::freeMeshes()
  * @param vertexShaderCodeBytes Код вершинного шейдера (байты)
  * @param geometryShaderCodeBytes Код геометрического шейдера (байты)
  * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
+ * @param rayGenShaderCodeBytes Код шейдера генерации луча (байты)
+ * @param rayMissShaderCodeBytes Код шейдера промаха луча (байты)
+ * @param rayHitShaderCodeBytes Rод шейдера попадания луча(байты)
  * @param maxMeshes Максимальное кол-во мешей
  */
 VkRenderer::VkRenderer(HINSTANCE hInstance,
@@ -971,6 +1093,9 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& vertexShaderCodeBytes,
         const std::vector<unsigned char>& geometryShaderCodeBytes,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
+        const std::vector<unsigned char>& rayGenShaderCodeBytes,
+        const std::vector<unsigned char>& rayMissShaderCodeBytes,
+        const std::vector<unsigned char>& rayHitShaderCodeBytes,
         size_t maxMeshes):
 isEnabled_(true),
 isCommandsReady_(false),
@@ -1083,9 +1208,13 @@ rtDescriptorSetReady_(false)
     lightSourceSet_ = vk::scene::LightSourceSet(&device_,descriptorPoolLightSources_,descriptorSetLayoutLightSources_,100);
     std::cout << "Light source set created." << std::endl;
 
-    // Создать проход рендеринга
+    // Создать графический конвейер
     this->initPipeline(vertexShaderCodeBytes,geometryShaderCodeBytes,fragmentShaderCodeBytes);
     std::cout << "Graphics pipeline created." << std::endl;
+
+	// Создать конвейер трассировки лучей
+    this->initRtPipeline(rayGenShaderCodeBytes, rayMissShaderCodeBytes, rayHitShaderCodeBytes);
+    std::cout << "Ray tracing pipeline created." << std::endl;
 
     // Создать примитивы синхронизации (семафоры)
     semaphoreReadyToPresent_ = device_.getLogicalDevice()->createSemaphoreUnique({});
@@ -1117,7 +1246,11 @@ VkRenderer::~VkRenderer()
     semaphoreReadyToPresent_.release();
     std::cout << "Synchronization semaphores destroyed." << std::endl;
 
-    // Уничтожение прохода рендеринга
+	// Уничтожение конвейера трассировки лучей
+    this->deInitRtPipeline();
+    std::cout << "Ray tracing pipeline destroyed" << std::endl;
+	
+    // Уничтожение графического конвейера
     this->deInitPipeline();
     std::cout << "Graphics pipeline destroyed." << std::endl;
 
@@ -1664,7 +1797,7 @@ void VkRenderer::rtBuildTopLevelAccelerationStructure(const vk::BuildAcceleratio
 
         // Заполнить временный буфер
         auto pStagingVertexBufferData = stagingInstanceBuffer.mapMemory(0,instances.size() * sizeof(vk::AccelerationStructureInstanceKHR));
-        memcpy(pStagingVertexBufferData,instances.data(),bufferSize);
+        memcpy(pStagingVertexBufferData, reinterpret_cast<void*>(instances.data()),bufferSize);
         stagingInstanceBuffer.unmapMemory();
 
         // Копировать из временного буфера в основной
@@ -1746,17 +1879,21 @@ void VkRenderer::rtBuildTopLevelAccelerationStructure(const vk::BuildAcceleratio
 /**
  * Уничтожение структуры ускорения верхнего уровня (для трассировки лучей)
  */
-void VkRenderer::rtDeInitTopLevelAccelerationStructure()
+void VkRenderer::rtDeInitTopLevelAccelerationStructure() noexcept
 {
     if(rtTopLevelAccelerationStructureReady_)
     {
-        device_.getLogicalDevice()->destroyAccelerationStructureKHR(rtTopLevelAccelerationStructureKhr_.get());
-        rtTopLevelAccelerationStructureKhr_.release();
+        // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
+        try {
+            device_.getLogicalDevice()->destroyAccelerationStructureKHR(rtTopLevelAccelerationStructureKhr_.get());
+            rtTopLevelAccelerationStructureKhr_.release();
 
-        device_.getLogicalDevice()->freeMemory(rtTopLevelAccelerationStructureMemory_.get());
-        rtTopLevelAccelerationStructureMemory_.release();
+            device_.getLogicalDevice()->freeMemory(rtTopLevelAccelerationStructureMemory_.get());
+            rtTopLevelAccelerationStructureMemory_.release();
 
-        rtTopLevelAccelerationStructureInstanceBuffer_.destroyVulkanResources();
+            rtTopLevelAccelerationStructureInstanceBuffer_.destroyVulkanResources();
+        }
+        catch (std::exception&) {}
     }
 }
 
@@ -1767,51 +1904,55 @@ void VkRenderer::rtPrepareDescriptorSet()
 {
     if(!rtDescriptorSetReady_ && rtTopLevelAccelerationStructureReady_)
     {
-        // Выделить дескрипторный набор
-        vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-        descriptorSetAllocateInfo.descriptorPool = descriptorPoolRayTracing_.get();
-        descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutRayTracing_.get());
-        descriptorSetAllocateInfo.descriptorSetCount = 1;
-        auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
-        rtDescriptorSet_ = vk::UniqueDescriptorSet(allocatedSets[0]);
+        // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
+        try {
+            // Выделить дескрипторный набор
+            vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+            descriptorSetAllocateInfo.descriptorPool = descriptorPoolRayTracing_.get();
+            descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutRayTracing_.get());
+            descriptorSetAllocateInfo.descriptorSetCount = 1;
+            auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+            rtDescriptorSet_ = vk::UniqueDescriptorSet(allocatedSets[0]);
 
 
-        // Информация об структуре ускорения для дескрипторного набора
-        vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo{};
-        accelerationStructureInfo.setAccelerationStructureCount(1);
-        accelerationStructureInfo.setPAccelerationStructures(&(rtTopLevelAccelerationStructureKhr_.get()));
+            // Информация об структуре ускорения для дескрипторного набора
+            vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo{};
+            accelerationStructureInfo.setAccelerationStructureCount(1);
+            accelerationStructureInfo.setPAccelerationStructures(&(rtTopLevelAccelerationStructureKhr_.get()));
 
-        // Информация об буфере изображения
-        vk::DescriptorImageInfo offscreenImageInfo{};
-        offscreenImageInfo.setImageView(rtOffscreenBufferImage_.getImageView().get());
-        offscreenImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
+            // Информация об буфере изображения
+            vk::DescriptorImageInfo offscreenImageInfo{};
+            offscreenImageInfo.setImageView(rtOffscreenBufferImage_.getImageView().get());
+            offscreenImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
 
 
-        // Описываем связи дескрипторов с буферами (описание "записей")
-        std::vector<vk::WriteDescriptorSet> writes = {};
+            // Описываем связи дескрипторов с буферами (описание "записей")
+            std::vector<vk::WriteDescriptorSet> writes = {};
 
-        vk::WriteDescriptorSet writeAs{};
-        writeAs.setDstSet(rtDescriptorSet_.get());
-        writeAs.setDstBinding(0);
-        writeAs.setDstArrayElement(0);
-        writeAs.setDescriptorCount(1);
-        writeAs.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR);
-        writeAs.setPNext(&accelerationStructureInfo);
-        writes.push_back(writeAs);
+            vk::WriteDescriptorSet writeAs{};
+            writeAs.setDstSet(rtDescriptorSet_.get());
+            writeAs.setDstBinding(0);
+            writeAs.setDstArrayElement(0);
+            writeAs.setDescriptorCount(1);
+            writeAs.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR);
+            writeAs.setPNext(&accelerationStructureInfo);
+            writes.push_back(writeAs);
 
-        vk::WriteDescriptorSet writeImg{};
-        writeImg.setDstSet(rtDescriptorSet_.get());
-        writeImg.setDstBinding(1);
-        writeImg.setDstArrayElement(0);
-        writeImg.setDescriptorCount(1);
-        writeImg.setDescriptorType(vk::DescriptorType::eStorageImage);
-        writeImg.setPImageInfo(&offscreenImageInfo);
-        writes.push_back(writeImg);
+            vk::WriteDescriptorSet writeImg{};
+            writeImg.setDstSet(rtDescriptorSet_.get());
+            writeImg.setDstBinding(1);
+            writeImg.setDstArrayElement(0);
+            writeImg.setDescriptorCount(1);
+            writeImg.setDescriptorType(vk::DescriptorType::eStorageImage);
+            writeImg.setPImageInfo(&offscreenImageInfo);
+            writes.push_back(writeImg);
 
-        // Связываем дескрипторы с ресурсами
-        device_.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
+            // Связываем дескрипторы с ресурсами
+            device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);
 
-        // Дескрипторный набор готов к использованию
-        rtDescriptorSetReady_ = true;
+            // Дескрипторный набор готов к использованию
+            rtDescriptorSetReady_ = true;
+        }
+        catch (std::exception&) {}
     }
 }

@@ -88,8 +88,18 @@ int main(int argc, char* argv[])
         auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.geom.spv"));
         auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
 
+        auto rgCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rgen.spv"));
+    	auto rmCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rmiss.spv"));
+    	auto rhCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rchit.spv"));
+
         // Инициализация рендерера
-        _vkRenderer = new VkRenderer(_hInstance,_hwnd,vsCode,gsCode,fsCode);
+        _vkRenderer = new VkRenderer(_hInstance,_hwnd,
+            vsCode,
+            gsCode,
+            fsCode,
+            rgCode,
+            rmCode,
+            rhCode);
 
         /** Рендерер - загрузка ресурсов **/
 
