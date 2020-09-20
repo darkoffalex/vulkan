@@ -5,21 +5,21 @@
 #include "Tools/Tools.hpp"
 
 /// Дескриптор исполняемого модуля программы
-HINSTANCE _hInstance = nullptr;
+HINSTANCE g_hInstance = nullptr;
 /// Дескриптор основного окна
-HWND _hwnd = nullptr;
+HWND g_hwnd = nullptr;
 /// Указатель на рендерер
-VkRenderer* _vkRenderer = nullptr;
+VkRenderer* g_vkRenderer = nullptr;
 /// Таймер
-tools::Timer* _timer = nullptr;
+tools::Timer* g_timer = nullptr;
 /// Камера
-tools::Camera* _camera = nullptr;
+tools::Camera* g_camera = nullptr;
 /// Координаты мыши в последнем кадре
-POINT _lastMousePos = {0,0};
+POINT g_lastMousePos = {0, 0};
 
 // Макросы для проверки состояния кнопок
-#define KEY_DOWN(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 1 : 0)
-#define KEY_UP(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 0 : 1)
+#define KEY_DOWN(vk_code) ((static_cast<uint16_t>(GetAsyncKeyState(vk_code)) & 0x8000u) ? true : false)
+#define KEY_UP(vk_code) ((static_cast<uint16_t>(GetAsyncKeyState(vk_code)) & 0x8000u) ? false : true)
 
 /**
  * Получение координат курсора
@@ -50,15 +50,15 @@ int main(int argc, char* argv[])
     try
     {
         // Получение дескриптора исполняемого модуля программы
-        _hInstance = GetModuleHandle(nullptr);
+        g_hInstance = GetModuleHandle(nullptr);
 
         // Пытаемся зарегистрировать оконный класс
-        if (!tools::RegisterWindowClass(_hInstance,"AppWindowClass")) {
+        if (!tools::RegisterWindowClass(g_hInstance, "AppWindowClass")) {
             throw std::runtime_error("Can't register window class.");
         }
 
         // Создание окна
-        _hwnd = CreateWindow(
+        g_hwnd = CreateWindow(
                 "AppWindowClass",
                 "Vulkan samples",
                 WS_OVERLAPPEDWINDOW,
@@ -66,20 +66,20 @@ int main(int argc, char* argv[])
                 800, 600,
                 nullptr,
                 nullptr,
-                _hInstance,
+                g_hInstance,
                 nullptr);
 
         // Если не удалось создать окно
-        if (!_hwnd) {
+        if (!g_hwnd) {
             throw std::runtime_error("Can't create main application window.");
         }
 
         // Показать окно
-        ShowWindow(_hwnd, SW_SHOWNORMAL);
+        ShowWindow(g_hwnd, SW_SHOWNORMAL);
 
         // Размеры клиентской области окна
         RECT clientRect;
-        GetClientRect(_hwnd, &clientRect);
+        GetClientRect(g_hwnd, &clientRect);
 
         /** Рендерер - инициализация **/
 
@@ -89,68 +89,68 @@ int main(int argc, char* argv[])
         auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
 
         // Инициализация рендерера
-        _vkRenderer = new VkRenderer(_hInstance,_hwnd,vsCode,gsCode,fsCode);
+        g_vkRenderer = new VkRenderer(g_hInstance, g_hwnd, vsCode, gsCode, fsCode);
 
         /** Рендерер - загрузка ресурсов **/
 
         // Геометрия
-        auto quadGeometry = vk::helpers::GenerateQuadGeometry(_vkRenderer,1.0f);
-        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(_vkRenderer,1.0f);
-        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer, "head.obj");
-//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
+        auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
+        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
+        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
+//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
 
         // Скелет и анимации
 //        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
 //        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
 
         // Текстуры
-        auto floorTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/diffuse.png",true);
-        auto floorTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/normal.png",true);
-        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/spec.png",true);
-        auto floorTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Floor2/height.png",true);
+        auto floorTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/diffuse.png", true);
+        auto floorTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/normal.png", true);
+        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/spec.png", true);
+        auto floorTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/height.png", true);
 
-        auto wallTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/color.jpg", true);
-        auto wallTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/normal.jpg", true);
-        auto wallTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/spec.jpg", true);
-        auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(_vkRenderer,"Wall1/disp.png", true);
+        auto wallTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/color.jpg", true);
+        auto wallTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/normal.jpg", true);
+        auto wallTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/spec.jpg", true);
+        auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/disp.png", true);
 
-        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate.png", true);
-        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"crate_spec.png", true);
+        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate.png", true);
+        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate_spec.png", true);
 
-        auto headTextureColor = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/diffuse.tga", true);
-        auto headTextureNormal = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/nm_tangent.tga", true);
-        auto headTextureSpec = vk::helpers::LoadVulkanTexture(_vkRenderer,"Head/spec.tga", true);
+        auto headTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/diffuse.tga", true);
+        auto headTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/nm_tangent.tga", true);
+        auto headTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/spec.tga", true);
 
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = _vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
+        auto floor = g_vkRenderer->addMeshToScene(quadGeometry, {floorTextureColor, floorTextureNormal, floorTextureSpec});
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
 
         // Стена
-        auto wall = _vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec});
+        auto wall = g_vkRenderer->addMeshToScene(quadGeometry, {wallTextureColor, wallTextureNormal, wallTextureSpec});
         wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f},0.0f});
         wall->setPosition({0.0f,1.25f,-1.5f}, false);
         wall->setScale({10.0f,2.5f,1.0f});
 
         // Куб
-        auto cube = _vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr,cubeTextureSpec});
+        auto cube = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
         cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
         cube->setScale({0.5f,0.5f,0.5f}, false);
         cube->setOrientation({0.0f,45.0f,0.0f}, false);
         cube->setPosition({0.0f,0.25f,0.0f});
 
         // Голова
-        auto head = _vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
+        auto head = g_vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
         head->setScale({0.35f,0.35f,0.35f}, false);
         head->setOrientation({0.0f,0.0f,0.0f}, false);
         head->setPosition({0.0f,0.75f,0.15f});
 
         // Ar2r-Devil-Pinky (первая версия)
-//        auto Ar2r = _vkRenderer->addMeshToScene(ar2rGeometry);
+//        auto Ar2r = g_vkRenderer->addMeshToScene(ar2rGeometry);
 //        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
 //        Ar2r->setScale({2.0f, 2.0f, 2.0f});
 //        Ar2r->setSkeleton(std::move(skeleton));
@@ -171,25 +171,25 @@ int main(int argc, char* argv[])
 //        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
 
         // Свет
-        auto light1 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{2.5f,1.5f,0.0f});
-        auto light2 = _vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint,{-2.5f,1.5f,0.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, 0.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, 0.0f});
 
         /** MAIN LOOP **/
 
         // Управляемая камера
-        _camera = new tools::Camera();
-        _camera->position = {0.0f,2.0f,4.0f};
-        _camera->orientation = {-30.0f,0.0f,0.0f};
+        g_camera = new tools::Camera();
+        g_camera->position = {0.0f, 2.0f, 4.0f};
+        g_camera->orientation = {-30.0f, 0.0f, 0.0f};
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
-        _timer = new tools::Timer();
+        g_timer = new tools::Timer();
 
         // Запуск цикла
         MSG msg = {};
         while (true)
         {
             // Обновить таймер
-            _timer->updateTimer();
+            g_timer->updateTimer();
 
             // Обработка клавиш управления
             Controls();
@@ -204,25 +204,25 @@ int main(int argc, char* argv[])
             }
 
             // Поскольку показ FPS на окне уменьшает FPS - делаем это только тогда когда счетчик готов (примерно 1 раз в секунду)
-            if (_timer->isFpsCounterReady()){
-                std::string fps = std::string("Vulkan samples (").append(std::to_string(_timer->getFps())).append(" FPS)");
-                SetWindowTextA(_hwnd, fps.c_str());
+            if (g_timer->isFpsCounterReady()){
+                std::string fps = std::string("Vulkan samples (").append(std::to_string(g_timer->getFps())).append(" FPS)");
+                SetWindowTextA(g_hwnd, fps.c_str());
             }
 
             /// Обновление сцены
 
             // Камера
-            _camera->translate(_timer->getDelta());
-            _vkRenderer->getCameraPtr()->setPosition(_camera->position, false);
-            _vkRenderer->getCameraPtr()->setOrientation(_camera->orientation);
+            g_camera->translate(g_timer->getDelta());
+            g_vkRenderer->getCameraPtr()->setPosition(g_camera->position, false);
+            g_vkRenderer->getCameraPtr()->setOrientation(g_camera->orientation);
 
             /// Отрисовка и показ кадра
 
-            _vkRenderer->draw();
+            g_vkRenderer->draw();
         }
 
         // Уничтожение рендерера
-        delete _vkRenderer;
+        delete g_vkRenderer;
     }
     catch(vk::Error& error){
         std::cout << "vk::error: " << error.what() << std::endl;
@@ -234,10 +234,10 @@ int main(int argc, char* argv[])
     }
 
     // Уничтожение окна
-    DestroyWindow(_hwnd);
+    DestroyWindow(g_hwnd);
 
     // Вырегистрировать класс окна
-    UnregisterClass("AppWindowClass",_hInstance);
+    UnregisterClass("AppWindowClass", g_hInstance);
 
     return 0;
 }
@@ -254,27 +254,30 @@ void Controls(float camSpeed, float mouseSensitivity)
     glm::vec3 camMovementAbs = {0.0f, 0.0f, 0.0f};
     glm::vec3 camRotation = {0.0f,0.0f,0.0f};
 
+    auto t = GetAsyncKeyState(0x57u);
+    if(static_cast<uint16_t>(t) & 0x8000u){}
+
     // Состояние клавиш клавиатуры
-    if(KEY_DOWN(0x57)) camMovementRel.z = -1.0f; // W
-    if(KEY_DOWN(0x41)) camMovementRel.x = -1.0f; // A
-    if(KEY_DOWN(0x53)) camMovementRel.z = 1.0f;  // S
-    if(KEY_DOWN(0x44)) camMovementRel.x = 1.0f;  // D
+    if(KEY_DOWN(0x57u)) camMovementRel.z = -1.0f; // W
+    if(KEY_DOWN(0x41u)) camMovementRel.x = -1.0f; // A
+    if(KEY_DOWN(0x53u)) camMovementRel.z = 1.0f;  // S
+    if(KEY_DOWN(0x44u)) camMovementRel.x = 1.0f;  // D
     if(KEY_DOWN(VK_SPACE)) camMovementAbs.y = 1.0f;
-    if(KEY_DOWN(0x43)) camMovementAbs.y = -1.0f; // С
+    if(KEY_DOWN(0x43u)) camMovementAbs.y = -1.0f; // С
 
     // Мышь
-    auto currentMousePos = CursorPos(_hwnd);
+    auto currentMousePos = CursorPos(g_hwnd);
     if(KEY_DOWN(VK_LBUTTON)){
-        POINT deltaMousePos = {_lastMousePos.x - currentMousePos.x, _lastMousePos.y - currentMousePos.y};
-        _camera->orientation.x += static_cast<float>(deltaMousePos.y) * mouseSensitivity;
-        _camera->orientation.y += static_cast<float>(deltaMousePos.x) * mouseSensitivity;
+        POINT deltaMousePos = {g_lastMousePos.x - currentMousePos.x, g_lastMousePos.y - currentMousePos.y};
+        g_camera->orientation.x += static_cast<float>(deltaMousePos.y) * mouseSensitivity;
+        g_camera->orientation.y += static_cast<float>(deltaMousePos.x) * mouseSensitivity;
     }
-    _lastMousePos = currentMousePos;
+    g_lastMousePos = currentMousePos;
 
     // Установить векторы движения камеры
-    if(_camera != nullptr){
-        _camera->setTranslation(camMovementRel * camSpeed);
-        _camera->setTranslationAbsolute(camMovementAbs * camSpeed);
+    if(g_camera != nullptr){
+        g_camera->setTranslation(camMovementRel * camSpeed);
+        g_camera->setTranslationAbsolute(camMovementAbs * camSpeed);
     }
 }
 
@@ -301,15 +304,15 @@ LRESULT CALLBACK tools::WindowProcedure(HWND hWnd, UINT message, WPARAM wParam, 
 
             // Закрытие окна
         case WM_CLOSE:
-            if(_vkRenderer != nullptr){
-                _vkRenderer->setRenderingStatus(false);
+            if(g_vkRenderer != nullptr){
+                g_vkRenderer->setRenderingStatus(false);
             }
             return DefWindowProc(hWnd, message, wParam, lParam);
 
             // Завершение изменения размера окна
         case WM_EXITSIZEMOVE:
-            if(_vkRenderer != nullptr){
-                _vkRenderer->onSurfaceChanged();
+            if(g_vkRenderer != nullptr){
+                g_vkRenderer->onSurfaceChanged();
             }
             return DefWindowProc(hWnd, message, wParam, lParam);
 

@@ -249,22 +249,7 @@ namespace vk
                         vk::PhysicalDeviceFeatures physicalDeviceFeatures{};
                         physicalDeviceFeatures.setGeometryShader(VK_TRUE);
                         physicalDeviceFeatures.setSamplerAnisotropy(VK_TRUE);
-
-//                        vk::PhysicalDeviceFeatures2 deviceFeatures2{};
-//                        deviceFeatures2.setFeatures(physicalDeviceFeatures);
-//
-//                        vk::PhysicalDeviceRayTracingFeaturesKHR rayTracingFeaturesKhr{};
-//                        rayTracingFeaturesKhr.setRayTracing(VK_TRUE);
-//                        rayTracingFeaturesKhr.setRayQuery(VK_FALSE);
-//                        rayTracingFeaturesKhr.setPNext(&deviceFeatures2);
-//
-//                        vk::PhysicalDeviceVulkan12Features vulkan12Features{};
-//                        vulkan12Features.setDescriptorBindingVariableDescriptorCount(VK_TRUE);
-//                        vulkan12Features.setRuntimeDescriptorArray(VK_TRUE);
-//                        vulkan12Features.setDescriptorIndexing(VK_TRUE);
-//                        vulkan12Features.setBufferDeviceAddress(VK_TRUE);
-//                        vulkan12Features.setPNext(&rayTracingFeaturesKhr);
-
+                        physicalDeviceFeatures.setMultiViewport(VK_TRUE);
 
                         // Информация о создаваемом устройстве
                         vk::DeviceCreateInfo deviceCreateInfo{};
@@ -275,7 +260,6 @@ namespace vk
                         deviceCreateInfo.setPpEnabledLayerNames(!requireValidationLayers.empty() ? requireValidationLayers.data() : nullptr);
                         deviceCreateInfo.setEnabledLayerCount(requireValidationLayers.size());
                         deviceCreateInfo.setPEnabledFeatures(&physicalDeviceFeatures);
-//                        deviceCreateInfo.setPNext(&vulkan12Features);
 
                         // Создание устройства
                         this->device_ = physicalDevice_.createDeviceUnique(deviceCreateInfo);

@@ -797,7 +797,8 @@ void VkRenderer::initPipeline(
 
     // Динамически (при помощи команд) будет изменяться пока-что только view-port
     std::vector<vk::DynamicState> dynamicStates = {
-            vk::DynamicState::eViewport
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor
     };
 
     // Конфигурация динамических состояний
@@ -912,13 +913,12 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
 isEnabled_(true),
 isCommandsReady_(false),
 inputDataInOpenGlStyle_(true),
-useValidation_(false)
+useValidation_(true)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
             VK_KHR_SURFACE_EXTENSION_NAME,
-            VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-//            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME
     };
     std::vector<const char*> instanceValidationLayerNames = {};
 
@@ -950,15 +950,7 @@ useValidation_(false)
     // Создание устройства
     std::vector<const char*> deviceExtensionNames = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-//            VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-
-            // Расширения для аппаратной трассировки лучей
-//            VK_KHR_RAY_TRACING_EXTENSION_NAME,
-//            VK_KHR_MAINTENANCE3_EXTENSION_NAME,
-//            VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-//            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-//            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+            VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME
     };
 
     std::vector<const char*> deviceValidationLayerNames = {};
@@ -1381,7 +1373,7 @@ void VkRenderer::draw()
             // Привязать графический конвейер
             commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline_.get());
 
-            // Настройка view-port'а через команду (смена динамического состояния конвейера)
+            // Параметры view-port'а (динамическое состояние)
             auto viewPortExtent = frameBuffers_[0].getExtent();
             vk::Viewport viewport{};
             viewport.setX(0.0f);
@@ -1390,7 +1382,17 @@ void VkRenderer::draw()
             viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
             viewport.setMinDepth(0.0f);
             viewport.setMaxDepth(1.0f);
+
+            // Параметры ножниц (динамическое состояние)
+            vk::Rect2D scissors{};
+            scissors.offset.x = 0;
+            scissors.offset.y = 0;
+            scissors.extent.width = viewPortExtent.width;
+            scissors.extent.height = viewPortExtent.height;
+
+            // Установка view-port'а и ножниц
             commandBuffers_[i].setViewport(0,1,&viewport);
+            commandBuffers_[i].setScissor(0,1,&scissors);
 
             // Привязать набор дескрипторов камеры (матрицы вида и проекции)
             commandBuffers_[i].bindDescriptorSets(
