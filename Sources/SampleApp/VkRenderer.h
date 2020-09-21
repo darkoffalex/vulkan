@@ -31,12 +31,16 @@ private:
     vk::UniqueSurfaceKHR surface_;
     /// Устройство
     vk::tools::Device device_;
-    /// Основной проход рендеринга
-    vk::UniqueRenderPass mainRenderPass_;
+    /// Проход рендеринга - первичный
+    vk::UniqueRenderPass renderPassPrimary_;
+    /// Проход рендеринга - пост-процессинг
+    vk::UniqueRenderPass renderPassPostProcess_;
     /// Объект очереди показа (swap-chain)
     vk::UniqueSwapchainKHR swapChainKhr_;
-    /// Кадровые буферы
-    std::vector<vk::resources::FrameBuffer> frameBuffers_;
+    /// Кадровые буферы - основные
+    std::vector<vk::resources::FrameBuffer> frameBuffersPrimary_;
+    /// Кадровые буферы - пост-обработка
+    std::vector<vk::resources::FrameBuffer> frameBuffersPostProcess_;
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
 
@@ -49,6 +53,8 @@ private:
     vk::UniqueDescriptorPool descriptorPoolMeshes_;
     /// Объект дескрипторного пула для выделения набора для источников света
     vk::UniqueDescriptorPool descriptorPoolLightSources_;
+    /// Объект дескрипторного пула для выделения набора использумого при пост-процессинге
+    vk::UniqueDescriptorPool descriptorPoolImagesToPostProcess_;
 
     /// Макет размещения дескрипторного набора для камеры (матрицы)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
@@ -56,11 +62,17 @@ private:
     vk::UniqueDescriptorSetLayout descriptorSetLayoutMeshes_;
     /// Макет размещения дескрипторного набора для источников света (кол-во, массив источников)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutLightSources_;
+    /// Макет размещения дескрипторного набора использумого при пост-процессинге
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutImagesToPostProcess_;
 
-    /// Макет размещения графического конвейера
-    vk::UniquePipelineLayout pipelineLayout_;
-    /// Графический конвейер
-    vk::UniquePipeline pipeline_;
+    /// Макет размещения графического конвейера - основной
+    vk::UniquePipelineLayout pipelineLayoutPrimary_;
+    /// Макет размещения графического конвейера - пост-процессинг
+    vk::UniquePipelineLayout pipelineLayoutPostProcess_;
+    /// Графический конвейер - основной
+    vk::UniquePipeline pipelinePrimary_;
+    /// Графический конвейер - пост-процессинг
+    vk::UniquePipeline pipelinePostProcess_;
 
     /// Примитивы синхронизации - семафор сигнализирующий о готовности к рендерингу
     vk::UniqueSemaphore semaphoreReadyToRender_;
@@ -83,19 +95,30 @@ private:
 
 
     /**
-     * Инициализация проходов рендеринга
+     * Инициализация основного прохода рендеринга
      * @param colorAttachmentFormat Формат цветовых вложений
      * @param depthStencilAttachmentFormat Формат вложений глубины
      * @details Цветовые вложения - по сути изображения в которые шейдеры пишут информацию. У них могут быть форматы.
      * При создании проходов необходимо указать с каким форматом и размещением вложений происходит работа на конкретных этапах
      */
-    void initRenderPasses(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
+    void initRenderPassPrimary(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
 
     /**
-     * Де-инициализация проходов рендеринга
+     * Де-инициализация основного прохода рендеринга
      */
-    void deInitRenderPasses() noexcept;
+    void deInitRenderPassPrimary() noexcept;
 
+    /**
+     * Инициализация прохода для пост-обработки
+     * @param colorAttachmentFormat Формат цветовых вложений
+     * @details В отличии от основного прохода, проход пост-обработки пишет только в цветовое вложение
+     */
+    void initRenderPassPostProcess(const vk::Format& colorAttachmentFormat);
+
+    /**
+     * Де-инициализация прохода пост-обработки
+     */
+    void deInitRenderPassPostProcess() noexcept;
 
     /**
      * Инициализация swap-chain (цепочки показа)
@@ -112,7 +135,7 @@ private:
 
 
     /**
-     * Инициализация кадровых буферов
+     * Инициализация основноых кадровых буферов
      * @param colorAttachmentFormat Формат цветовых вложений
      * @param depthStencilAttachmentFormat Формат вложений глубины
      *
@@ -121,12 +144,25 @@ private:
      * Поэтому предварительно необходимо инициализировать swap-chain, чтобы на основании изображений из него, подготовить кадр. буферы (цвет. вложения).
      * При этом отдельные вложения кадрового буфера могут быть и вовсе не связаны со swap-chain (как, например, глубина), но быть использованы проходом
      */
-    void initFrameBuffers(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
+    void initFrameBuffersPrimary(const vk::Format& colorAttachmentFormat, const vk::Format& depthStencilAttachmentFormat);
 
     /**
-     * Де-инициализация кадровых буферов
+     * Де-инициализация основных кадровых буферов
      */
-    void deInitFrameBuffers() noexcept;
+    void deInitFrameBuffersPrimary() noexcept;
+
+    /**
+     * Инициализация кадровых буферов для пост-процессинга
+     * @param colorAttachmentFormat Формат цветовых вложений
+     *
+     * @details Это итоговые кадровые буферы, которые используются для показа.
+     */
+    void initFrameBuffersPostProcess(const vk::Format& colorAttachmentFormat);
+
+    /**
+     * Де-инициализация кадровых буферов для пост-процессинга
+     */
+    void deInitFrameBuffersPostProcess() noexcept;
 
 
     /**
@@ -145,12 +181,12 @@ private:
     void deInitDescriptorPoolsAndLayouts() noexcept;
 
     /**
-     * Инициализация графического конвейера
+     * Инициализация основного графического конвейера
      * @param vertexShaderCodeBytes Код вершинного шейдера
      * @param geometryShaderCodeBytes Код геометрического шейдера
      * @param fragmentShaderCodeBytes Код фрагментного шейдера
      */
-    void initPipeline(
+    void initPipelinePrimary(
             const std::vector<unsigned char>& vertexShaderCodeBytes,
             const std::vector<unsigned char>& geometryShaderCodeBytes,
             const std::vector<unsigned char>& fragmentShaderCodeBytes);
@@ -158,7 +194,21 @@ private:
     /**
      * Де-инициализация графического конвейера
      */
-    void deInitPipeline() noexcept;
+    void deInitPipelinePrimary() noexcept;
+
+    /**
+     * Инициализация конвейера пост-обработки
+     * @param vertexShaderCodeBytes
+     * @param fragmentShaderCodeBytes
+     */
+    void initPipelinePostProcess(
+            const std::vector<unsigned char>& vertexShaderCodeBytes,
+            const std::vector<unsigned char>& fragmentShaderCodeBytes);
+
+    /**
+     * Де-инициализация конвейера пост-обработки
+     */
+    void deInitPipelinePostProcess() noexcept;
 
 
     /**
@@ -200,6 +250,8 @@ public:
             const std::vector<unsigned char>& vertexShaderCodeBytes,
             const std::vector<unsigned char>& geometryShaderCodeBytes,
             const std::vector<unsigned char>& fragmentShaderCodeBytes,
+            const std::vector<unsigned char>& vertexShaderCodeBytesPp,
+            const std::vector<unsigned char>& fragmentShaderCodeBytesPp,
             size_t maxMeshes = 1000);
 
     /**

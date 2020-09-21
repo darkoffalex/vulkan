@@ -87,9 +87,11 @@ int main(int argc, char* argv[])
         auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.vert.spv"));
         auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.geom.spv"));
         auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
+        auto vsCodePp = tools::LoadBytesFromFile(tools::ShaderDir().append("post-process.vert.spv"));
+        auto fsCodePp = tools::LoadBytesFromFile(tools::ShaderDir().append("post-process.frag.spv"));
 
         // Инициализация рендерера
-        g_vkRenderer = new VkRenderer(g_hInstance, g_hwnd, vsCode, gsCode, fsCode);
+        g_vkRenderer = new VkRenderer(g_hInstance, g_hwnd, vsCode, gsCode, fsCode, vsCodePp, fsCodePp);
 
         /** Рендерер - загрузка ресурсов **/
 

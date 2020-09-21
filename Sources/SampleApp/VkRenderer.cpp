@@ -8,7 +8,7 @@
  * @details Цветовые вложения - по сути изображения в которые шейдеры пишут информацию. У них могут быть форматы.
  * При создании проходов необходимо указать с каким форматом и размещением вложений происходит работа на конкретных этапах
  */
-void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
+void VkRenderer::initRenderPassPrimary(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -112,20 +112,127 @@ void VkRenderer::initRenderPasses(const vk::Format &colorAttachmentFormat, const
     renderPassCreateInfo.pDependencies = subPassDependencies.data();
 
     // Создать проход рендеринга
-    mainRenderPass_ = device_.getLogicalDevice()->createRenderPassUnique(renderPassCreateInfo);
+    renderPassPrimary_ = device_.getLogicalDevice()->createRenderPassUnique(renderPassCreateInfo);
 }
 
 /**
  * Де-инициализация проходов рендеринга
  */
-void VkRenderer::deInitRenderPasses() noexcept
+void VkRenderer::deInitRenderPassPrimary() noexcept
 {
     // Проверяем готовность устройства
     assert(device_.isReady());
 
     // Уничтожить проход и освободить smart-pointer
-    device_.getLogicalDevice()->destroyRenderPass(mainRenderPass_.get());
-    mainRenderPass_.release();
+    device_.getLogicalDevice()->destroyRenderPass(renderPassPrimary_.get());
+    renderPassPrimary_.release();
+}
+
+/**
+ * Инициализация прохода для пост-обработки
+ * @param colorAttachmentFormat Формат цветовых вложений
+ * @details В отличии от основного прохода, проход пост-обработки пишет только в цветовое вложение
+ */
+void VkRenderer::initRenderPassPostProcess(const vk::Format &colorAttachmentFormat)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize render pass. Device not ready");
+    }
+    // Проверяем готовность поверхности
+    if(!surface_.get()){
+        throw vk::InitializationFailedError("Can't initialize render pass. Surface not ready");
+    }
+    // Проверяем поддержку формата цветового вложения
+    if(!device_.isFormatSupported(colorAttachmentFormat,surface_)){
+        throw vk::FormatNotSupportedError("Can't initialize render pass. Color attachment format not supported");
+    }
+
+    // Массив описаний вложений
+    // Вложения - изображения в которые происходит запись из шейдеров (цвет, глубина, трафарет).
+    // Также вложение может быть передано в следующий под-проход для дальнейшего использования
+    std::vector<vk::AttachmentDescription> attachmentDescriptions;
+
+    // Описываем цветовое вложение
+    vk::AttachmentDescription colorAttDesc{};
+    colorAttDesc.format = colorAttachmentFormat;
+    colorAttDesc.samples = vk::SampleCountFlagBits::e1;                  // Один семпл на пиксель (без мульти-семплинга)
+    colorAttDesc.loadOp = vk::AttachmentLoadOp::eClear;                  // Начало под-прохода - очищать вложение
+    colorAttDesc.storeOp = vk::AttachmentStoreOp::eStore;                // Конец под-прохода - хранить для показа
+    colorAttDesc.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;        // Трафарет. Начало под-прохода - не важно
+    colorAttDesc.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;      // Трафарет. Конец под-прохода - не важно
+    colorAttDesc.initialLayout = vk::ImageLayout::eUndefined;            // Макет памяти изображения в начале - не важно
+    colorAttDesc.finalLayout = vk::ImageLayout::ePresentSrcKHR;          // Макет памяти изображения в конце - показ
+    attachmentDescriptions.push_back(colorAttDesc);
+
+    // Ссылки на вложения
+    // Они содержат индексы описаний вложений, они также совместимы с порядком вложений в кадровом буфере, который привязывается во время начала прохода
+    // Также ссылка определяет макет памяти вложения, который используется во время под-прохода
+    vk::AttachmentReference colorAttachmentReferences[1] = {{0,vk::ImageLayout::eColorAttachmentOptimal}};
+
+    // Описываем под-проход
+    // Проход должен содержать в себе как минимум один под-проход
+    vk::SubpassDescription subPassDescription{};
+    subPassDescription.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;   // Тип конвейера - графический
+    subPassDescription.colorAttachmentCount = 1;                               // Кол-во цветовых вложений
+    subPassDescription.pColorAttachments = colorAttachmentReferences;          // Цветовые вложения
+    subPassDescription.pDepthStencilAttachment = nullptr;                      // Вложение глубины-трафарета
+    subPassDescription.inputAttachmentCount = 0;                               // Кол-во входных вложений (например, с предыдущих под-проходов)
+    subPassDescription.pInputAttachments = nullptr;                            // Нет входных вложений на этом под-проходе
+    subPassDescription.preserveAttachmentCount = 0;                            // Кол-во хранимых вложений (не используются в этом под-проходе, но хранятся для следующих)
+    subPassDescription.pPreserveAttachments = nullptr;                         // Нет хранимых вложений на этом под-проходе
+    subPassDescription.pResolveAttachments = nullptr;
+
+    // Описываем зависимости (порядок) под-проходов
+    // Хоть в проходе использован только один под-проход, существует также еще и неявный (внешний) под-проход
+    std::vector<vk::SubpassDependency> subPassDependencies;
+
+    // Переход от внешнего (неявного) под-прохода к первому (нулевому)
+    vk::SubpassDependency externalToFirst;
+    externalToFirst.srcSubpass = VK_SUBPASS_EXTERNAL;
+    externalToFirst.dstSubpass = 0;
+    externalToFirst.srcStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    externalToFirst.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    externalToFirst.srcAccessMask = vk::AccessFlagBits::eMemoryRead;
+    externalToFirst.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+    externalToFirst.dependencyFlags = vk::DependencyFlagBits::eByRegion;
+    subPassDependencies.push_back(externalToFirst);
+
+    // Переход от первого (нулевого) ко внешнему (неявному) под-проходу
+    vk::SubpassDependency firstToExternal;
+    firstToExternal.srcSubpass = 0;
+    firstToExternal.dstSubpass = VK_SUBPASS_EXTERNAL;
+    firstToExternal.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    firstToExternal.dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    firstToExternal.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+    firstToExternal.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
+    firstToExternal.dependencyFlags = vk::DependencyFlagBits::eByRegion;
+    subPassDependencies.push_back(firstToExternal);
+
+    // Описание прохода
+    vk::RenderPassCreateInfo renderPassCreateInfo{};
+    renderPassCreateInfo.attachmentCount = attachmentDescriptions.size();
+    renderPassCreateInfo.pAttachments = attachmentDescriptions.data();
+    renderPassCreateInfo.subpassCount = 1;
+    renderPassCreateInfo.pSubpasses = &subPassDescription;
+    renderPassCreateInfo.dependencyCount = subPassDependencies.size();
+    renderPassCreateInfo.pDependencies = subPassDependencies.data();
+
+    // Создать проход рендеринга
+    renderPassPostProcess_ = device_.getLogicalDevice()->createRenderPassUnique(renderPassCreateInfo);
+}
+
+/**
+ * Де-инициализация прохода пост-обработки
+ */
+void VkRenderer::deInitRenderPassPostProcess() noexcept
+{
+    // Проверяем готовность устройства
+    assert(device_.isReady());
+
+    // Уничтожить проход и освободить smart-pointer
+    device_.getLogicalDevice()->destroyRenderPass(renderPassPostProcess_.get());
+    renderPassPostProcess_.release();
 }
 
 /**
@@ -234,7 +341,7 @@ void VkRenderer::deInitSwapChain() noexcept
  * @param colorAttachmentFormat Формат цветовых вложений
  * @param depthStencilAttachmentFormat Формат вложений глубины
  */
-void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
+void VkRenderer::initFrameBuffersPrimary(const vk::Format &colorAttachmentFormat, const vk::Format &depthStencilAttachmentFormat)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -249,7 +356,7 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
         throw vk::InitializationFailedError("Can't initialize frame-buffers. Swap-chain not ready");
     }
     // Проверяем готовность прохода для которого создаются буферы
-    if(!mainRenderPass_.get()){
+    if(!renderPassPrimary_.get()){
         throw vk::InitializationFailedError("Can't initialize frame-buffers. Required render pass not ready");
     }
 
@@ -286,9 +393,9 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
         };
 
         // Создаем кадровый буфер со всеми необходимыми вложениями и добавляем его в массив
-        frameBuffers_.emplace_back(vk::resources::FrameBuffer(
+        frameBuffersPrimary_.emplace_back(vk::resources::FrameBuffer(
                 &device_,
-                mainRenderPass_,
+                renderPassPrimary_,
                 {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
                 attachmentsInfo));
     }
@@ -297,11 +404,79 @@ void VkRenderer::initFrameBuffers(const vk::Format &colorAttachmentFormat, const
 /**
  * Де-инициализация кадровых буферов
  */
-void VkRenderer::deInitFrameBuffers() noexcept
+void VkRenderer::deInitFrameBuffersPrimary() noexcept
 {
     // Очистка всех ресурсов Vulkan происходит в деструкторе объекта frame-buffer'а
     // Достаточно вызвать очистку массива
-    frameBuffers_.clear();
+    frameBuffersPrimary_.clear();
+}
+
+
+/**
+ * Инициализация кадровых буферов для пост-процессинга
+ * @param colorAttachmentFormat Формат цветовых вложений
+ *
+ * @details Это итоговые кадровые буферы, которые используются для показа.
+ */
+void VkRenderer::initFrameBuffersPostProcess(const vk::Format &colorAttachmentFormat)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Device not ready");
+    }
+    // Проверяем готовность поверхности
+    if(!surface_.get()){
+        throw vk::InitializationFailedError("Can't initialize frame buffers. Surface not ready");
+    }
+    // Проверяем готовность swap-chain'а
+    if(!swapChainKhr_.get()){
+        throw vk::InitializationFailedError("Can't initialize frame-buffers. Swap-chain not ready");
+    }
+    // Проверяем готовность прохода для которого создаются буферы
+    if(!renderPassPostProcess_.get()){
+        throw vk::InitializationFailedError("Can't initialize frame-buffers. Required render pass not ready");
+    }
+
+    // Получить изображения swap-chain'а
+    auto swapChainImages = device_.getLogicalDevice()->getSwapchainImagesKHR(swapChainKhr_.get());
+
+    // Получить возможности устройства для поверхности
+    auto capabilities = device_.getPhysicalDevice().getSurfaceCapabilitiesKHR(surface_.get());
+
+    // Пройтись по всем изображениям и создать кадровый буфер для каждого
+    for(const auto& swapChainImage : swapChainImages)
+    {
+        // Описываем вложения кадрового буфера
+        // Порядок вложений должен совпадать с порядком вложений в описании прохода рендеринга
+        std::vector<vk::resources::FrameBufferAttachmentInfo> attachmentsInfo = {
+                // Для цветового вложения уже существует изображение swap-chain
+                // По этой причине не нужно создавать его и выделять память, достаточно передать указатель на него
+                {
+                        &swapChainImage,
+                        vk::ImageType::e2D,
+                        colorAttachmentFormat,
+                        {},
+                        vk::ImageAspectFlagBits::eColor
+                },
+        };
+
+        // Создаем кадровый буфер со всеми необходимыми вложениями и добавляем его в массив
+        frameBuffersPostProcess_.emplace_back(vk::resources::FrameBuffer(
+                &device_,
+                renderPassPostProcess_,
+                {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
+                attachmentsInfo));
+    }
+}
+
+/**
+ * Де-инициализация кадровых буферов для пост-процессинга
+ */
+void VkRenderer::deInitFrameBuffersPostProcess() noexcept
+{
+    // Очистка всех ресурсов Vulkan происходит в деструкторе объекта frame-buffer'а
+    // Достаточно вызвать очистку массива
+    frameBuffersPostProcess_.clear();
 }
 
 
@@ -383,6 +558,23 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.maxSets = 1;
         descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolLightSources_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    }
+
+    // Создать пул для набора используемого в пост-обработке
+    {
+        // Размеры пула для наборов типа "материал меша"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Дескриптор для текстуры/семплера
+                {vk::DescriptorType::eCombinedImageSampler, 1}
+        };
+
+        // Поскольку у каждого меша есть свой набор, то кол-во таких наборов ограничено кол-вом мешей
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = maxMeshes;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+        descriptorPoolImagesToPostProcess_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
     // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
@@ -507,6 +699,27 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
         descriptorSetLayoutLightSources_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
+
+    // Макет размещения набора используемого при пост-обработке (дескриптор буфера изображения)
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Текстурный семплер
+                {
+                        0,
+                        vk::DescriptorType::eCombinedImageSampler,
+                        1,
+                        vk::ShaderStageFlagBits::eFragment,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutImagesToPostProcess_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
 }
 
 /**
@@ -523,6 +736,7 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolCamera_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshes_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolLightSources_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolImagesToPostProcess_.get());
     }
 	catch(std::exception&){}
 
@@ -530,17 +744,21 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutLightSources_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutImagesToPostProcess_.get());
     descriptorSetLayoutCamera_.release();
     descriptorSetLayoutMeshes_.release();
     descriptorSetLayoutLightSources_.release();
+    descriptorSetLayoutImagesToPostProcess_.release();
 
     // Уничтожить пулы дескрипторов
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolLightSources_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolImagesToPostProcess_.get());
     descriptorPoolCamera_.release();
     descriptorPoolMeshes_.release();
     descriptorPoolLightSources_.release();
+    descriptorPoolImagesToPostProcess_.release();
 }
 
 /**
@@ -549,7 +767,7 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
  * @param geometryShaderCodeBytes Код геометрического шейдера
  * @param fragmentShaderCodeBytes Код фрагментного шейдера
  */
-void VkRenderer::initPipeline(
+void VkRenderer::initPipelinePrimary(
         const std::vector<unsigned char>& vertexShaderCodeBytes,
         const std::vector<unsigned char>& geometryShaderCodeBytes,
         const std::vector<unsigned char>& fragmentShaderCodeBytes)
@@ -559,7 +777,7 @@ void VkRenderer::initPipeline(
         throw vk::InitializationFailedError("Can't initialize pipeline. Device not ready");
     }
     // Проверяем готовность основного прохода рендеринга
-    if(!mainRenderPass_.get()){
+    if(!renderPassPrimary_.get()){
         throw vk::InitializationFailedError("Can't initialize pipeline. Render pass not ready");
     }
 
@@ -575,7 +793,7 @@ void VkRenderer::initPipeline(
     };
 
     // Создать макет размещения конвейера
-    pipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
+    pipelineLayoutPrimary_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
         {},
         static_cast<uint32_t>(descriptorSetLayouts.size()),
         descriptorSetLayouts.data()
@@ -679,7 +897,7 @@ void VkRenderer::initPipeline(
     // V I E W  P O R T  &  S C I S S O R S
 
     // Получить разрешение view-port'а
-    auto viewPortExtent = frameBuffers_[0].getExtent();
+    auto viewPortExtent = frameBuffersPrimary_[0].getExtent();
 
     // Настройки области отображения (статическая настройка, на случай отключения динамического состояния)
     vk::Viewport viewport{};
@@ -789,8 +1007,8 @@ void VkRenderer::initPipeline(
     graphicsPipelineCreateInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
     graphicsPipelineCreateInfo.pColorBlendState = &pipelineColorBlendStateCreateInfo;
     graphicsPipelineCreateInfo.pDynamicState = &pipelineDynamicStateCreateInfo;
-    graphicsPipelineCreateInfo.layout = pipelineLayout_.get();
-    graphicsPipelineCreateInfo.renderPass = mainRenderPass_.get();
+    graphicsPipelineCreateInfo.layout = pipelineLayoutPrimary_.get();
+    graphicsPipelineCreateInfo.renderPass = renderPassPrimary_.get();
     graphicsPipelineCreateInfo.subpass = 0;
     auto pipeline = device_.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
 
@@ -800,25 +1018,228 @@ void VkRenderer::initPipeline(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
-    pipeline_ = vk::UniquePipeline(pipeline);
+    pipelinePrimary_ = vk::UniquePipeline(pipeline);
 }
 
 /**
  * Де-инициализация графического конвейера
  */
-void VkRenderer::deInitPipeline() noexcept
+void VkRenderer::deInitPipelinePrimary() noexcept
 {
     // Проверяем готовность устройства
     assert(device_.isReady());
 
     // Уничтожить конвейер
-    device_.getLogicalDevice()->destroyPipeline(pipeline_.get());
-    pipeline_.release();
+    device_.getLogicalDevice()->destroyPipeline(pipelinePrimary_.get());
+    pipelinePrimary_.release();
 
     // Уничтожить размещение конвейера
-    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayout_.get());
-    pipelineLayout_.release();
+    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayoutPrimary_.get());
+    pipelineLayoutPrimary_.release();
 }
+
+/**
+ * Инициализация конвейера пост-обработки
+ * @param vertexShaderCodeBytes
+ * @param fragmentShaderCodeBytes
+ */
+void VkRenderer::initPipelinePostProcess(const std::vector<unsigned char> &vertexShaderCodeBytes,
+                                         const std::vector<unsigned char> &fragmentShaderCodeBytes)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize pipeline. Device not ready");
+    }
+    // Проверяем готовность основного прохода рендеринга
+    if(!renderPassPostProcess_.get()){
+        throw vk::InitializationFailedError("Can't initialize pipeline. Render pass not ready");
+    }
+
+    // М А К Е Т  Р А З М Е Щ Е Н И Я  К О Н В Е Й Е Р А
+
+    // Массив макетов размещения дескрипторов
+    // ВНИМАНИЕ! Порядок следования наборов в шейдере (индексы дескрипторных наборов) зависит от порядка указания
+    // макетов размещения в данном массиве.
+    std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
+            descriptorSetLayoutImagesToPostProcess_.get(),
+    };
+
+    // Создать макет размещения конвейера
+    pipelineLayoutPostProcess_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
+        {},
+        static_cast<uint32_t>(descriptorSetLayouts.size()),
+        descriptorSetLayouts.data()
+    });
+
+    // Э Т А П  В В О Д А  Д А Н Н Ы Х
+
+    // На этапе пост-процессинга не используется геометрия (буферы вершин и индексов)
+    // Рисуется только квадрат (либо треугольник) на весь экран, вершины которого формируются напрямую в вершинном шейдере
+    vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo{};
+    pipelineVertexInputStateCreateInfo.vertexBindingDescriptionCount = 0;
+    pipelineVertexInputStateCreateInfo.pVertexBindingDescriptions = nullptr;
+    pipelineVertexInputStateCreateInfo.vertexAttributeDescriptionCount = 0;
+    pipelineVertexInputStateCreateInfo.pVertexAttributeDescriptions = nullptr;
+
+    // Э Т А П  С Б О Р К И  П Р И М И Т И В О В
+
+    vk::PipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo{};
+    pipelineInputAssemblyStateCreateInfo.topology = vk::PrimitiveTopology::eTriangleList; // Ожидаем обычные треугольники
+    pipelineInputAssemblyStateCreateInfo.primitiveRestartEnable = false;
+
+    // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
+
+    // Убеждаемся что шейдерный код был предоставлен
+    if(vertexShaderCodeBytes.empty() || fragmentShaderCodeBytes.empty()){
+        throw vk::InitializationFailedError("No shader code provided");
+    }
+
+    // Вершинный шейдер
+    vk::ShaderModule shaderModuleVs = device_.getLogicalDevice()->createShaderModule({
+        {},
+        vertexShaderCodeBytes.size(),
+        reinterpret_cast<const uint32_t*>(vertexShaderCodeBytes.data())});
+
+    // Фрагментный шейдер
+    vk::ShaderModule shaderModuleFs = device_.getLogicalDevice()->createShaderModule({
+        {},
+        fragmentShaderCodeBytes.size(),
+        reinterpret_cast<const uint32_t*>(fragmentShaderCodeBytes.data())});
+
+    // Описываем стадии
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eVertex,shaderModuleVs,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eFragment,shaderModuleFs,"main")
+    };
+
+    // V I E W  P O R T  &  S C I S S O R S
+
+    // Получить разрешение view-port'а
+    auto viewPortExtent = frameBuffersPrimary_[0].getExtent();
+
+    // Настройки области отображения (статическая настройка, на случай отключения динамического состояния)
+    vk::Viewport viewport{};
+    viewport.setX(0.0f);
+    viewport.setWidth(static_cast<float>(viewPortExtent.width));
+    viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
+    viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
+    viewport.setMinDepth(0.0f);
+    viewport.setMaxDepth(1.0f);
+
+    // Настройки обрезки
+    vk::Rect2D scissors{};
+    scissors.offset.x = 0;
+    scissors.offset.y = 0;
+    scissors.extent.width = viewPortExtent.width;
+    scissors.extent.height = viewPortExtent.height;
+
+    // Описываем кол-во областей вида и обрезки
+    vk::PipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{};
+    pipelineViewportStateCreateInfo.viewportCount = 1;
+    pipelineViewportStateCreateInfo.pViewports = &viewport;
+    pipelineViewportStateCreateInfo.scissorCount = 1;
+    pipelineViewportStateCreateInfo.pScissors = &scissors;
+
+    // Р А С Т Е Р И З А Ц И Я
+
+    // Основные параметры растеризации
+    vk::PipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo{};
+    pipelineRasterizationStateCreateInfo.depthClampEnable = false;               // Отбрасывать бесконечно далекие объекты
+    pipelineRasterizationStateCreateInfo.rasterizerDiscardEnable = false;        // Не отключать этап растеризации
+    pipelineRasterizationStateCreateInfo.polygonMode = vk::PolygonMode::eFill;   // Закрашивать полигоны
+    pipelineRasterizationStateCreateInfo.lineWidth = 1.0f;
+    pipelineRasterizationStateCreateInfo.cullMode = vk::CullModeFlagBits::eNone; // Отсекать задние грани
+    pipelineRasterizationStateCreateInfo.frontFace = vk::FrontFace::eClockwise;  // Передние грани описываются по часовой
+    pipelineRasterizationStateCreateInfo.depthBiasEnable = false;
+    pipelineRasterizationStateCreateInfo.depthBiasConstantFactor = 0.0f;
+    pipelineRasterizationStateCreateInfo.depthBiasClamp = 0.0f;
+    pipelineRasterizationStateCreateInfo.depthBiasSlopeFactor = 0.0f;
+
+    // Параметры теста глубины (не использовать тест глубины)
+    vk::PipelineDepthStencilStateCreateInfo pipelineDepthStencilStateCreateInfo{};
+    pipelineDepthStencilStateCreateInfo.depthTestEnable = false;                      // Тест глубины включен
+    pipelineDepthStencilStateCreateInfo.depthWriteEnable = false;                     // Запись в тест глубины включена
+    pipelineDepthStencilStateCreateInfo.depthBoundsTestEnable = false;                // Тест границ глубины отключен
+    pipelineDepthStencilStateCreateInfo.stencilTestEnable = false;                    // Тест трафарета отключен
+
+    // Параметры стадии мульти-семплинга (пока не используем  мульти-семплинг)
+    vk::PipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo{};
+    pipelineMultisampleStateCreateInfo.sampleShadingEnable = false;
+    pipelineMultisampleStateCreateInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    pipelineMultisampleStateCreateInfo.minSampleShading = 1.0f;
+    pipelineMultisampleStateCreateInfo.pSampleMask = nullptr;
+    pipelineMultisampleStateCreateInfo.alphaToCoverageEnable = false;
+    pipelineMultisampleStateCreateInfo.alphaToOneEnable = false;
+
+    // С М Е Ш И В А Н И Е  Ц В Е Т О В  ( C O L O R  B L E N D I N G )
+
+    // Описываем параметры смешивания для единственного цветового вложения
+    vk::PipelineColorBlendAttachmentState pipelineColorBlendAttachmentState{};
+    pipelineColorBlendAttachmentState.blendEnable = false;
+    pipelineColorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+    // Описываем общие настройки смешивания
+    vk::PipelineColorBlendStateCreateInfo pipelineColorBlendStateCreateInfo{};
+    pipelineColorBlendStateCreateInfo.logicOpEnable = false;
+    pipelineColorBlendStateCreateInfo.logicOp = vk::LogicOp::eCopy;
+    pipelineColorBlendStateCreateInfo.attachmentCount = 1;
+    pipelineColorBlendStateCreateInfo.pAttachments = &pipelineColorBlendAttachmentState;
+
+    // Д И Н А М И Ч. С О С Т О Я Н И Я
+
+    // Динамически (при помощи команд) будет изменяться пока-что только view-port
+    std::vector<vk::DynamicState> dynamicStates = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor
+    };
+
+    // Конфигурация динамических состояний
+    vk::PipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo{};
+    pipelineDynamicStateCreateInfo.dynamicStateCount = dynamicStates.size();
+    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStates.data();
+
+    // Создать объект конвейера
+    vk::GraphicsPipelineCreateInfo graphicsPipelineCreateInfo{};
+    graphicsPipelineCreateInfo.stageCount = shaderStages.size();
+    graphicsPipelineCreateInfo.pStages = shaderStages.data();
+    graphicsPipelineCreateInfo.pVertexInputState = &pipelineVertexInputStateCreateInfo;
+    graphicsPipelineCreateInfo.pInputAssemblyState = &pipelineInputAssemblyStateCreateInfo;
+    graphicsPipelineCreateInfo.pViewportState = &pipelineViewportStateCreateInfo;
+    graphicsPipelineCreateInfo.pRasterizationState = &pipelineRasterizationStateCreateInfo;
+    graphicsPipelineCreateInfo.pDepthStencilState = &pipelineDepthStencilStateCreateInfo;
+    graphicsPipelineCreateInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
+    graphicsPipelineCreateInfo.pColorBlendState = &pipelineColorBlendStateCreateInfo;
+    graphicsPipelineCreateInfo.pDynamicState = &pipelineDynamicStateCreateInfo;
+    graphicsPipelineCreateInfo.layout = pipelineLayoutPostProcess_.get();
+    graphicsPipelineCreateInfo.renderPass = renderPassPostProcess_.get();
+    graphicsPipelineCreateInfo.subpass = 0;
+    auto pipeline = device_.getLogicalDevice()->createGraphicsPipeline(nullptr,graphicsPipelineCreateInfo);
+
+    // Уничтожить шейдерные модули (конвейер создан, они не нужны)
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleVs);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleFs);
+
+    // Вернуть unique smart pointer
+    pipelinePostProcess_ = vk::UniquePipeline(pipeline);
+}
+
+/**
+ * Де-инициализация конвейера пост-обработки
+ */
+void VkRenderer::deInitPipelinePostProcess() noexcept
+{
+    // Проверяем готовность устройства
+    assert(device_.isReady());
+
+    // Уничтожить конвейер
+    device_.getLogicalDevice()->destroyPipeline(pipelinePostProcess_.get());
+    pipelinePostProcess_.release();
+
+    // Уничтожить размещение конвейера
+    device_.getLogicalDevice()->destroyPipelineLayout(pipelineLayoutPostProcess_.get());
+    pipelineLayoutPostProcess_.release();
+}
+
 
 /**
  * Освобождение геометрических буферов
@@ -878,6 +1299,8 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& vertexShaderCodeBytes,
         const std::vector<unsigned char>& geometryShaderCodeBytes,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
+        const std::vector<unsigned char>& vertexShaderCodeBytesPp,
+        const std::vector<unsigned char>& fragmentShaderCodeBytesPp,
         size_t maxMeshes):
 isEnabled_(true),
 isCommandsReady_(false),
@@ -932,22 +1355,27 @@ useValidation_(true)
     std::cout << "Device initialized (" << device_.getPhysicalDevice().getProperties().deviceName << ")" << std::endl;
 
     // Инициализация прохода/проходов рендеринга
-    this->initRenderPasses(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    this->initRenderPassPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    this->initRenderPassPostProcess(vk::Format::eB8G8R8A8Unorm);
     std::cout << "Render passes initialized." << std::endl;
 
     // Инициализация цепочки показа (swap-chain)
     this->initSwapChain({vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear});
     std::cout << "Swap-chain created." << std::endl;
 
-    // Создание кадровых буферов
-    this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
-    std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
+    // Создание основных кадровых буферов
+    this->initFrameBuffersPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    std::cout << "Primary frame-buffers initialized (" << frameBuffersPrimary_.size() << ") [" << frameBuffersPrimary_[0].getExtent().width << " x " << frameBuffersPrimary_[0].getExtent().height << "]" << std::endl;
+
+    // Создание кадровых буферов для пост-обработки
+    this->initFrameBuffersPostProcess(vk::Format::eB8G8R8A8Unorm);
+    std::cout << "Post process frame-buffers initialized (" << frameBuffersPostProcess_.size() << ") [" << frameBuffersPostProcess_[0].getExtent().width << " x " << frameBuffersPostProcess_[0].getExtent().height << "]" << std::endl;
 
     // Выделение командных буферов
     // Командный буфер может быть и один, но в таком случае придется ожидать его выполнения перед тем, как начинать запись
     // в очередное изображение swap-chain'а (что не есть оптимально). Поэтому лучше использовать отдельные буферы, для каждого
     // изображения swap-chain'а (по сути это копии одного и того же буфера)
-    auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
+    auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(), vk::CommandBufferLevel::ePrimary, frameBuffersPrimary_.size());
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
 
@@ -960,7 +1388,7 @@ useValidation_(true)
     std::cout << "Descriptor pool and layouts initialized." << std::endl;
 
     // Создание камеры (UBO буферов и дескрипторных наборов)
-    glm::float32 aspectRatio = static_cast<glm::float32>(frameBuffers_[0].getExtent().width) / static_cast<glm::float32>(frameBuffers_[0].getExtent().height);
+    glm::float32 aspectRatio = static_cast<glm::float32>(frameBuffersPrimary_[0].getExtent().width) / static_cast<glm::float32>(frameBuffersPrimary_[0].getExtent().height);
     camera_ = vk::scene::Camera(
             &device_,
             descriptorPoolCamera_,
@@ -975,9 +1403,13 @@ useValidation_(true)
     lightSourceSet_ = vk::scene::LightSourceSet(&device_,descriptorPoolLightSources_,descriptorSetLayoutLightSources_,100);
     std::cout << "Light source set created." << std::endl;
 
-    // Создать проход рендеринга
-    this->initPipeline(vertexShaderCodeBytes,geometryShaderCodeBytes,fragmentShaderCodeBytes);
-    std::cout << "Graphics pipeline created." << std::endl;
+    // Создать основной проход рендеринга
+    this->initPipelinePrimary(vertexShaderCodeBytes, geometryShaderCodeBytes, fragmentShaderCodeBytes);
+    std::cout << "Main graphics pipeline created." << std::endl;
+
+    // Создать проход рендеринга для пост-обраюотки
+    this->initPipelinePostProcess(vertexShaderCodeBytesPp,fragmentShaderCodeBytesPp);
+    std::cout << "Post-process graphics pipeline created." << std::endl;
 
     // Создать примитивы синхронизации (семафоры)
     semaphoreReadyToPresent_ = device_.getLogicalDevice()->createSemaphoreUnique({});
@@ -1009,9 +1441,13 @@ VkRenderer::~VkRenderer()
     semaphoreReadyToPresent_.release();
     std::cout << "Synchronization semaphores destroyed." << std::endl;
 
-    // Уничтожение прохода рендеринга
-    this->deInitPipeline();
-    std::cout << "Graphics pipeline destroyed." << std::endl;
+    // Уничтожение конвейера пост-обоаботки
+    this->deInitPipelinePostProcess();
+    std::cout << "Post processing pipeline destroyed" << std::endl;
+
+    // Уничтожение основного прохода рендеринга
+    this->deInitPipelinePrimary();
+    std::cout << "Main graphics pipeline destroyed." << std::endl;
 
     // Очистить все ресурсы мешей
     this->freeMeshes();
@@ -1039,17 +1475,22 @@ VkRenderer::~VkRenderer()
     commandBuffers_.clear();
     std::cout << "Command-buffers freed." << std::endl;
 
-    // Уничтожение кадровых буферов
-    this->deInitFrameBuffers();
-    std::cout << "Frame-buffers destroyed." << std::endl;
+    // Де-инициализация кадровых буферов для пост-процессинга
+    this->deInitFrameBuffersPostProcess();
+    std::cout << "Post-process frame-buffers destroyed." << std::endl;
+
+    // Де-инициализация основных кадровых буферов
+    this->deInitFrameBuffersPrimary();
+    std::cout << "Primary frame-buffers destroyed." << std::endl;
 
     // Уничтожение цепочки показа (swap-chain)
     this->deInitSwapChain();
     std::cout << "Swap-chain destroyed." << std::endl;
 
     // Де-инициализация прохода
-    this->deInitRenderPasses();
-    std::cout << "Render pass destroyed." << std::endl;
+    this->deInitRenderPassPrimary();
+    this->deInitRenderPassPostProcess();
+    std::cout << "Render passes destroyed." << std::endl;
 
     this->freeTextureBuffers();
     std::cout << "All allocated texture buffers freed." << std::endl;
@@ -1114,23 +1555,31 @@ void VkRenderer::onSurfaceChanged()
     commandBuffers_.clear();
     std::cout << "Command-buffers freed." << std::endl;
 
-    // Де-инициализация кадровых буферов
-    this->deInitFrameBuffers();
-    std::cout << "Frame-buffers destroyed." << std::endl;
+    // Де-инициализация кадровых буферов для пост-процессинга
+    this->deInitFrameBuffersPostProcess();
+    std::cout << "Post-process frame-buffers destroyed." << std::endl;
+
+    // Де-инициализация основных кадровых буферов
+    this->deInitFrameBuffersPrimary();
+    std::cout << "Primary frame-buffers destroyed." << std::endl;
 
     // Ре-инициализация swap-chain (старый swap-chain уничтожается)
     this->initSwapChain({vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear});
     std::cout << "Swap-chain re-created." << std::endl;
 
-    // Инициализация кадровых буферов
-    this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
-    std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
+    // Создание основных кадровых буферов
+    this->initFrameBuffersPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    std::cout << "Primary frame-buffers initialized (" << frameBuffersPrimary_.size() << ") [" << frameBuffersPrimary_[0].getExtent().width << " x " << frameBuffersPrimary_[0].getExtent().height << "]" << std::endl;
+
+    // Создание кадровых буферов для пост-обработки
+    this->initFrameBuffersPostProcess(vk::Format::eB8G8R8A8Unorm);
+    std::cout << "Post process frame-buffers initialized (" << frameBuffersPostProcess_.size() << ") [" << frameBuffersPostProcess_[0].getExtent().width << " x " << frameBuffersPostProcess_[0].getExtent().height << "]" << std::endl;
 
     // Изменить пропорции камеры
-    camera_.setAspectRatio(static_cast<glm::float32>(frameBuffers_[0].getExtent().width)/static_cast<glm::float32>(frameBuffers_[0].getExtent().height));
+    camera_.setAspectRatio(static_cast<glm::float32>(frameBuffersPrimary_[0].getExtent().width) / static_cast<glm::float32>(frameBuffersPrimary_[0].getExtent().height));
 
     // Инициализация командных буферов
-    auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(),vk::CommandBufferLevel::ePrimary,frameBuffers_.size());
+    auto allocInfo = vk::CommandBufferAllocateInfo(device_.getCommandGfxPool().get(), vk::CommandBufferLevel::ePrimary, frameBuffersPrimary_.size());
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
 
@@ -1310,13 +1759,32 @@ void VkRenderer::draw()
         // Описываем начало прохода
         vk::RenderPassBeginInfo renderPassBeginInfo{};
         renderPassBeginInfo.pNext = nullptr;
-        renderPassBeginInfo.renderPass = mainRenderPass_.get();
         renderPassBeginInfo.renderArea.offset.x = 0;
         renderPassBeginInfo.renderArea.offset.y = 0;
-        renderPassBeginInfo.renderArea.extent.width = frameBuffers_[0].getExtent().width;
-        renderPassBeginInfo.renderArea.extent.height = frameBuffers_[0].getExtent().height;
+        renderPassBeginInfo.renderArea.extent.width = frameBuffersPrimary_[0].getExtent().width;
+        renderPassBeginInfo.renderArea.extent.height = frameBuffersPrimary_[0].getExtent().height;
         renderPassBeginInfo.clearValueCount = clearValues.size();
         renderPassBeginInfo.pClearValues = clearValues.data();
+
+        // Размеры области вида
+        auto viewPortExtent = frameBuffersPrimary_[0].getExtent();
+
+        // Область вида - динамическое состояние
+        vk::Viewport viewport{};
+        viewport.setX(0.0f);
+        viewport.setWidth(static_cast<float>(viewPortExtent.width));
+        viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
+        viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
+        viewport.setMinDepth(0.0f);
+        viewport.setMaxDepth(1.0f);
+
+        // Параметры ножниц (динамическое состояние)
+        vk::Rect2D scissors{};
+        scissors.offset.x = 0;
+        scissors.offset.y = 0;
+        scissors.extent.width = viewPortExtent.width;
+        scissors.extent.height = viewPortExtent.height;
+
 
         // Подготовка команд (запись в командные буферы)
         for(size_t i = 0; i < commandBuffers_.size(); ++i)
@@ -1327,29 +1795,16 @@ void VkRenderer::draw()
             commandBufferBeginInfo.pNext = nullptr;
             commandBuffers_[i].begin(commandBufferBeginInfo);
 
+            /// Основной проход
+
+            /*
             // Сменить целевой кадровый буфер и начать работу с проходом (это очистит вложения)
-            renderPassBeginInfo.framebuffer = frameBuffers_[i].getVulkanFrameBuffer().get();
+            renderPassBeginInfo.renderPass = renderPassPrimary_.get();
+            renderPassBeginInfo.framebuffer = frameBuffersPrimary_[i].getVulkanFrameBuffer().get();
             commandBuffers_[i].beginRenderPass(renderPassBeginInfo,vk::SubpassContents::eInline);
 
             // Привязать графический конвейер
-            commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline_.get());
-
-            // Параметры view-port'а (динамическое состояние)
-            auto viewPortExtent = frameBuffers_[0].getExtent();
-            vk::Viewport viewport{};
-            viewport.setX(0.0f);
-            viewport.setWidth(static_cast<float>(viewPortExtent.width));
-            viewport.setY(inputDataInOpenGlStyle_ ? static_cast<float>(viewPortExtent.height) : 0.0f);
-            viewport.setHeight(inputDataInOpenGlStyle_ ? -static_cast<float>(viewPortExtent.height) : static_cast<float>(viewPortExtent.height));
-            viewport.setMinDepth(0.0f);
-            viewport.setMaxDepth(1.0f);
-
-            // Параметры ножниц (динамическое состояние)
-            vk::Rect2D scissors{};
-            scissors.offset.x = 0;
-            scissors.offset.y = 0;
-            scissors.extent.width = viewPortExtent.width;
-            scissors.extent.height = viewPortExtent.height;
+            commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics, pipelinePrimary_.get());
 
             // Установка view-port'а и ножниц
             commandBuffers_[i].setViewport(0,1,&viewport);
@@ -1358,7 +1813,7 @@ void VkRenderer::draw()
             // Привязать набор дескрипторов камеры (матрицы вида и проекции)
             commandBuffers_[i].bindDescriptorSets(
                     vk::PipelineBindPoint::eGraphics,
-                    pipelineLayout_.get(),
+                    pipelineLayoutPrimary_.get(),
                     0,
                     {camera_.getDescriptorSet(),lightSourceSet_.getDescriptorSet()},{});
 
@@ -1369,7 +1824,7 @@ void VkRenderer::draw()
                     // Привязать наборы дескрипторов меша (матрица модели, свойства материала, текстуры и прочее)
                     commandBuffers_[i].bindDescriptorSets(
                             vk::PipelineBindPoint::eGraphics,
-                            pipelineLayout_.get(),
+                            pipelineLayoutPrimary_.get(),
                             2,
                             {meshPtr->getDescriptorSet()},{});
 
@@ -1390,6 +1845,35 @@ void VkRenderer::draw()
             }
 
             // Завершение прохода добавит неявное преобразование памяти кадрового буфера в VK_IMAGE_LAYOUT_PRESENT_SRC_KHR для представления содержимого
+            commandBuffers_[i].endRenderPass();
+            */
+
+            /// Пост-обработка
+
+            // Сменить целевой кадровый буфер и начать работу с проходом (это очистит вложения)
+            renderPassBeginInfo.renderPass = renderPassPostProcess_.get();
+            renderPassBeginInfo.framebuffer = frameBuffersPostProcess_[i].getVulkanFrameBuffer().get();
+            commandBuffers_[i].beginRenderPass(renderPassBeginInfo,vk::SubpassContents::eInline);
+
+            // Привязать графический конвейер
+            commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eGraphics, pipelinePostProcess_.get());
+
+            // Установка view-port'а и ножниц
+            commandBuffers_[i].setViewport(0,1,&viewport);
+            commandBuffers_[i].setScissor(0,1,&scissors);
+
+            // Привязать набор дескрипторов камеры (матрицы вида и проекции)
+            // TODO: здесь будет привязка дескриптора (передача изображения предыдущего прохода в качестве вложения)
+//            commandBuffers_[i].bindDescriptorSets(
+//                    vk::PipelineBindPoint::eGraphics,
+//                    pipelineLayoutPostProcess_.get(),
+//                    0,
+//                    {},{});
+
+            // Отрисовка треугольника
+            commandBuffers_[i].draw(3,1,0,0);
+
+            // Завершаем работать с потоком
             commandBuffers_[i].endRenderPass();
 
             // Завершаем работу с командным буфером
