@@ -304,33 +304,6 @@ void VkRenderer::deInitFrameBuffers() noexcept
     frameBuffers_.clear();
 }
 
-/**
- * Инициализация UBO буферов
- * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей
- */
-void VkRenderer::initUboBuffers(size_t maxMeshes)
-{
-    // Проверяем готовность устройства
-    if(!device_.isReady()){
-        throw vk::InitializationFailedError("Can't initialize UBO buffers. Device not ready");
-    }
-
-    // Создаем UBO буферы для матриц вида и проекции
-    uboBufferViewProjection_ = vk::tools::Buffer(
-            &device_,
-            sizeof(glm::mat4)*2,
-            vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-}
-
-/**
- * Де-инициализация UBO буферов
- */
-void VkRenderer::deInitUboBuffers() noexcept
-{
-    // Уничтожаем ресурсы Vulkan
-    uboBufferViewProjection_.destroyVulkanResources();
-}
 
 /**
  * Инициализация дескрипторов (наборов дескрипторов)
@@ -341,10 +314,6 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
     // Проверяем готовность устройства
     if(!device_.isReady()){
         throw vk::InitializationFailedError("Can't initialize descriptors. Device not ready");
-    }
-    // Проверить готовность буферов UBO
-    if(!uboBufferViewProjection_.isReady()){
-        throw vk::InitializationFailedError("Can't initialize descriptors. UBO buffers not ready");
     }
 
     // Д Е С К Р И П Т О Р Н Ы Е  П У Л Ы
@@ -982,10 +951,6 @@ useValidation_(true)
     commandBuffers_ = device_.getLogicalDevice()->allocateCommandBuffers(allocInfo);
     std::cout << "Command-buffers allocated (" << commandBuffers_.size() << ")." << std::endl;
 
-    // Выделение UBO буферов
-    this->initUboBuffers(maxMeshes);
-    std::cout << "UBO-buffer allocated (" << uboBufferViewProjection_.getSize() << ")." << std::endl;
-
     // Создать текстурный семплер по умолчанию
     textureSamplerDefault_ = vk::tools::CreateImageSampler(device_.getLogicalDevice().get(), vk::Filter::eLinear,vk::SamplerAddressMode::eRepeat, 2);
     std::cout << "Default texture sampler created." << std::endl;
@@ -1068,10 +1033,6 @@ VkRenderer::~VkRenderer()
     device_.getLogicalDevice()->destroySampler(textureSamplerDefault_.get());
     textureSamplerDefault_.release();
     std::cout << "Default texture sampler destroyed." << std::endl;
-
-    // Освобождение UBO буферов
-    this->deInitUboBuffers();
-    std::cout << "UBO-buffers freed." << std::endl;
 
     // Освобождение командных буферов
     device_.getLogicalDevice()->freeCommandBuffers(device_.getCommandGfxPool().get(),commandBuffers_);

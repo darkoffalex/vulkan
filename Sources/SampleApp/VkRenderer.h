@@ -40,8 +40,6 @@ private:
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
 
-    /// UBO буфер для матриц вида и проекции
-    vk::tools::Buffer uboBufferViewProjection_;
     /// Текстурный семплер по умолчанию, используемый для всех создаваемых текстур
     vk::UniqueSampler textureSamplerDefault_;
 
@@ -129,21 +127,6 @@ private:
      * Де-инициализация кадровых буферов
      */
     void deInitFrameBuffers() noexcept;
-
-
-    /**
-     * Инициализация UBO буферов
-     * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на размер буфера матриц моделей)
-     *
-     * @details UBO буферы используются для передачи информации в шейдер во время рендеринга.
-     * Например, матрицы (проекции, вида, модели), источники света и другое.
-     */
-    void initUboBuffers(size_t maxMeshes);
-
-    /**
-     * Де-инициализация UBO буферов
-     */
-    void deInitUboBuffers() noexcept;
 
 
     /**

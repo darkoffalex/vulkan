@@ -272,7 +272,7 @@ vec2 paralaxMappedUv(vec2 uv, vec3 toView, bool inverseMap)
     return finalUv;
 }
 
-// Основная функция вершинного шейдера
+// Основная функция фрагментного шейдера
 // Вычисление итогового цвета фрагмента (пикселя)
 void main()
 {

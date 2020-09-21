@@ -11,7 +11,7 @@ HWND g_hwnd = nullptr;
 /// Указатель на рендерер
 VkRenderer* g_vkRenderer = nullptr;
 /// Таймер
-tools::Timer* g_timer = nullptr;
+tools::Timer* g_pTimer = nullptr;
 /// Камера
 tools::Camera* g_camera = nullptr;
 /// Координаты мыши в последнем кадре
@@ -182,14 +182,14 @@ int main(int argc, char* argv[])
         g_camera->orientation = {-30.0f, 0.0f, 0.0f};
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
-        g_timer = new tools::Timer();
+        g_pTimer = new tools::Timer();
 
         // Запуск цикла
         MSG msg = {};
         while (true)
         {
             // Обновить таймер
-            g_timer->updateTimer();
+            g_pTimer->updateTimer();
 
             // Обработка клавиш управления
             Controls();
@@ -204,15 +204,15 @@ int main(int argc, char* argv[])
             }
 
             // Поскольку показ FPS на окне уменьшает FPS - делаем это только тогда когда счетчик готов (примерно 1 раз в секунду)
-            if (g_timer->isFpsCounterReady()){
-                std::string fps = std::string("Vulkan samples (").append(std::to_string(g_timer->getFps())).append(" FPS)");
+            if (g_pTimer->isFpsCounterReady()){
+                std::string fps = std::string("Vulkan samples (").append(std::to_string(g_pTimer->getFps())).append(" FPS)");
                 SetWindowTextA(g_hwnd, fps.c_str());
             }
 
             /// Обновление сцены
 
             // Камера
-            g_camera->translate(g_timer->getDelta());
+            g_camera->translate(g_pTimer->getDelta());
             g_vkRenderer->getCameraPtr()->setPosition(g_camera->position, false);
             g_vkRenderer->getCameraPtr()->setOrientation(g_camera->orientation);
 
