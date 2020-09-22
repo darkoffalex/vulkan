@@ -10,8 +10,12 @@ layout (location = 0) in VS_OUT
     vec2 uv;
 } fs_in;
 
+/*Uniform*/
+
+layout(set = 0, binding = 0) uniform sampler2D _frameBuffer;
+
 // Основная функция фрагментного шейдера
 void main()
 {
-    outColor = vec4(1.0f,0.0f,0.0f,1.0f);
+    outColor = vec4(texture(_frameBuffer,fs_in.uv).rgb,1.0f);
 }

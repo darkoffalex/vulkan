@@ -37,10 +37,14 @@ private:
     vk::UniqueRenderPass renderPassPostProcess_;
     /// Объект очереди показа (swap-chain)
     vk::UniqueSwapchainKHR swapChainKhr_;
+
     /// Кадровые буферы - основные
     std::vector<vk::resources::FrameBuffer> frameBuffersPrimary_;
     /// Кадровые буферы - пост-обработка
     std::vector<vk::resources::FrameBuffer> frameBuffersPostProcess_;
+    /// Кадровые буферы - дескрипторные наборы изображений (для передачи в шейдер другого этапа)
+    std::vector<vk::DescriptorSet> frameBuffersPrimaryDescriptorSets_;
+
     /// Командные буферы
     std::vector<vk::CommandBuffer> commandBuffers_;
 
@@ -121,12 +125,12 @@ private:
     void deInitRenderPassPostProcess() noexcept;
 
     /**
-     * Инициализация swap-chain (цепочки показа)
-     * Цепочка показа - набор сменяющихся изображений показываемых на поверхности отображения
+     * Инициализация swap-chain (цепочки показа) - набор сменяющихся изображений показываемых на поверхности отображения
      * @param surfaceFormat Формат поверхности
-     * @param bufferCount Желаемое кол-во буферов изображений (0 для авто-определения)
+     * @param bufferCount Кол-ва запрашиваемых буферов (уровень желаемой буферизации, 0 - определить автоматически)
+     * @return Фактическое количество буферов (сколько будет использовано)
      */
-    void initSwapChain(const vk::SurfaceFormatKHR& surfaceFormat, size_t bufferCount = 0);
+    void initSwapChain(const vk::SurfaceFormatKHR& surfaceFormat, uint32_t bufferCount = 0);
 
     /**
      * Де-инициализация swap-chain (цепочки показа)
@@ -168,17 +172,38 @@ private:
     /**
      * Инициализация дескрипторных пулов и макетов размещения дескрипторов
      * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
+     * @param frameBufferCount Кол-во кадровых буферов (от него зависит кол-во дескрипторных наборов передаваемых на этап пост-обработки)
      *
      * @details Дескрипторы описывают правила доступа из шейдера к различным ресурсам (таким как UBO буферы, изображения, и прочее). Они объединены в наборы
      * Наборы дескрипторов выделяются из дескрипторных пулов, а у пулов есть свой макет размещения, который описывает сколько наборов можно будет выделить
      * из пула и какие конкретно дескрипторы в этих наборах (и сколько их) будут доступны
      */
-    void initDescriptorPoolsAndLayouts(size_t maxMeshes);
+    void initDescriptorPoolsAndLayouts(size_t maxMeshes, size_t frameBufferCount);
 
     /**
      * Де-инициализация дескрипторов
      */
     void deInitDescriptorPoolsAndLayouts() noexcept;
+
+
+    /**
+     * Выделение дескрипторного набора для передачи изображения предыдущего кадра в проход пост-обработки
+     * @param descriptorPool Unique smart pointer объекта дескрипторного пула
+     * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
+     *
+     * @details Для того чтобы осуществить пост-обработку нужно передавть во фрагментный шейдер прохода пост-обработки
+     * изображение, полученное в результате работы предыдущего прхода. Чтобы это сделать нужен дескрипторный набор
+     */
+    void allocateFrameBuffersPrimaryDescriptorSets(
+            const vk::UniqueDescriptorPool& descriptorPool,
+            const vk::UniqueDescriptorSetLayout& descriptorSetLayout);
+
+    /**
+     * Обновление дескрипторных наборов основных кадровых буферов (связаывание с конрктеными изобрадениями)
+     * @details Данный метод должен срабатывать всякий раз, когда пересоздаются изображения
+     */
+    void updateFrameBuffersPrimaryDescriptorSets();
+
 
     /**
      * Инициализация основного графического конвейера

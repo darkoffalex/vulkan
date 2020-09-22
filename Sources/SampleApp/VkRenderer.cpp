@@ -42,7 +42,8 @@ void VkRenderer::initRenderPassPrimary(const vk::Format &colorAttachmentFormat, 
     colorAttDesc.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;        // Трафарет. Начало под-прохода - не важно
     colorAttDesc.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;      // Трафарет. Конец под-прохода - не важно
     colorAttDesc.initialLayout = vk::ImageLayout::eUndefined;            // Макет памяти изображения в начале - не важно
-    colorAttDesc.finalLayout = vk::ImageLayout::ePresentSrcKHR;          // Макет памяти изображения в конце - показ
+//    colorAttDesc.finalLayout = vk::ImageLayout::ePresentSrcKHR;          // Макет памяти изображения в конце - показ
+    colorAttDesc.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;  // Макет памяти изображения в конце - показ
     attachmentDescriptions.push_back(colorAttDesc);
 
     // Описываем вложение глубины-трафарета (Z-buffer + stencil)
@@ -241,7 +242,7 @@ void VkRenderer::deInitRenderPassPostProcess() noexcept
  * @param surfaceFormat Формат поверхности
  * @param bufferCount Желаемое кол-во буферов изображений (0 для авто-определения)
  */
-void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t bufferCount)
+void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, uint32_t bufferCount)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -375,10 +376,10 @@ void VkRenderer::initFrameBuffersPrimary(const vk::Format &colorAttachmentFormat
                 // Для цветового вложения уже существует изображение swap-chain
                 // По этой причине не нужно создавать его и выделять память, достаточно передать указатель на него
                 {
-                    &swapChainImage,
+                    nullptr,
                     vk::ImageType::e2D,
                     colorAttachmentFormat,
-                    {},
+                    vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
                     vk::ImageAspectFlagBits::eColor
                 },
                 // Для вложения глубины-трафарета отсутствует изображение, поэтому оно должно быть создано
@@ -455,7 +456,7 @@ void VkRenderer::initFrameBuffersPostProcess(const vk::Format &colorAttachmentFo
                         &swapChainImage,
                         vk::ImageType::e2D,
                         colorAttachmentFormat,
-                        {},
+                        vk::ImageUsageFlagBits::eColorAttachment,
                         vk::ImageAspectFlagBits::eColor
                 },
         };
@@ -483,8 +484,9 @@ void VkRenderer::deInitFrameBuffersPostProcess() noexcept
 /**
  * Инициализация дескрипторов (наборов дескрипторов)
  * @param maxMeshes Максимальное кол-во одновременно отображающихся мешей (влияет на максимальное кол-во наборов для материала меша и прочего)
+ * @param frameBufferCount Кол-во кадровых буферов (от него зависит кол-во дескрипторных наборов передаваемых на этап пост-обработки)
  */
-void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
+void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes, size_t frameBufferCount)
 {
     // Проверяем готовность устройства
     if(!device_.isReady()){
@@ -760,6 +762,74 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     descriptorPoolLightSources_.release();
     descriptorPoolImagesToPostProcess_.release();
 }
+
+
+/**
+ * Выделение дескрипторного набора для передачи изображения предыдущего кадра в проход пост-обработки
+ * @param descriptorPool Unique smart pointer объекта дескрипторного пула
+ * @param descriptorSetLayout Unique smart pointer макета размещения дескрипторного набора меша
+ *
+ * @details Для того чтобы осуществить пост-обработку нужно передавть во фрагментный шейдер прохода пост-обработки
+ * изображение, полученное в результате работы предыдущего прхода. Чтобы это сделать нужен дескрипторный набор
+ */
+void VkRenderer::allocateFrameBuffersPrimaryDescriptorSets(
+        const vk::UniqueDescriptorPool& descriptorPool,
+        const vk::UniqueDescriptorSetLayout& descriptorSetLayout)
+{
+    // Проверяем готовность устройства
+    if(!device_.isReady()){
+        throw vk::InitializationFailedError("Can't initialize descriptors. Device not ready");
+    }
+
+    // Макеты размещения для каждого выделяемого набора
+    std::vector<vk::DescriptorSetLayout> setLayouts(frameBuffersPrimary_.size(),descriptorSetLayout.get());
+
+    // Выделить дескрипторные наборы
+    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool.get();
+    descriptorSetAllocateInfo.pSetLayouts = setLayouts.data();
+    descriptorSetAllocateInfo.descriptorSetCount = static_cast<uint32_t>(frameBuffersPrimary_.size());
+    this->frameBuffersPrimaryDescriptorSets_ = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+}
+
+/**
+ * Обновление дескрипторных наборов основных кадровых буферов (связаывание с конрктеными изобрадениями)
+ * @details Данный метод должен срабатывать всякий раз, когда пересоздаются изображения
+ */
+void VkRenderer::updateFrameBuffersPrimaryDescriptorSets()
+{
+    // Массив описаний изображений
+    std::vector<vk::DescriptorImageInfo> descriptorImageInfos;
+
+    // Массив "записей" дескрипторных наборов
+    std::vector<vk::WriteDescriptorSet> writes;
+
+    // Пройти по кадровым буферам
+    for(uint32_t i = 0; i < frameBuffersPrimaryDescriptorSets_.size(); i++)
+    {
+        // Добавить описание изобрадения
+        descriptorImageInfos.emplace_back(
+                textureSamplerDefault_.get(),
+                frameBuffersPrimary_[i].getAttachmentImages()[0].getImageView().get(),
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        // Добавить запись дескриптора
+        writes.emplace_back(vk::WriteDescriptorSet(
+                this->frameBuffersPrimaryDescriptorSets_[i],
+                0,
+                0,
+                1,
+                vk::DescriptorType::eCombinedImageSampler,
+                &(descriptorImageInfos[i]),
+                nullptr,
+                nullptr
+                ));
+    }
+
+    // Обновление дескрипторных наборов
+    device_.getLogicalDevice()->updateDescriptorSets(writes.size(),writes.data(),0, nullptr);
+}
+
 
 /**
  * Инициализация графического конвейера
@@ -1148,7 +1218,7 @@ void VkRenderer::initPipelinePostProcess(const std::vector<unsigned char> &verte
     pipelineRasterizationStateCreateInfo.rasterizerDiscardEnable = false;        // Не отключать этап растеризации
     pipelineRasterizationStateCreateInfo.polygonMode = vk::PolygonMode::eFill;   // Закрашивать полигоны
     pipelineRasterizationStateCreateInfo.lineWidth = 1.0f;
-    pipelineRasterizationStateCreateInfo.cullMode = vk::CullModeFlagBits::eNone; // Отсекать задние грани
+    pipelineRasterizationStateCreateInfo.cullMode = vk::CullModeFlagBits::eBack; // Отсекать задние грани
     pipelineRasterizationStateCreateInfo.frontFace = vk::FrontFace::eClockwise;  // Передние грани описываются по часовой
     pipelineRasterizationStateCreateInfo.depthBiasEnable = false;
     pipelineRasterizationStateCreateInfo.depthBiasConstantFactor = 0.0f;
@@ -1384,7 +1454,7 @@ useValidation_(true)
     std::cout << "Default texture sampler created." << std::endl;
 
     // Инициализация дескрипторных пулов и наборов
-    this->initDescriptorPoolsAndLayouts(maxMeshes);
+    this->initDescriptorPoolsAndLayouts(maxMeshes,static_cast<uint32_t>(frameBuffersPrimary_.size()));
     std::cout << "Descriptor pool and layouts initialized." << std::endl;
 
     // Создание камеры (UBO буферов и дескрипторных наборов)
@@ -1420,6 +1490,11 @@ useValidation_(true)
     unsigned char blackPixel[4] = {0,0,0,255};
     blackPixelTexture_ = this->createTextureBuffer(blackPixel,1,1,4,false,false);
     std::cout << "Default resources created." << std::endl;
+
+    // Аллоцировать дескрипторный набор для передачи кадровых изображений в проход пост-обработки
+    this->allocateFrameBuffersPrimaryDescriptorSets(descriptorPoolImagesToPostProcess_, descriptorSetLayoutImagesToPostProcess_);
+    this->updateFrameBuffersPrimaryDescriptorSets();
+    std::cout << "Descriptor sets for passing frame-buffers to other render-pass shader initialized." << std::endl;
 }
 
 /**
@@ -1429,6 +1504,9 @@ VkRenderer::~VkRenderer()
 {
     // Остановка рендеринга
     this->setRenderingStatus(false);
+
+    // Очистка дескрипторного набора
+    device_.getLogicalDevice()->freeDescriptorSets(descriptorPoolImagesToPostProcess_.get(), frameBuffersPrimaryDescriptorSets_);
 
     // Очистка ресурсов по умолчанию
     blackPixelTexture_->destroyVulkanResources();
@@ -1570,6 +1648,10 @@ void VkRenderer::onSurfaceChanged()
     // Создание основных кадровых буферов
     this->initFrameBuffersPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
     std::cout << "Primary frame-buffers initialized (" << frameBuffersPrimary_.size() << ") [" << frameBuffersPrimary_[0].getExtent().width << " x " << frameBuffersPrimary_[0].getExtent().height << "]" << std::endl;
+
+    // Обновить дескрипторные наборы кадровых буферов (используемые при пост-процессинге)
+    this->updateFrameBuffersPrimaryDescriptorSets();
+    std::cout << "Primary frame-buffers descriptor sets updated" << std::endl;
 
     // Создание кадровых буферов для пост-обработки
     this->initFrameBuffersPostProcess(vk::Format::eB8G8R8A8Unorm);
@@ -1797,7 +1879,7 @@ void VkRenderer::draw()
 
             /// Основной проход
 
-            /*
+
             // Сменить целевой кадровый буфер и начать работу с проходом (это очистит вложения)
             renderPassBeginInfo.renderPass = renderPassPrimary_.get();
             renderPassBeginInfo.framebuffer = frameBuffersPrimary_[i].getVulkanFrameBuffer().get();
@@ -1846,7 +1928,6 @@ void VkRenderer::draw()
 
             // Завершение прохода добавит неявное преобразование памяти кадрового буфера в VK_IMAGE_LAYOUT_PRESENT_SRC_KHR для представления содержимого
             commandBuffers_[i].endRenderPass();
-            */
 
             /// Пост-обработка
 
@@ -1864,14 +1945,14 @@ void VkRenderer::draw()
 
             // Привязать набор дескрипторов камеры (матрицы вида и проекции)
             // TODO: здесь будет привязка дескриптора (передача изображения предыдущего прохода в качестве вложения)
-//            commandBuffers_[i].bindDescriptorSets(
-//                    vk::PipelineBindPoint::eGraphics,
-//                    pipelineLayoutPostProcess_.get(),
-//                    0,
-//                    {},{});
+            commandBuffers_[i].bindDescriptorSets(
+                    vk::PipelineBindPoint::eGraphics,
+                    pipelineLayoutPostProcess_.get(),
+                    0,
+                    {frameBuffersPrimaryDescriptorSets_[i]},{});
 
             // Отрисовка треугольника
-            commandBuffers_[i].draw(3,1,0,0);
+            commandBuffers_[i].draw(6,1,0,0);
 
             // Завершаем работать с потоком
             commandBuffers_[i].endRenderPass();
