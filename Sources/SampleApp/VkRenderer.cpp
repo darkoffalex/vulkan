@@ -798,32 +798,30 @@ void VkRenderer::allocateFrameBuffersPrimaryDescriptorSets(
  */
 void VkRenderer::updateFrameBuffersPrimaryDescriptorSets()
 {
-    // Массив описаний изображений
-    std::vector<vk::DescriptorImageInfo> descriptorImageInfos;
-
     // Массив "записей" дескрипторных наборов
-    std::vector<vk::WriteDescriptorSet> writes;
+    std::vector<vk::WriteDescriptorSet> writes(frameBuffersPrimaryDescriptorSets_.size());
+    // Информация об изображении (своя на каждую запись)
+    std::vector<vk::DescriptorImageInfo> infos(frameBuffersPrimaryDescriptorSets_.size());
 
     // Пройти по кадровым буферам
     for(uint32_t i = 0; i < frameBuffersPrimaryDescriptorSets_.size(); i++)
     {
         // Добавить описание изобрадения
-        descriptorImageInfos.emplace_back(
+        infos[i] = vk::DescriptorImageInfo(
                 textureSamplerDefault_.get(),
                 frameBuffersPrimary_[i].getAttachmentImages()[0].getImageView().get(),
                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
         // Добавить запись дескриптора
-        writes.emplace_back(vk::WriteDescriptorSet(
+        writes[i] = vk::WriteDescriptorSet(
                 this->frameBuffersPrimaryDescriptorSets_[i],
                 0,
                 0,
                 1,
                 vk::DescriptorType::eCombinedImageSampler,
-                &(descriptorImageInfos[i]),
+                &(infos[i]),
                 nullptr,
-                nullptr
-                ));
+                nullptr);
     }
 
     // Обновление дескрипторных наборов
@@ -1943,8 +1941,7 @@ void VkRenderer::draw()
             commandBuffers_[i].setViewport(0,1,&viewport);
             commandBuffers_[i].setScissor(0,1,&scissors);
 
-            // Привязать набор дескрипторов камеры (матрицы вида и проекции)
-            // TODO: здесь будет привязка дескриптора (передача изображения предыдущего прохода в качестве вложения)
+            // Привязать дескрипторные набор с изображением сформированным в предыдущем проходе
             commandBuffers_[i].bindDescriptorSets(
                     vk::PipelineBindPoint::eGraphics,
                     pipelineLayoutPostProcess_.get(),
