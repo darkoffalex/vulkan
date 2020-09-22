@@ -4,4 +4,3 @@ C:\VulkanSDK\1.2.148.1\Bin32\glslangValidator.exe -V base-phong.frag -o base-pho
 
 C:\VulkanSDK\1.2.148.1\Bin32\glslangValidator.exe -V post-process.vert -o post-process.vert.spv
 C:\VulkanSDK\1.2.148.1\Bin32\glslangValidator.exe -V post-process.frag -o post-process.frag.spv
-pause

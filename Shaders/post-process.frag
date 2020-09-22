@@ -14,8 +14,65 @@ layout (location = 0) in VS_OUT
 
 layout(set = 0, binding = 0) uniform sampler2D _frameBuffer;
 
+/*Константы*/
+
+// Величина смещения в стороны от текущего фрагмента
+const float offset = 1.0 / 300.0;
+
+// Смещения сверточного ядра
+const vec2 offsets[9] = vec2[](
+    vec2(-offset,  offset), // верх-лево
+    vec2( 0.0f,    offset), // верх-центр
+    vec2( offset,  offset), // верх-право
+
+    vec2(-offset,  0.0f),   // центр-лево
+    vec2( 0.0f,    0.0f),   // центр-центр
+    vec2( offset,  0.0f),   // центр-право
+
+    vec2(-offset, -offset), // низ-лево
+    vec2( 0.0f,   -offset), // низ-центр
+    vec2( offset, -offset)  // низ-право
+);
+
+/*Функции*/
+
+// Подсчитать сверточное ядро
+vec3 calcKernel(float kernel[9])
+{
+    vec3 resultColor = vec3(0.0f);
+
+    for(int i = 0; i < 9; i++)
+        resultColor += kernel[i] * texture(_frameBuffer, fs_in.uv + offsets[i]).rgb;
+
+    return resultColor;
+}
+
+// Эффект blur
+vec3 blur()
+{
+    float kernel[9] = float[](
+        1.0 / 16, 2.0 / 16, 1.0 / 16,
+        2.0 / 16, 4.0 / 16, 2.0 / 16,
+        1.0 / 16, 2.0 / 16, 1.0 / 16
+    );
+
+    return calcKernel(kernel);
+}
+
+// Эффект выделения границ
+vec3 bounds()
+{
+    float kernel[9] = float[](
+        1.0, 1.0, 1.0,
+        1.0, -8.0, 1.0,
+        1.0, 1.0, 1.0
+    );
+
+    return calcKernel(kernel);
+}
+
 // Основная функция фрагментного шейдера
 void main()
 {
-    outColor = vec4(texture(_frameBuffer,fs_in.uv).rgb,1.0f);
+    outColor = vec4(blur(),1.0f);
 }
