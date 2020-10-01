@@ -958,19 +958,19 @@ void VkRenderer::initRtPipeline(
         throw vk::InitializationFailedError("No shader code provided");
     }
 
-    // Вершинный шейдер
+    // Шейдер генерации луча
     vk::ShaderModule shaderModuleRg = device_.getLogicalDevice()->createShaderModule({
             {},
             rayGenShaderCodeBytes.size(),
             reinterpret_cast<const uint32_t*>(rayGenShaderCodeBytes.data())});
 
-    // Геометрический шейдер
+    // Шейдер промаха луча
     vk::ShaderModule shaderModuleRm = device_.getLogicalDevice()->createShaderModule({
             {},
             rayMissShaderCodeBytes.size(),
             reinterpret_cast<const uint32_t*>(rayMissShaderCodeBytes.data())});
 
-    // Фрагментный шейдер
+    // Шейдер попадания луча
     vk::ShaderModule shaderModuleRh = device_.getLogicalDevice()->createShaderModule({
             {},
             rayHitShaderCodeBytes.size(),
@@ -985,23 +985,22 @@ void VkRenderer::initRtPipeline(
 
     // Ш Е Й Д Е Р Н Ы Е  Г Р У П П Ы
 
-    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups;
     // Группа генерации лучей (ссылка на шейдерный модуль 0)
-    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,0,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,0,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
     // Группа промаха лучей (ссылка на шейдерный модуль 1)
-    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,1,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,1,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
     // Группа попадания лучей (ближнее пересечение + любое пересечение)
     // Данную группу составляют шейдеры "ближайшего попадания","любого попадания","пересечения с геометрией"
     // Мы используем встроенный шейдер пересечения с треугольником для типа eTrianglesHitGroup, поэтому указывается только closestHit и anyHit (если нужно)
-    groups.emplace_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,VK_SHADER_UNUSED_KHR,2,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,VK_SHADER_UNUSED_KHR,2,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
 
     // О П И С А Н И Е  К О Н В Е Й Е Р А  Т Р А С С И Р О В К И
 
     vk::RayTracingPipelineCreateInfoKHR rayTracingPipelineCreateInfoKhr{};
     rayTracingPipelineCreateInfoKhr.setStageCount(shaderStages.size());
     rayTracingPipelineCreateInfoKhr.setPStages(shaderStages.data());
-    rayTracingPipelineCreateInfoKhr.setGroupCount(groups.size());
-    rayTracingPipelineCreateInfoKhr.setPGroups(groups.data());
+    rayTracingPipelineCreateInfoKhr.setGroupCount(rtShaderGroups_.size());
+    rayTracingPipelineCreateInfoKhr.setPGroups(rtShaderGroups_.data());
     rayTracingPipelineCreateInfoKhr.setMaxRecursionDepth(2);
     rayTracingPipelineCreateInfoKhr.setLayout(rtPipelineLayout_.get());
     auto pipeline = device_.getLogicalDevice()->createRayTracingPipelineKHR(nullptr,rayTracingPipelineCreateInfoKhr);
@@ -1012,7 +1011,7 @@ void VkRenderer::initRtPipeline(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleRh);
 
     // Получить указатель
-    //rtPipeline_ = vk::UniquePipeline(static_cast<vk::Pipeline&>(pipeline.value));
+    rtPipeline_ = vk::UniquePipeline(static_cast<vk::Pipeline&>(pipeline.value));
 }
 
 /**
@@ -1030,6 +1029,48 @@ void VkRenderer::deInitRtPipeline() noexcept
     // Уничтожить размещение конвейера
     device_.getLogicalDevice()->destroyPipelineLayout(rtPipelineLayout_.get());
     rtPipelineLayout_.release();
+}
+
+/**
+ * Инициализация таблицы связи шейдеров
+ * @details Таблица связей шейдеров описывает какие шейдеры будут срабатывать при промахе/генерации/пересечении луча
+ * с геометрией какой-то конкретной hit-группы. По сути это схема процесса трассировки
+ */
+void VkRenderer::initRtShaderBindingTable()
+{
+    // Получить свойства трассировки у физического устройства
+    auto properties = device_.getPhysicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPropertiesKHR>();
+    auto rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
+
+    // Количество шейдерных групп (гурппы инициализируются на этапе инициализации конвейера трассировки)
+    auto groupCount = static_cast<uint32_t>(rtShaderGroups_.size());
+    // Размер единичного идентификатора группы
+    uint32_t groupHandleSize = rtProperties.shaderGroupHandleSize;
+    // Выравнивание (необходимо для выяснения размера буфера таблицы SBT)
+    uint32_t baseAlignment = rtProperties.shaderGroupBaseAlignment;
+    // Размер буфере таблицы SBT
+    uint32_t sbtSize = groupCount * baseAlignment;
+
+    // Массив байт - хранилище идентификаторов шейдерных групп
+    std::vector<uint8_t> shaderGroupHandleStorage(sbtSize);
+    // Получить шейдерные группы (заполнить shaderGroupHandleStorage)
+    device_.getLogicalDevice()->getRayTracingShaderGroupHandlesKHR(rtPipeline_.get(),0,groupCount,sbtSize,shaderGroupHandleStorage.data());
+
+    // Создать буфер для таблицы SBT
+    rtSbtTableBuffer_ = vk::tools::Buffer(
+            &device_,
+            sbtSize,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    // Скопировать данные из shaderGroupHandleStorage в буфер SBT
+    void* pMappedSbt = rtSbtTableBuffer_.mapMemory(0);
+    auto* pData  = reinterpret_cast<uint8_t*>(pMappedSbt);
+    for(uint32_t g = 0; g < groupCount; g++){
+        memcpy(pData, shaderGroupHandleStorage.data() + g * groupHandleSize, groupHandleSize);
+        pData += baseAlignment;
+    }
+    rtSbtTableBuffer_.unmapMemory();
 }
 
 /**
@@ -1216,6 +1257,10 @@ rtDescriptorSetReady_(false)
     this->initRtPipeline(rayGenShaderCodeBytes, rayMissShaderCodeBytes, rayHitShaderCodeBytes);
     std::cout << "Ray tracing pipeline created." << std::endl;
 
+    // Инициализировать буфер таблицы SBT
+    this->initRtShaderBindingTable();
+    std::cout << "Shader binding table buffer initialized." << std::endl;
+
     // Создать примитивы синхронизации (семафоры)
     semaphoreReadyToPresent_ = device_.getLogicalDevice()->createSemaphoreUnique({});
     semaphoreReadyToRender_ = device_.getLogicalDevice()->createSemaphoreUnique({});
@@ -1245,6 +1290,10 @@ VkRenderer::~VkRenderer()
     semaphoreReadyToRender_.release();
     semaphoreReadyToPresent_.release();
     std::cout << "Synchronization semaphores destroyed." << std::endl;
+
+    // Уничтожение буфера таблицы SBT
+    rtSbtTableBuffer_.destroyVulkanResources();
+    std::cout << "Shader binding table buffer destroyed." << std::endl;
 
 	// Уничтожение конвейера трассировки лучей
     this->deInitRtPipeline();

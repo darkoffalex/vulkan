@@ -70,6 +70,11 @@ private:
     /// Ray-tracing конвейер
     vk::UniquePipeline rtPipeline_;
 
+    /// Шейдерные группы для трассировки лучей
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> rtShaderGroups_;
+    /// Буфер для таблицы SBT
+    vk::tools::Buffer rtSbtTableBuffer_;
+
     /// Примитивы синхронизации - семафор сигнализирующий о готовности к рендерингу
     vk::UniqueSemaphore semaphoreReadyToRender_;
     /// Примитивы синхронизации - семафор сигнализирующий о готовности к показу отрендереной картинки
@@ -210,6 +215,13 @@ private:
      * Де-инициализация конвейера ray tracing
      */
     void deInitRtPipeline() noexcept;
+
+    /**
+     * Инициализация таблицы связи шейдеров
+     * @details Таблица связей шейдеров описывает какие шейдеры будут срабатывать при промахе/генерации/пересечении луча
+     * с геометрией какой-то конкретной hit-группы. По сути это схема процесса трассировки
+     */
+    void initRtShaderBindingTable();
 
     /**
      * Освобождение геометрических буферов
