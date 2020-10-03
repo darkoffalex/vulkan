@@ -21,7 +21,9 @@ namespace vk
             {
                 eView = (1u << 0u),
                 eProjection = ( 1u << 1u),
-                eCamPosition = (1u << 2u)
+                eCamPosition = (1u << 2u),
+                eCamModel = (1u << 3u),
+                eFov = (1u << 4u)
             };
 
             /// Готово ли изображение
@@ -50,8 +52,12 @@ namespace vk
             void* pUboViewMatrixData_;
             /// Указатель на размеченную область буфера UBO для матрицы проекции
             void* pUboProjectionMatrixData_;
+            /// Указатель на размеченную область буфера UBO для матрицы модели камеры (обратная к матрице вида)
+            void* pUboCamModelMatrixData_;
             /// Указатель на размеченную область буфера UBO для положения камеры
             void* pUboCamPositionData_;
+            /// Указатель на размеченную область буфера UBO для FOV камеры (используется шейдерами тарссировки лучей)
+            void* pUboFovData_;
 
             /// Указатель на пул дескрипторов, из которого выделяется набор дескрипторов меша
             const vk::DescriptorPool *pDescriptorPool_;
@@ -67,7 +73,7 @@ namespace vk
              * Обновление UBO буферов матриц модели
              * @param updateFlags Флаги обновления буферов (не всегда нужно обновлять все матрицы)
              */
-            void updateUbo(unsigned updateFlags = BufferUpdateFlagBits::eView | BufferUpdateFlagBits::eProjection | BufferUpdateFlagBits::eCamPosition);
+            void updateUbo(unsigned updateFlags = BufferUpdateFlagBits::eView | BufferUpdateFlagBits::eProjection | BufferUpdateFlagBits::eCamPosition | BufferUpdateFlagBits::eCamModel | BufferUpdateFlagBits::eFov);
 
             /**
              * Событие смены положения

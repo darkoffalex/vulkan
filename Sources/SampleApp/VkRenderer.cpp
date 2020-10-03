@@ -974,8 +974,8 @@ void VkRenderer::initRtPipeline(
     // макетов размещения в данном массиве.
     std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
             descriptorSetLayoutRayTracing_.get(),
-            descriptorSetLayoutLightSources_.get(),
             descriptorSetLayoutCamera_.get(),
+            descriptorSetLayoutLightSources_.get()
     };
 
     // Создать макет размещения конвейера
@@ -1074,7 +1074,7 @@ void VkRenderer::initRtShaderBindingTable()
 {
     // Получить свойства трассировки у физического устройства
     auto properties = device_.getPhysicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPropertiesKHR>();
-    auto rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
+    const auto& rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
 
     // Количество шейдерных групп (гурппы инициализируются на этапе инициализации конвейера трассировки)
     auto groupCount = static_cast<uint32_t>(rtShaderGroups_.size());
@@ -1782,7 +1782,7 @@ void VkRenderer::raytrace()
     {
         // Получить свойства трассировки у физического устройства
         auto properties = device_.getPhysicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPropertiesKHR>();
-        auto rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
+        const auto& rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
 
         // Смещения в убфере таблицы SBT
         vk::DeviceSize progSize = rtProperties.shaderGroupBaseAlignment; // Размер идентификатора программы
@@ -1806,12 +1806,12 @@ void VkRenderer::raytrace()
 
             // Привязать конвейер трассировки
             commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rtPipeline_.get());
-            // Привязать дескрипторный набор используемый в трассировке (TLAS + буфер изображения)
+            // Привязать дескрипторный набор используемый в трассировке (TLAS + буфер изображения + параметры камеры)
             commandBuffers_[i].bindDescriptorSets(
                     vk::PipelineBindPoint::eRayTracingKHR,
                     rtPipelineLayout_.get(),
                     0,
-                    {rtDescriptorSet_.get()},{});
+                    {rtDescriptorSet_.get(),camera_.getDescriptorSet() },{});
 
             // Области буфера таблицы SBT
             const vk::StridedBufferRegionKHR rayGenShaderBindingTable = {rtSbtTableBuffer_.getBuffer().get(), rayGenOffset, progSize, sbtSize};

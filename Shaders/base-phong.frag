@@ -64,10 +64,12 @@ struct Material
 
 /*Uniform*/
 
-layout(set = 0, binding = 0) uniform UniformCamera {
+layout(set = 0, binding = 0, std140) uniform UniformCamera {
     mat4 _view;
     mat4 _proj;
+    mat4 _camModel;
     vec3 _camPosition;
+    float _fov;
 };
 
 layout(set = 2, binding = 2, std140) uniform UniformModel {

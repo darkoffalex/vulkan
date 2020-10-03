@@ -1,10 +1,71 @@
 #version 460
-#extension GL_NV_ray_tracing : require
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_ray_tracing : enable
 
-layout(binding = 0, set = 0) uniform accelerationStructureNV topLevelAS;
+/*Uniform*/
+
+layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+
 layout(binding = 1, set = 0, rgba32f) uniform image2D image;
 
+layout(binding = 0, set = 1, std140) uniform UniformCamera {
+    mat4 _view;
+    mat4 _proj;
+    mat4 _camModel;
+    vec3 _camPosition;
+    float _fov;
+};
+
+/*Результат работы шейдера - значение пересечения*/
+
+layout(location = 0) rayPayloadEXT vec3 hitValue;
+
+/*Функции*/
+
+// Вычислить вектор направления луча
+vec3 calcRayDirection(float fov, float aspectRatio, vec2 fragCoord)
+{
+    // Преобразовать текстурные координаты (0;1) в клип-координаты экрана (-1;1)
+    vec2 fragClipCoords = (fragCoord * 2.0) - vec2(1.0);
+
+    // Вектор направления с учетом угла обзора (fov) и пропорций экрана (aspectRatio)
+    vec3 direction = vec3(
+        fragClipCoords.x * tan(radians(fov) / 2.0) * aspectRatio,
+        -fragClipCoords.y * tan(radians(fov) / 2.0),
+        -1.0);
+
+    // Вектор в пространстве мира
+    vec3 directionWorld = (_camModel * vec4(direction,0.0f)).xyz;
+
+    // Вернуть нормализованный вектор
+    return normalize(directionWorld);
+}
+
+// Основная функция - генерация луча
 void main() 
 {
-    imageStore(image, ivec2(gl_LaunchIDNV.xy), vec4(0.5, 0.5, 0.5, 1.0));
+    // Вычислить UV кооррдианты текущего пикселя
+	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+
+    // Высилить пропорции области вида
+    const float aspect = float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
+
+    // Начало луча в пространстве мира
+    vec3 rayOrigin = (_camModel * vec4(0.0f,0.0f,0.0f,1.0f)).xyz;
+    // Направление луча исходящего из текущего пикселя
+    vec3 rayDirection = calcRayDirection(_fov, aspect, inUV);
+
+    // Минимальные и максимальные значения расстрояния пересечения
+    float tmin = 0.001;
+	float tmax = 10000.0;
+
+    // Значение по умолчанию
+    hitValue = vec3(0.0);
+
+    // Трассировка сцены
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, rayOrigin, tmin, rayDirection, tmax, 0);
+
+    // Запись в изображение
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.0));
 }
