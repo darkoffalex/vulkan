@@ -193,7 +193,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, size_t
     swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
     swapChainCreateInfo.imageExtent = capabilities.currentExtent;
     swapChainCreateInfo.imageArrayLayers = 1;
-    swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
+    swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eTransferDst;
     swapChainCreateInfo.imageSharingMode = (device_.isPresentAndGfxQueueFamilySame() ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent);
     swapChainCreateInfo.queueFamilyIndexCount = (swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.size() : 0);
     swapChainCreateInfo.pQueueFamilyIndices = (swapChainCreateInfo.imageSharingMode == vk::SharingMode::eConcurrent ? renderingQueueFamilies.data() : nullptr);
@@ -328,8 +328,42 @@ void VkRenderer::initRtOffscreenBuffer(const vk::Format &colorAttachmentFormat)
             vk::ImageType::e2D,
             colorAttachmentFormat,
             {capabilities.currentExtent.width,capabilities.currentExtent.height,1},
-            vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eStorage,
-            vk::ImageAspectFlagBits::eColor,vk::MemoryPropertyFlagBits::eDeviceLocal);
+            vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eStorage|vk::ImageUsageFlagBits::eTransferSrc,
+            vk::ImageAspectFlagBits::eColor,vk::MemoryPropertyFlagBits::eDeviceLocal,
+            vk::SharingMode::eExclusive,vk::ImageLayout::ePreinitialized);
+
+    // Перевести макет размещения изображения в general.
+    // Именно такой layout нужно при использовании изображения в качестве storage дескриптора)
+
+    // Выделить командный буфер для исполнения команды копирования
+    vk::CommandBufferAllocateInfo commandBufferAllocateInfo{};
+    commandBufferAllocateInfo.commandBufferCount = 1;
+    commandBufferAllocateInfo.commandPool = device_.getCommandGfxPool().get();
+    commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+    auto cmdBuffers = device_.getLogicalDevice()->allocateCommandBuffers(commandBufferAllocateInfo);
+
+    // Барьер памяти для перевода макета размещения
+    vk::ImageMemoryBarrier rtOffscreenImageLayoutTransition{};
+    rtOffscreenImageLayoutTransition.image = rtOffscreenBufferImage_.getVulkanImage().get();
+    rtOffscreenImageLayoutTransition.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+    rtOffscreenImageLayoutTransition.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    rtOffscreenImageLayoutTransition.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    rtOffscreenImageLayoutTransition.oldLayout = vk::ImageLayout::ePreinitialized;
+    rtOffscreenImageLayoutTransition.newLayout = vk::ImageLayout::eGeneral;
+    rtOffscreenImageLayoutTransition.srcAccessMask = vk::AccessFlagBits::eMemoryWrite;
+    rtOffscreenImageLayoutTransition.dstAccessMask = vk::AccessFlagBits::eMemoryWrite;
+
+    // Записать команду в буфер
+    cmdBuffers[0].begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    cmdBuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eAllCommands,{},{},{},rtOffscreenImageLayoutTransition);
+    cmdBuffers[0].end();
+
+    // Отправить команду в очередь и подождать выполнения
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = cmdBuffers.size();
+    submitInfo.pCommandBuffers = cmdBuffers.data();
+    device_.getGraphicsQueue().submit({submitInfo},{});
+    device_.getGraphicsQueue().waitIdle();
 }
 
 /**
@@ -1214,7 +1248,7 @@ rtDescriptorSetReady_(false)
     std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
 
     // Создание буфера изображения для трассировки лучей
-    this->initRtOffscreenBuffer(vk::Format::eR32G32B32A32Sfloat);
+    this->initRtOffscreenBuffer(vk::Format::eB8G8R8A8Unorm);
     std::cout << "Ray tracing offscreen buffer initialized" << std::endl;
 
     // Выделение командных буферов
@@ -1709,6 +1743,180 @@ void VkRenderer::draw()
 
     // Стадии, на которых конвейер будет приостанавливаться, чтобы ожидать своего семафора
     std::vector<vk::PipelineStageFlags> waitStages = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
+
+    // Отправить команды на выполнение
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;                                       // Кол-во командных буферов
+    submitInfo.pCommandBuffers = &(commandBuffers_[availableImageIndex]);    // Командные буферы
+    submitInfo.waitSemaphoreCount = waitSemaphores.size();                   // Кол-во семафоров, которые будет ожидать конвейер
+    submitInfo.pWaitSemaphores = waitSemaphores.data();                      // Семафоры ожидания
+    submitInfo.pWaitDstStageMask = waitStages.data();                        // Этапы конвейера, на которых будет ожидание
+    submitInfo.signalSemaphoreCount = signalSemaphores.size();               // Кол-во семафоров, которые будут взведены после выполнения
+    submitInfo.pSignalSemaphores = signalSemaphores.data();                  // Семафоры взведения
+    device_.getGraphicsQueue().submit({submitInfo}, nullptr);   // Отправка командного буфера на выполнение
+
+    // Инициировать показ (когда картинка будет готова)
+    vk::PresentInfoKHR presentInfoKhr{};
+    presentInfoKhr.waitSemaphoreCount = signalSemaphores.size();             // Кол-во семафоров, которые будут ожидаться
+    presentInfoKhr.pWaitSemaphores = signalSemaphores.data();                // Семафоры, которые ожидаются
+    presentInfoKhr.swapchainCount = 1;                                       // Кол-во цепочек показа
+    presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
+    presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
+    (void)device_.getPresentQueue().presentKHR(presentInfoKhr);              // Осуществить показ
+}
+
+/**
+ * Рендеринг кадра (трассировка)
+ */
+void VkRenderer::raytrace()
+{
+    // Если рендеринг не включен - выход
+    if(!isEnabled_){
+        return;
+    }
+
+    // П О Д Г О Т О В К А  К О М А Н Д
+
+    // Если командные буферы не готовы - заполнить их командами
+    if(!isCommandsReady_)
+    {
+        // Получить свойства трассировки у физического устройства
+        auto properties = device_.getPhysicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPropertiesKHR>();
+        auto rtProperties = properties.get<vk::PhysicalDeviceRayTracingPropertiesKHR>();
+
+        // Смещения в убфере таблицы SBT
+        vk::DeviceSize progSize = rtProperties.shaderGroupBaseAlignment; // Размер идентификатора программы
+        vk::DeviceSize rayGenOffset   = 0u * progSize;                   // Генерация лучей
+        vk::DeviceSize missOffset     = 1u * progSize;                   // Промах
+        vk::DeviceSize hitGroupOffset = 2u * progSize;                   // Hit-группа
+
+        // Полный размер буфера таблицы SBT
+        vk::DeviceSize sbtSize = progSize * static_cast<vk::DeviceSize>(rtShaderGroups_.size());
+
+        // Подготовка команд (запись в командные буферы)
+        for(size_t i = 0; i < commandBuffers_.size(); ++i)
+        {
+            // Т р а с с и р о в к а  с ц е н ы
+
+            // Начинаем работу с командным буфером (запись команд)
+            vk::CommandBufferBeginInfo commandBufferBeginInfo{};
+            commandBufferBeginInfo.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse;
+            commandBufferBeginInfo.pNext = nullptr;
+            commandBuffers_[i].begin(commandBufferBeginInfo);
+
+            // Привязать конвейер трассировки
+            commandBuffers_[i].bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rtPipeline_.get());
+            // Привязать дескрипторный набор используемый в трассировке (TLAS + буфер изображения)
+            commandBuffers_[i].bindDescriptorSets(
+                    vk::PipelineBindPoint::eRayTracingKHR,
+                    rtPipelineLayout_.get(),
+                    0,
+                    {rtDescriptorSet_.get()},{});
+
+            // Области буфера таблицы SBT
+            const vk::StridedBufferRegionKHR rayGenShaderBindingTable = {rtSbtTableBuffer_.getBuffer().get(), rayGenOffset, progSize, sbtSize};
+            const vk::StridedBufferRegionKHR missShaderBindingTable   = {rtSbtTableBuffer_.getBuffer().get(), missOffset, progSize, sbtSize};
+            const vk::StridedBufferRegionKHR hitShaderBindingTable    = {rtSbtTableBuffer_.getBuffer().get(), hitGroupOffset, progSize, sbtSize};
+            const vk::StridedBufferRegionKHR callableShaderBindingTable;
+
+            // Размер изображения (должен совпадать с кадровым буфером, поэтому можно использовать его)
+            auto width = frameBuffers_[i].getExtent().width;
+            auto height = frameBuffers_[i].getExtent().height;
+
+            // Трассировка сцены
+            commandBuffers_[i].traceRaysKHR(&rayGenShaderBindingTable, &missShaderBindingTable, &hitShaderBindingTable,&callableShaderBindingTable,width,height,1);
+
+            // К о п и р о в а н и е  в  и з о б р а ж е н и е  s w a p  - c h a i n
+
+            // Превести макет размещения изображения swap-chain в vk::ImageLayout::eTransferDstOptimal (для копирования данных в него)
+            vk::ImageMemoryBarrier swapChainImageLayoutTransition{};
+            swapChainImageLayoutTransition.image = frameBuffers_[i].getAttachmentImages()[0].getVulkanImage().get();
+            swapChainImageLayoutTransition.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+            swapChainImageLayoutTransition.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            swapChainImageLayoutTransition.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            swapChainImageLayoutTransition.oldLayout = vk::ImageLayout::eUndefined;
+            swapChainImageLayoutTransition.newLayout = vk::ImageLayout::eTransferDstOptimal;
+            swapChainImageLayoutTransition.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+            swapChainImageLayoutTransition.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+            commandBuffers_[i].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eAllCommands,{},{},{},swapChainImageLayoutTransition);
+
+            // Превести макет размещения изображения трассировки в vk::ImageLayout::eTransferSrcOptimal (для копирования данных из него)
+            vk::ImageMemoryBarrier rtOffscreenImageLayoutTransition{};
+            rtOffscreenImageLayoutTransition.image = rtOffscreenBufferImage_.getVulkanImage().get();
+            rtOffscreenImageLayoutTransition.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+            rtOffscreenImageLayoutTransition.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            rtOffscreenImageLayoutTransition.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            rtOffscreenImageLayoutTransition.oldLayout = vk::ImageLayout::eGeneral;
+            rtOffscreenImageLayoutTransition.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+            rtOffscreenImageLayoutTransition.srcAccessMask = vk::AccessFlagBits::eMemoryWrite;
+            rtOffscreenImageLayoutTransition.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+            commandBuffers_[i].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eAllCommands,{},{},{},rtOffscreenImageLayoutTransition);
+
+            // Копировать изображение
+            vk::ImageCopy copyRegion{};
+            copyRegion.srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1};
+            copyRegion.srcOffset = vk::Offset3D(0,0,0);
+            copyRegion.dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1};
+            copyRegion.dstOffset = vk::Offset3D(0,0,0);
+            copyRegion.extent = vk::Extent3D(width,height,1);
+            commandBuffers_[i].copyImage(
+                    rtOffscreenBufferImage_.getVulkanImage().get(),vk::ImageLayout::eTransferSrcOptimal,
+                    frameBuffers_[i].getAttachmentImages()[0].getVulkanImage().get(),vk::ImageLayout::eTransferDstOptimal,
+                    {copyRegion});
+
+            // Превести макет размещения изображения swap-chain в состояние для показа
+            vk::ImageMemoryBarrier swapChainImageLayoutTransitionPresent{};
+            swapChainImageLayoutTransitionPresent.image = frameBuffers_[i].getAttachmentImages()[0].getVulkanImage().get();
+            swapChainImageLayoutTransitionPresent.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+            swapChainImageLayoutTransitionPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            swapChainImageLayoutTransitionPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            swapChainImageLayoutTransitionPresent.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+            swapChainImageLayoutTransitionPresent.newLayout = vk::ImageLayout::ePresentSrcKHR;
+            swapChainImageLayoutTransitionPresent.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+            swapChainImageLayoutTransitionPresent.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
+            commandBuffers_[i].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands, {}, {}, {}, swapChainImageLayoutTransitionPresent);
+
+            // Превести макет размещения изображения трассировки в прежнее состояние (для записи в него)
+            vk::ImageMemoryBarrier rtOffscreenImageLayoutTransitionBack{};
+            rtOffscreenImageLayoutTransitionBack.image = rtOffscreenBufferImage_.getVulkanImage().get();
+            rtOffscreenImageLayoutTransitionBack.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+            rtOffscreenImageLayoutTransitionBack.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            rtOffscreenImageLayoutTransitionBack.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            rtOffscreenImageLayoutTransitionBack.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+            rtOffscreenImageLayoutTransitionBack.newLayout = vk::ImageLayout::eGeneral;
+            rtOffscreenImageLayoutTransitionBack.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+            rtOffscreenImageLayoutTransitionBack.dstAccessMask = vk::AccessFlagBits::eMemoryWrite;
+            commandBuffers_[i].pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,vk::PipelineStageFlagBits::eAllCommands,{},{},{},rtOffscreenImageLayoutTransitionBack);
+
+            // Завершаем работу с командным буфером
+            commandBuffers_[i].end();
+        }
+
+        // Командные буфер готовы
+        isCommandsReady_ = true;
+    }
+
+    // О Т П Р А В К А  К О М А Н Д  И  П О К А З
+
+    // Индекс доступного изображения
+    uint32_t availableImageIndex = 0;
+
+    // Получить индекс доступного для рендеринга изображения и взвести семафор готовности к рендерингу
+    device_.getLogicalDevice()->acquireNextImageKHR(
+            swapChainKhr_.get(),
+            10000,
+            semaphoreReadyToRender_.get(),
+            {},
+            &availableImageIndex);
+
+    // Семафоры, которые будут ожидаться конвейером
+    std::vector<vk::Semaphore> waitSemaphores = {semaphoreReadyToRender_.get()};
+
+    // Семафоры, которые будут взводиться конвейером после прохождения конвейера
+    std::vector<vk::Semaphore> signalSemaphores = {semaphoreReadyToPresent_.get()};
+
+    // Стадии, на которых конвейер будет приостанавливаться, чтобы ожидать своего семафора
+    std::vector<vk::PipelineStageFlags> waitStages = {vk::PipelineStageFlagBits::eRayTracingShaderKHR};
 
     // Отправить команды на выполнение
     vk::SubmitInfo submitInfo{};

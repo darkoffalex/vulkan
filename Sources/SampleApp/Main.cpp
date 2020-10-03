@@ -220,7 +220,8 @@ int main(int argc, char* argv[])
 
             /// Отрисовка и показ кадра
 
-            _vkRenderer->draw();
+//            _vkRenderer->draw();
+            _vkRenderer->raytrace();
         }
 
         // Уничтожение рендерера
