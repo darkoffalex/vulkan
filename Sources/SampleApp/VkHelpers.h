@@ -25,6 +25,15 @@ namespace vk
                 bool mip = false,
                 bool sRgb = false);
 
+
+        /**
+         * Генерация геометрии треугольника
+         * @param pRenderer Указатель на рендерер
+         * @param size Размер стороны квадрата
+         * @return Smart pointer объекта геометрического буфера
+         */
+        vk::resources::GeometryBufferPtr GenerateTriangleGeometry(VkRenderer *pRenderer, float size);
+
         /**
          * Генерация геометрии квадрата
          * @param pRenderer Указатель на рендерер

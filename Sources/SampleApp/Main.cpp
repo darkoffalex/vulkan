@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
         /** Рендерер - загрузка ресурсов **/
 
         // Геометрия
+//        auto triangleGeometry = vk::helpers::GenerateTriangleGeometry(g_vkRenderer, 1.0f);
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
         auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
@@ -133,12 +134,17 @@ int main(int argc, char* argv[])
 
         /** Рендерер - инициализация сцены **/
 
+        // Треугольник
+//        auto triangle = g_vkRenderer->addMeshToScene(triangleGeometry, {});
+//        triangle->setOrientation({0.0f, 0.0f, 0.0f}, false);
+//        triangle->setPosition({0.0f, 0.25f, 0.0f});
+
         // Пол
-//        auto floor = g_vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
-//        floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
-//        floor->setPosition({0.0f,0.0f,0.0f}, false);
-//        floor->setScale({10.0f,10.0f,1.0f}, false);
-//        floor->setOrientation({-90.0f,0.0f,0.0f});
+        auto floor = g_vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
+        floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
+        floor->setPosition({0.0f,0.0f,0.0f}, false);
+        floor->setScale({10.0f,10.0f,1.0f}, false);
+        floor->setOrientation({-90.0f,0.0f,0.0f});
 
         // Стена
 //        auto wall = g_vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec});

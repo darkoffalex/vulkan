@@ -144,7 +144,7 @@ namespace vk
             // Выделить буфер для матрицы модели
             uboModelMatrix_ = vk::tools::Buffer(pDevice_,
                     sizeof(glm::mat4),
-                    vk::BufferUsageFlagBits::eUniformBuffer,
+                    vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eStorageBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
             // Выделить буфер для параметров материала
@@ -553,6 +553,14 @@ namespace vk
          */
         const UniqueMeshSkeleton &Mesh::getSkeletonPtr() {
             return this->skeleton_;
+        }
+
+        /**
+         * Получить UBO буфер модельной матрицы
+         * @return Ссылка на объект буфера
+         */
+        const vk::tools::Buffer &Mesh::getModelMatrixUbo() {
+            return uboModelMatrix_;
         }
     }
 }

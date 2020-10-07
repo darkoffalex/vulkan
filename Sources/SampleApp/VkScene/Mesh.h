@@ -259,6 +259,12 @@ namespace vk
              * @return Ссылка на unique-smart-pointer объекта скелета
              */
             const UniqueMeshSkeleton& getSkeletonPtr();
+
+            /**
+             * Получить UBO буфер модельной матрицы
+             * @return Ссылка на объект буфера
+             */
+            const vk::tools::Buffer& getModelMatrixUbo();
         };
 
         /**

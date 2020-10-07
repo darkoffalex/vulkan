@@ -263,6 +263,7 @@ namespace vk
                         vulkan12Features.setRuntimeDescriptorArray(VK_TRUE);
                         vulkan12Features.setDescriptorIndexing(VK_TRUE);
                         vulkan12Features.setBufferDeviceAddress(VK_TRUE);
+                        vulkan12Features.setShaderStorageBufferArrayNonUniformIndexing(VK_TRUE);
                         vulkan12Features.setPNext(&rayTracingFeaturesKhr);
 
                         // Информация о создаваемом устройстве

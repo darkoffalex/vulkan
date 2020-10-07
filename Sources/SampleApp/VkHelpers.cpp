@@ -62,6 +62,30 @@ namespace vk
         }
 
         /**
+         * Генерация геометрии треугольника
+         * @param pRenderer Указатель на рендерер
+         * @param size Размер стороны квадрата
+         * @return Smart pointer объекта геометрического буфера
+         */
+        vk::resources::GeometryBufferPtr GenerateTriangleGeometry(VkRenderer *pRenderer, float size)
+        {
+            // Вершины
+            std::vector<vk::tools::Vertex> vertices = {
+                    { { -(size / 2),-(size / 2),0.0f },{ 1.0f,0.0f,0.0f },{ 1.0f,1.0f }, {0.0f,0.0f,1.0f} },
+                    { { 0.0f,(size / 2),0.0f },{ 0.0f,1.0f,0.0f },{ 1.0f,0.0f }, {0.0f,0.0f,1.0f} },
+                    { { (size / 2),-(size / 2),0.0f },{ 0.0f,0.0f,1.0f },{ 0.0f,0.0f }, {0.0f,0.0f,1.0f} },
+            };
+
+            // Индексы
+            std::vector<uint32_t> indices = {
+                    0,1,2
+            };
+
+            // Отдать smart-pointer объекта ресурса геометрического буфера
+            return pRenderer->createGeometryBuffer(vertices,indices);
+        }
+
+        /**
          * Генерация геометрии квадрата
          * @param pRenderer Указатель на рендерер
          * @param size Размер стороны квадрата

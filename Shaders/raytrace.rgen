@@ -16,8 +16,9 @@ layout(binding = 0, set = 1, std140) uniform UniformCamera {
     float _fov;
 };
 
-/*Результат работы шейдера - значение пересечения*/
+/* Ввод - вывод */
 
+// Результат трассировки лучом сцены
 layout(location = 0) rayPayloadEXT vec3 hitValue;
 
 /*Функции*/

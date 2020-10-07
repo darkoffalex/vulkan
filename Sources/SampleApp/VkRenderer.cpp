@@ -465,10 +465,18 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескриптор структуры ускорения верхнего уровня
                 {vk::DescriptorType::eAccelerationStructureKHR, 1},
                 // Дескриптор структуры итогового изображения (результат трассировки)
-                {vk::DescriptorType::eStorageImage, 1}
+                {vk::DescriptorType::eStorageImage, 1},
+
+                // Дескрипторы storage-буферов хранящих индексы (массив дескрипторов),
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
+                // Дескрипторы storage-буферов хранящих вершины (массив дескрипторов)
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
+                // Дескрипторы uniform-бферов хранящих матрицы трансфомацияя (массив дескрипторов)
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)}
+
         };
 
-        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр (кол-во источников и массив источников)
+        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
@@ -620,6 +628,30 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                         vk::ShaderStageFlagBits::eRaygenKHR,
                         nullptr,
                 },
+                // Харнимый буфер индексов (массив дескрипторов)
+                {
+                    2,
+                    vk::DescriptorType::eStorageBuffer,
+                    static_cast<uint32_t>(maxMeshes),
+                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                    nullptr
+                },
+                // Харнимый буфер вершин (массив дескрипторов)
+                {
+                    3,
+                    vk::DescriptorType::eStorageBuffer,
+                    static_cast<uint32_t>(maxMeshes),
+                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                    nullptr
+                },
+                // Хранимый буфер матриц модели (массив дескрипторов)
+                {
+                    4,
+                    vk::DescriptorType::eStorageBuffer,
+                    static_cast<uint32_t>(maxMeshes),
+                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                    nullptr
+                }
         };
 
         // Создать макет размещения дескрипторного набора
@@ -1217,6 +1249,8 @@ rtDescriptorSetReady_(false)
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
             VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+            VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+            VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME,
 
             // Расширения для аппаратной трассировки лучей
             VK_KHR_RAY_TRACING_EXTENSION_NAME,
@@ -1811,7 +1845,7 @@ void VkRenderer::raytrace()
                     vk::PipelineBindPoint::eRayTracingKHR,
                     rtPipelineLayout_.get(),
                     0,
-                    {rtDescriptorSet_.get(),camera_.getDescriptorSet() },{});
+                    {rtDescriptorSet_.get(),camera_.getDescriptorSet(),lightSourceSet_.getDescriptorSet()},{});
 
             // Области буфера таблицы SBT
             const vk::StridedBufferRegionKHR rayGenShaderBindingTable = {rtSbtTableBuffer_.getBuffer().get(), rayGenOffset, progSize, sbtSize};
@@ -2161,55 +2195,103 @@ void VkRenderer::rtPrepareDescriptorSet()
 {
     if(!rtDescriptorSetReady_ && rtTopLevelAccelerationStructureReady_)
     {
-        // Поскольку функция может быть вызвана в деструкторе важно гарантировать отсутствие исключений
-        try {
-            // Выделить дескрипторный набор
-            vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-            descriptorSetAllocateInfo.descriptorPool = descriptorPoolRayTracing_.get();
-            descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutRayTracing_.get());
-            descriptorSetAllocateInfo.descriptorSetCount = 1;
-            auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
-            rtDescriptorSet_ = vk::UniqueDescriptorSet(allocatedSets[0]);
+        // Выделить дескрипторный набор
+        vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+        descriptorSetAllocateInfo.descriptorPool = descriptorPoolRayTracing_.get();
+        descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutRayTracing_.get());
+        descriptorSetAllocateInfo.descriptorSetCount = 1;
+        auto allocatedSets = device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+        rtDescriptorSet_ = vk::UniqueDescriptorSet(allocatedSets[0]);
 
+        // Описываем связи дескрипторов с буферами (описание "записей")
+        std::vector<vk::WriteDescriptorSet> writes = {};
 
-            // Информация об структуре ускорения для дескрипторного набора
-            vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo{};
-            accelerationStructureInfo.setAccelerationStructureCount(1);
-            accelerationStructureInfo.setPAccelerationStructures(&(rtTopLevelAccelerationStructureKhr_.get()));
+        // T L A S
 
-            // Информация об буфере изображения
-            vk::DescriptorImageInfo offscreenImageInfo{};
-            offscreenImageInfo.setImageView(rtOffscreenBufferImage_.getImageView().get());
-            offscreenImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
+        vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo{};
+        accelerationStructureInfo.setAccelerationStructureCount(1);
+        accelerationStructureInfo.setPAccelerationStructures(&(rtTopLevelAccelerationStructureKhr_.get()));
 
+        vk::WriteDescriptorSet writeAs{};
+        writeAs.setDstSet(rtDescriptorSet_.get());
+        writeAs.setDstBinding(0);
+        writeAs.setDstArrayElement(0);
+        writeAs.setDescriptorCount(1);
+        writeAs.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR);
+        writeAs.setPNext(&accelerationStructureInfo);
+        writes.push_back(writeAs);
 
-            // Описываем связи дескрипторов с буферами (описание "записей")
-            std::vector<vk::WriteDescriptorSet> writes = {};
+        // И з о б р а ж е н и е - р е з у л ь т а т
 
-            vk::WriteDescriptorSet writeAs{};
-            writeAs.setDstSet(rtDescriptorSet_.get());
-            writeAs.setDstBinding(0);
-            writeAs.setDstArrayElement(0);
-            writeAs.setDescriptorCount(1);
-            writeAs.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR);
-            writeAs.setPNext(&accelerationStructureInfo);
-            writes.push_back(writeAs);
+        vk::DescriptorImageInfo offscreenImageInfo{};
+        offscreenImageInfo.setImageView(rtOffscreenBufferImage_.getImageView().get());
+        offscreenImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
 
-            vk::WriteDescriptorSet writeImg{};
-            writeImg.setDstSet(rtDescriptorSet_.get());
-            writeImg.setDstBinding(1);
-            writeImg.setDstArrayElement(0);
-            writeImg.setDescriptorCount(1);
-            writeImg.setDescriptorType(vk::DescriptorType::eStorageImage);
-            writeImg.setPImageInfo(&offscreenImageInfo);
-            writes.push_back(writeImg);
+        vk::WriteDescriptorSet writeImg{};
+        writeImg.setDstSet(rtDescriptorSet_.get());
+        writeImg.setDstBinding(1);
+        writeImg.setDstArrayElement(0);
+        writeImg.setDescriptorCount(1);
+        writeImg.setDescriptorType(vk::DescriptorType::eStorageImage);
+        writeImg.setPImageInfo(&offscreenImageInfo);
+        writes.push_back(writeImg);
 
-            // Связываем дескрипторы с ресурсами
-            device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);
+        // Г е о м е т р и ч е с к и е  +  U B O  б у ф е р ы  м е ш е й
 
-            // Дескрипторный набор готов к использованию
-            rtDescriptorSetReady_ = true;
+        std::vector<vk::DescriptorBufferInfo> indexBufferInfos;
+        std::vector<vk::DescriptorBufferInfo> vertexBufferInfos;
+        std::vector<vk::DescriptorBufferInfo> uboBufferInfos;
+
+        for(auto & sceneMesh : sceneMeshes_)
+        {
+            indexBufferInfos.emplace_back(
+                    sceneMesh->getGeometryBuffer()->getIndexBuffer().getBuffer().get(),
+                    0,
+                    VK_WHOLE_SIZE);
+
+            vertexBufferInfos.emplace_back(
+                    sceneMesh->getGeometryBuffer()->getVertexBuffer().getBuffer().get(),
+                    0,
+                    VK_WHOLE_SIZE);
+
+            uboBufferInfos.emplace_back(
+                    sceneMesh->getModelMatrixUbo().getBuffer().get(),
+                    0,
+                    VK_WHOLE_SIZE);
         }
-        catch (std::exception&) {}
+
+        vk::WriteDescriptorSet writeIndexBuffers{};
+        writeIndexBuffers.setDstSet(rtDescriptorSet_.get());
+        writeIndexBuffers.setDstBinding(2);
+        writeIndexBuffers.setDstArrayElement(0);
+        writeIndexBuffers.setDescriptorCount(static_cast<uint32_t>(indexBufferInfos.size()));
+        writeIndexBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
+        writeIndexBuffers.setPBufferInfo(indexBufferInfos.data());
+        writes.push_back(writeIndexBuffers);
+
+        vk::WriteDescriptorSet writeVertexBuffers{};
+        writeVertexBuffers.setDstSet(rtDescriptorSet_.get());
+        writeVertexBuffers.setDstBinding(3);
+        writeVertexBuffers.setDstArrayElement(0);
+        writeVertexBuffers.setDescriptorCount(static_cast<uint32_t>(vertexBufferInfos.size()));
+        writeVertexBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
+        writeVertexBuffers.setPBufferInfo(vertexBufferInfos.data());
+        writes.push_back(writeVertexBuffers);
+
+        vk::WriteDescriptorSet writeUboBuffers{};
+        writeUboBuffers.setDstSet(rtDescriptorSet_.get());
+        writeUboBuffers.setDstBinding(4);
+        writeUboBuffers.setDstArrayElement(0);
+        writeUboBuffers.setDescriptorCount(static_cast<uint32_t>(uboBufferInfos.size()));
+        writeUboBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
+        writeUboBuffers.setPBufferInfo(uboBufferInfos.data());
+        writes.push_back(writeUboBuffers);
+
+
+        // Связываем дескрипторы с ресурсами
+        device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);
+
+        // Дескрипторный набор готов к использованию
+        rtDescriptorSetReady_ = true;
     }
 }
