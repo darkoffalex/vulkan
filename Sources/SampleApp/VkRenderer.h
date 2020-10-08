@@ -399,4 +399,9 @@ public:
      * структуры ускорения (при добавлении или удалении мешей)
      */
     void rtPrepareDescriptorSet();
+
+    /**
+     * Деинициализация дескрипторного набора
+     */
+    void rtDeInitDescriptorSet();
 };

@@ -1480,6 +1480,14 @@ void VkRenderer::onSurfaceChanged()
     commandBuffers_.clear();
     std::cout << "Command-buffers freed." << std::endl;
 
+    // Де-инициализация дескрипторного набора для трассировки лучей
+    this->rtDeInitDescriptorSet();
+    std::cout << "Ray tracing descriptor set freed." << std::endl;
+
+    // Де-инициализация изображения кадрового буфера для трассировки лучей
+    this->rtOffscreenBufferImage_.destroyVulkanResources();
+    std::cout << "Ray tracing offscreen buffer destroyed." << std::endl;
+
     // Де-инициализация кадровых буферов
     this->deInitFrameBuffers();
     std::cout << "Frame-buffers destroyed." << std::endl;
@@ -1491,6 +1499,14 @@ void VkRenderer::onSurfaceChanged()
     // Инициализация кадровых буферов
     this->initFrameBuffers(vk::Format::eB8G8R8A8Unorm,vk::Format::eD32SfloatS8Uint);
     std::cout << "Frame-buffers initialized (" << frameBuffers_.size() << ") [" << frameBuffers_[0].getExtent().width << " x " << frameBuffers_[0].getExtent().height << "]" << std::endl;
+
+    // Инициализация изображения кадрового буфера для трассировки лучей
+    this->initRtOffscreenBuffer(vk::Format::eB8G8R8A8Unorm);
+    std::cout << "Ray tracing offscreen buffer initialized" << std::endl;
+
+    // Пересоздание дескрипторного набора для трассировки лучей
+    this->rtPrepareDescriptorSet();
+    std::cout << "Ray tracing descriptor set re-created" << std::endl;
 
     // Изменить пропорции камеры
     camera_.setAspectRatio(static_cast<glm::float32>(frameBuffers_[0].getExtent().width)/static_cast<glm::float32>(frameBuffers_[0].getExtent().height));
@@ -2293,5 +2309,18 @@ void VkRenderer::rtPrepareDescriptorSet()
 
         // Дескрипторный набор готов к использованию
         rtDescriptorSetReady_ = true;
+    }
+}
+
+/**
+ * Деинициализация дескрипторного набора
+ */
+void VkRenderer::rtDeInitDescriptorSet()
+{
+    if(rtDescriptorSetReady_)
+    {
+        device_.getLogicalDevice()->freeDescriptorSets(descriptorPoolRayTracing_.get(),{rtDescriptorSet_.get()});
+        rtDescriptorSet_.release();
+        rtDescriptorSetReady_ = false;
     }
 }
