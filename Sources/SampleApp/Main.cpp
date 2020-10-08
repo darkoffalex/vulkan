@@ -90,6 +90,7 @@ int main(int argc, char* argv[])
 
         auto rgCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rgen.spv"));
     	auto rmCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rmiss.spv"));
+    	auto rmsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace-shadow.rmiss.spv"));
     	auto rhCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rchit.spv"));
 
         // Инициализация рендерера
@@ -99,6 +100,7 @@ int main(int argc, char* argv[])
                                       fsCode,
                                       rgCode,
                                       rmCode,
+                                      rmsCode,
                                       rhCode);
 
         /** Рендерер - загрузка ресурсов **/
@@ -179,8 +181,8 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, 0.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, 0.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, -2.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, -2.0f});
 
         /** MAIN LOOP **/
 

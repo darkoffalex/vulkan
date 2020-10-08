@@ -204,11 +204,13 @@ private:
      * Инициализация конвейера трассировки лучей
      * @param rayGenShaderCodeBytes Код шейдера генерации лучей
      * @param rayMissShaderCodeBytes Код шейдера промаха лучей
+     * @param rayMissShadowShaderCodeBytes Код шейдера промаха лучей для теней
      * @param rayHitShaderCodeBytes Код шейдера попадания луча
      */
     void initRtPipeline(
             const std::vector<unsigned char>& rayGenShaderCodeBytes,
             const std::vector<unsigned char>& rayMissShaderCodeBytes,
+            const std::vector<unsigned char>& rayMissShadowShaderCodeBytes,
             const std::vector<unsigned char>& rayHitShaderCodeBytes);
 
     /**
@@ -262,6 +264,7 @@ public:
      * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
      * @param rayGenShaderCodeBytes Код шейдера генерации луча (байты)
      * @param rayMissShaderCodeBytes Код шейдера промаха луча (байты)
+     * @param rayMissShadowShaderCodeBytes Код шейдера промаха луча для теней (байты)
      * @param rayHitShaderCodeBytes Rод шейдера попадания луча(байты)
      * @param maxMeshes Максимальное кол-во мешей
      */
@@ -270,8 +273,10 @@ public:
                const std::vector<unsigned char>& vertexShaderCodeBytes,
                const std::vector<unsigned char>& geometryShaderCodeBytes,
                const std::vector<unsigned char>& fragmentShaderCodeBytes,
+
                const std::vector<unsigned char>& rayGenShaderCodeBytes,
                const std::vector<unsigned char>& rayMissShaderCodeBytes,
+               const std::vector<unsigned char>& rayMissShadowShaderCodeBytes,
                const std::vector<unsigned char>& rayHitShaderCodeBytes,
                size_t maxMeshes = 1000);
 

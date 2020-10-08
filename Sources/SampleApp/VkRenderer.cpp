@@ -987,11 +987,13 @@ void VkRenderer::deInitPipeline() noexcept
  * Инициализация конвейера трассировки лучей
  * @param rayGenShaderCodeBytes Код шейдера генерации лучей
  * @param rayMissShaderCodeBytes Код шейдера промаха лучей
+ * @param rayMissShadowShaderCodeBytes Код шейдера промаха луча для теней
  * @param rayHitShaderCodeBytes Код шейдера попадания луча
  */
 void VkRenderer::initRtPipeline(
         const std::vector<unsigned char> &rayGenShaderCodeBytes,
         const std::vector<unsigned char> &rayMissShaderCodeBytes,
+        const std::vector<unsigned char> &rayMissShadowShaderCodeBytes,
         const std::vector<unsigned char> &rayHitShaderCodeBytes)
 {
     // Проверяем готовность устройства
@@ -1020,7 +1022,7 @@ void VkRenderer::initRtPipeline(
     // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
 
     // Убеждаемся что шейдерный код был предоставлен
-    if(rayGenShaderCodeBytes.empty() || rayMissShaderCodeBytes.empty() || rayHitShaderCodeBytes.empty()){
+    if(rayGenShaderCodeBytes.empty() || rayMissShaderCodeBytes.empty() || rayMissShadowShaderCodeBytes.empty() || rayHitShaderCodeBytes.empty()){
         throw vk::InitializationFailedError("No shader code provided");
     }
 
@@ -1036,6 +1038,12 @@ void VkRenderer::initRtPipeline(
             rayMissShaderCodeBytes.size(),
             reinterpret_cast<const uint32_t*>(rayMissShaderCodeBytes.data())});
 
+    // Шейдер промаха луча для теней
+    vk::ShaderModule shaderModuleRms = device_.getLogicalDevice()->createShaderModule({
+        {},
+        rayMissShadowShaderCodeBytes.size(),
+        reinterpret_cast<const uint32_t*>(rayMissShadowShaderCodeBytes.data())});
+
     // Шейдер попадания луча
     vk::ShaderModule shaderModuleRh = device_.getLogicalDevice()->createShaderModule({
             {},
@@ -1046,6 +1054,7 @@ void VkRenderer::initRtPipeline(
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eRaygenKHR,shaderModuleRg,"main"),
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eMissKHR,shaderModuleRm,"main"),
+            vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eMissKHR,shaderModuleRms,"main"),
             vk::PipelineShaderStageCreateInfo({},vk::ShaderStageFlagBits::eClosestHitKHR,shaderModuleRh,"main")
     };
 
@@ -1055,10 +1064,12 @@ void VkRenderer::initRtPipeline(
     rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,0,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
     // Группа промаха лучей (ссылка на шейдерный модуль 1)
     rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,1,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    // Группа промаха лучей для теней
+    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eGeneral,2,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
     // Группа попадания лучей (ближнее пересечение + любое пересечение)
     // Данную группу составляют шейдеры "ближайшего попадания","любого попадания","пересечения с геометрией"
     // Мы используем встроенный шейдер пересечения с треугольником для типа eTrianglesHitGroup, поэтому указывается только closestHit и anyHit (если нужно)
-    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,VK_SHADER_UNUSED_KHR,2,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
+    rtShaderGroups_.emplace_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,VK_SHADER_UNUSED_KHR,3,VK_SHADER_UNUSED_KHR,VK_SHADER_UNUSED_KHR);
 
     // О П И С А Н И Е  К О Н В Е Й Е Р А  Т Р А С С И Р О В К И
 
@@ -1074,6 +1085,7 @@ void VkRenderer::initRtPipeline(
     // Уничтожить шейдерные модули (конвейер создан, они не нужны)
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleRg);
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleRm);
+    device_.getLogicalDevice()->destroyShaderModule(shaderModuleRms);
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleRh);
 
     // Получить указатель
@@ -1192,6 +1204,7 @@ void VkRenderer::freeMeshes()
  * @param fragmentShaderCodeBytes Rод фрагментного шейдера (байты)
  * @param rayGenShaderCodeBytes Код шейдера генерации луча (байты)
  * @param rayMissShaderCodeBytes Код шейдера промаха луча (байты)
+ * @param rayMissShadowShaderCodeBytes Код шейдера промаха луча для теней (байты)
  * @param rayHitShaderCodeBytes Rод шейдера попадания луча(байты)
  * @param maxMeshes Максимальное кол-во мешей
  */
@@ -1202,6 +1215,7 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& fragmentShaderCodeBytes,
         const std::vector<unsigned char>& rayGenShaderCodeBytes,
         const std::vector<unsigned char>& rayMissShaderCodeBytes,
+        const std::vector<unsigned char>& rayMissShadowShaderCodeBytes,
         const std::vector<unsigned char>& rayHitShaderCodeBytes,
         size_t maxMeshes):
 isEnabled_(true),
@@ -1322,7 +1336,7 @@ rtDescriptorSetReady_(false)
     std::cout << "Graphics pipeline created." << std::endl;
 
 	// Создать конвейер трассировки лучей
-    this->initRtPipeline(rayGenShaderCodeBytes, rayMissShaderCodeBytes, rayHitShaderCodeBytes);
+    this->initRtPipeline(rayGenShaderCodeBytes, rayMissShaderCodeBytes, rayMissShadowShaderCodeBytes, rayHitShaderCodeBytes);
     std::cout << "Ray tracing pipeline created." << std::endl;
 
     // Инициализировать буфер таблицы SBT
@@ -1836,9 +1850,9 @@ void VkRenderer::raytrace()
 
         // Смещения в убфере таблицы SBT
         vk::DeviceSize progSize = rtProperties.shaderGroupBaseAlignment; // Размер идентификатора программы
-        vk::DeviceSize rayGenOffset   = 0u * progSize;                   // Генерация лучей
-        vk::DeviceSize missOffset     = 1u * progSize;                   // Промах
-        vk::DeviceSize hitGroupOffset = 2u * progSize;                   // Hit-группа
+        vk::DeviceSize rayGenOffset     = 0u * progSize;                   // Генерация лучей
+        vk::DeviceSize missOffset       = 1u * progSize;                   // Промах, промах для тени
+        vk::DeviceSize hitGroupOffset   = 3u * progSize;                   // Hit-группа
 
         // Полный размер буфера таблицы SBT
         vk::DeviceSize sbtSize = progSize * static_cast<vk::DeviceSize>(rtShaderGroups_.size());

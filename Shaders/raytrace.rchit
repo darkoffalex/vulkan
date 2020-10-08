@@ -48,6 +48,8 @@ struct Material
 
 /*Uniform*/
 
+layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+
 layout(binding = 2, set = 0) buffer Indices { uint i[]; } _indices[];
 
 layout(binding = 3, set = 0, scalar) buffer Vertices { Vertex v[]; } _vertices[];
@@ -74,6 +76,9 @@ layout( binding = 1, set = 2, std140) uniform UniformLightArray {
 
 // Итоговое значение - на отправку
 layout(location = 0) rayPayloadInEXT vec3 hitValue;
+
+// Засчитано ли пересечение с преградой - на вход
+layout(location = 1) rayPayloadEXT bool isShadowed;
 
 // Барицентрические координаты на трекгольнике
 hitAttributeEXT vec2 attribs;
@@ -138,16 +143,43 @@ vec3 calculateSpecularComponent(LightSource l, Material m, vec3 pointToLight, ve
 // Подсчет освещенности фрагмента точеченым источником
 vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal, vec3 pointToView, vec3 pointColor, float pointSpecularity)
 {
-    // Направление в сторону источника света
-    vec3 pointToLight = normalize(l.position - pointPosition);
+    // Вектор от точки до источника света
+    vec3 pointToLight = l.position - pointPosition;
+
+    // Вектор от точки до источника света (нормированный)
+    vec3 toLight = normalize(pointToLight);
 
     // Коэффициент затухания (использует расстояние до источника, а так же спец-коэффициенты)
     float dist = length(l.position - pointPosition);
     float attenuation = 1.0f / (1.0f + l.attenuationLinear * dist + l.attenuationQuadratic * (dist * dist));
 
+    vec3 origin  = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
+    float tmin   = 0.001f;
+    float tmax   = length(pointToLight);
+
+    // В тени по умолчанию
+    isShadowed = true;
+
+    // Запуск луча в сторону источника
+    traceRayEXT(
+        topLevelAS, 
+        gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 
+        0xFF, 
+        0, 
+        0, 
+        1, 
+        origin, 
+        tmin, 
+        toLight, 
+        tmax, 
+        1);
+
+    // Если в тени - усилить затухание
+    if(isShadowed) attenuation *= 0.1f;
+
     // Компоненты освещенности
-    vec3 diffuse = calcDiffuseComponent(l, m, pointToLight, pointNormal, pointColor);
-    vec3 specular = calculateSpecularComponent(l, m, pointToLight, pointNormal, pointToView, false, pointSpecularity);
+    vec3 diffuse = calcDiffuseComponent(l, m, toLight, pointNormal, pointColor);
+    vec3 specular = calculateSpecularComponent(l, m, toLight, pointNormal, pointToView, false, pointSpecularity);
     vec3 ambient = l.color * m.ambientColor;
 
     // Вернуть суммарную интенсивность
@@ -183,7 +215,7 @@ void main()
     interpolated.position = (modelMatrix * vec4(interpolated.position,1.0f)).xyz;
 
     // Вектор от точки в сторону камеры
-    vec3 toView = normalize(_camPosition - interpolated.position);
+    vec3 toView = normalize(-gl_WorldRayDirectionEXT);
 
     // Тестовый материал
     Material m;
