@@ -268,6 +268,7 @@ namespace vk
                         vulkan12Features.setDescriptorIndexing(VK_TRUE);
                         vulkan12Features.setBufferDeviceAddress(VK_TRUE);
                         vulkan12Features.setShaderStorageBufferArrayNonUniformIndexing(VK_TRUE);
+                        vulkan12Features.setScalarBlockLayout(VK_TRUE);
                         vulkan12Features.setPNext(&rayTracingFeaturesKhr);
 
                         // Информация о создаваемом устройстве

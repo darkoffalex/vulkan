@@ -140,6 +140,47 @@ vec3 calculateSpecularComponent(LightSource l, Material m, vec3 pointToLight, ve
     }
 }
 
+// Вычислить угол конуса покрывающего источник света заданного радиуса
+float coneAngle(vec3 pointPosition, vec3 lightPosition, float lightRadius)
+{
+    // Вектор от точки до источника света (нормированный)
+    vec3 toLight = normalize(lightPosition - pointPosition);
+
+    // Вектор перпендикулярный вектору от точки до источника
+    vec3 perpL = normalize(cross(toLight, toLight + vec3(0.01f,0.01f,0.01f)));
+
+    // Вектор к границе сферы источника
+    vec3 toLightEdge = normalize((lightPosition + perpL * lightRadius) - pointPosition);
+
+    // Угол конуса покрывающего источник света
+    return acos(dot(toLight, toLightEdge)) * 2.0f;
+}
+
+// Генерация псевдо-случайного числа в пределах [0;1]
+float rand()
+{
+    const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+    return fract(sin(dot(inUV ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+// Получить случайный вектор от точки до случайной точки на диске сферы источника света
+vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lightRadius)
+{
+    // Вектор от точки до источника света (нормированный)
+    vec3 toLight = normalize(lightPosition - pointPosition);
+
+    // Случайный перпендикулярный вектор к вектору от точки до источника
+    vec3 randomOffset = vec3(2.0f * (rand() - 0.5f));
+    vec3 randomPperpL = normalize(cross(toLight, toLight + randomOffset));
+
+    // Случайная точка на диске сферы источника света
+    vec3 randomPointOnLightDisk = lightPosition + randomPperpL * lightRadius * rand();
+
+    // Вектор до случайной точки на диске источника света
+    return normalize(randomPointOnLightDisk - pointPosition);
+}
+
 // Подсчет освещенности фрагмента точеченым источником
 vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal, vec3 pointToView, vec3 pointColor, float pointSpecularity)
 {
@@ -148,6 +189,7 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
 
     // Вектор от точки до источника света (нормированный)
     vec3 toLight = normalize(pointToLight);
+    //vec3 toLightRandom = randomVectorToLightSphere(pointPosition,l.position,1.0f);
 
     // Коэффициент затухания (использует расстояние до источника, а так же спец-коэффициенты)
     float dist = length(l.position - pointPosition);
