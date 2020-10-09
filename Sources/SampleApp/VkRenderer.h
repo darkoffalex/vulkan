@@ -22,6 +22,8 @@ private:
     bool inputDataInOpenGlStyle_;
     /// Использовать validation-слои и report callback
     bool useValidation_;
+    /// Максимальное число мешей
+    uint32_t maxMeshes_;
 
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
@@ -278,7 +280,7 @@ public:
                const std::vector<unsigned char>& rayMissShaderCodeBytes,
                const std::vector<unsigned char>& rayMissShadowShaderCodeBytes,
                const std::vector<unsigned char>& rayHitShaderCodeBytes,
-               size_t maxMeshes = 1000);
+               uint32_t maxMeshes = 100);
 
     /**
      * Деструктор

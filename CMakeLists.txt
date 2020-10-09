@@ -13,7 +13,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
 
 # Путь к Vulkan
-set(VULKAN_PATH "C:\\VulkanSDK\\1.2.148.1\\")
+set(VULKAN_PATH "C:\\VulkanSDK\\1.2.154.1\\")
 
 # Определить разрядность платформы
 if("${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")

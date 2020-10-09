@@ -963,7 +963,7 @@ void VkRenderer::initPipeline(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
-    pipeline_ = vk::UniquePipeline(pipeline);
+    pipeline_ = vk::UniquePipeline(pipeline.value);
 }
 
 /**
@@ -1217,13 +1217,14 @@ VkRenderer::VkRenderer(HINSTANCE hInstance,
         const std::vector<unsigned char>& rayMissShaderCodeBytes,
         const std::vector<unsigned char>& rayMissShadowShaderCodeBytes,
         const std::vector<unsigned char>& rayHitShaderCodeBytes,
-        size_t maxMeshes):
+        uint32_t maxMeshes):
 isEnabled_(true),
 isCommandsReady_(false),
 inputDataInOpenGlStyle_(true),
 useValidation_(true),
 rtTopLevelAccelerationStructureReady_(false),
-rtDescriptorSetReady_(false)
+rtDescriptorSetReady_(false),
+maxMeshes_(maxMeshes)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
@@ -1265,6 +1266,7 @@ rtDescriptorSetReady_(false)
             VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
             VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
             VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME,
+            VK_EXT_ROBUSTNESS_2_EXTENSION_NAME,
 
             // Расширения для аппаратной трассировки лучей
             VK_KHR_RAY_TRACING_EXTENSION_NAME,
@@ -2268,26 +2270,48 @@ void VkRenderer::rtPrepareDescriptorSet()
 
         // Г е о м е т р и ч е с к и е  +  U B O  б у ф е р ы  м е ш е й
 
+        // Массив информации о буферах
         std::vector<vk::DescriptorBufferInfo> indexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> vertexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> uboBufferInfos;
 
-        for(auto & sceneMesh : sceneMeshes_)
+        // Пустышка (нулевой дескриптор)
+        vk::DescriptorBufferInfo dummyBufferInfo{
+                {},
+                0,
+                VK_WHOLE_SIZE
+        };
+
+        // Дабы избежать ошибки слоев валидации нужно обновлять ВСЕ дескрипторы (кол-во задано в descriptor set layout)
+        // В данном случае кол-во равно максимальному количеству мешей
+        for(uint32_t i = 0; i < maxMeshes_; i++)
         {
-            indexBufferInfos.emplace_back(
-                    sceneMesh->getGeometryBuffer()->getIndexBuffer().getBuffer().get(),
-                    0,
-                    VK_WHOLE_SIZE);
+            // Если это реальный меш
+            if(i < sceneMeshes_.size())
+            {
+                const auto& sceneMesh = sceneMeshes_[i];
+                indexBufferInfos.emplace_back(
+                        sceneMesh->getGeometryBuffer()->getIndexBuffer().getBuffer().get(),
+                        0,
+                        VK_WHOLE_SIZE);
 
-            vertexBufferInfos.emplace_back(
-                    sceneMesh->getGeometryBuffer()->getVertexBuffer().getBuffer().get(),
-                    0,
-                    VK_WHOLE_SIZE);
+                vertexBufferInfos.emplace_back(
+                        sceneMesh->getGeometryBuffer()->getVertexBuffer().getBuffer().get(),
+                        0,
+                        VK_WHOLE_SIZE);
 
-            uboBufferInfos.emplace_back(
-                    sceneMesh->getModelMatrixUbo().getBuffer().get(),
-                    0,
-                    VK_WHOLE_SIZE);
+                uboBufferInfos.emplace_back(
+                        sceneMesh->getModelMatrixUbo().getBuffer().get(),
+                        0,
+                        VK_WHOLE_SIZE);
+            }
+            // В противном случае использовать пустышку (null-descriptor)
+            else
+            {
+                indexBufferInfos.push_back(dummyBufferInfo);
+                vertexBufferInfos.push_back(dummyBufferInfo);
+                uboBufferInfos.push_back(dummyBufferInfo);
+            }
         }
 
         vk::WriteDescriptorSet writeIndexBuffers{};
@@ -2316,7 +2340,6 @@ void VkRenderer::rtPrepareDescriptorSet()
         writeUboBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
         writeUboBuffers.setPBufferInfo(uboBufferInfos.data());
         writes.push_back(writeUboBuffers);
-
 
         // Связываем дескрипторы с ресурсами
         device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);

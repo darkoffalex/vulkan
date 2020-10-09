@@ -250,8 +250,12 @@ namespace vk
                         physicalDeviceFeatures.setGeometryShader(VK_TRUE);
                         physicalDeviceFeatures.setSamplerAnisotropy(VK_TRUE);
 
+                        vk::PhysicalDeviceRobustness2FeaturesEXT physicalDeviceRobustness2FeaturesExt{};
+                        physicalDeviceRobustness2FeaturesExt.setNullDescriptor(VK_TRUE);
+
                         vk::PhysicalDeviceFeatures2 deviceFeatures2{};
                         deviceFeatures2.setFeatures(physicalDeviceFeatures);
+                        deviceFeatures2.setPNext(&physicalDeviceRobustness2FeaturesExt);
 
                         vk::PhysicalDeviceRayTracingFeaturesKHR rayTracingFeaturesKhr{};
                         rayTracingFeaturesKhr.setRayTracing(VK_TRUE);
