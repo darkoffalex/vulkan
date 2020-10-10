@@ -193,11 +193,8 @@ float rnd(inout uint prev)
 }
 
 // Получить случайный вектор от точки до случайной точки на диске сферы источника света
-vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lightRadius)
+vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lightRadius, inout uint seed)
 {
-    // Инициализация случайного числа
-    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, _frameIndex);
-
     // Вектор от точки до источника света (нормированный)
     vec3 toLight = normalize(lightPosition - pointPosition);
 
@@ -226,7 +223,6 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
 
     // Вектор от точки до источника света (нормированный)
     vec3 toLight = normalize(pointToLight);
-    vec3 toLightRandom = randomVectorToLightSphere(pointPosition,l.position,0.3f);
 
     // Коэффициент затухания (использует расстояние до источника, а так же спец-коэффициенты)
     float dist = length(l.position - pointPosition);
@@ -236,25 +232,41 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
     float tmin   = 0.001f;
     float tmax   = length(pointToLight);
 
-    // В тени по умолчанию
-    isShadowed = true;
+    // Множитель освещенности
+    float shadowAttenuation = 1.0f;
+    // Количество лучей для проверки преграды
+    uint samples = 8;
+    // Какая часть затухания приходится на один луч
+    float shadowAttenuationPerSample = 1.0f/float(samples);
 
-    // Запуск луча в сторону источника
-    traceRayEXT(
-        topLevelAS, 
-        gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 
-        0xFF, 
-        0, 
-        0, 
-        1, 
-        origin, 
-        tmin, 
-        toLightRandom, 
-        tmax, 
-        1);
+    // Инициализация случайного числа
+    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, _frameIndex);
 
-    // Если в тени - усилить затухание
-    if(isShadowed) attenuation *= 0.1f;
+    // Запустить лучи
+    for(uint i = 0; i < samples; i++)
+    {
+        // Случайный вектор в сторону сферического источника в пределах конуса
+        vec3 toLightRandom = randomVectorToLightSphere(pointPosition,l.position, 0.3f, seed);
+
+        // В тени по умолчанию
+        isShadowed = true;
+
+        // Запуск луча в сторону источника
+        traceRayEXT(
+            topLevelAS, 
+            gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 
+            0xFF, 
+            0, 
+            0, 
+            1, 
+            origin, 
+            tmin, 
+            toLightRandom, 
+            tmax, 
+            1);
+
+        if(isShadowed) shadowAttenuation -= shadowAttenuationPerSample;
+    }
 
     // Компоненты освещенности
     vec3 diffuse = calcDiffuseComponent(l, m, toLight, pointNormal, pointColor);
@@ -262,7 +274,7 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
     vec3 ambient = l.color * m.ambientColor;
 
     // Вернуть суммарную интенсивность
-    return attenuation * (diffuse + specular + ambient);
+    return attenuation * shadowAttenuation * (diffuse + specular + ambient);
 }
 
 void main()

@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
         auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
-//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
+        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
 
         // Скелет и анимации
 //        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
@@ -167,10 +167,6 @@ int main(int argc, char* argv[])
 //        head->setOrientation({0.0f,0.0f,0.0f}, false);
 //        head->setPosition({0.0f,0.75f,0.15f});
 
-        // Построение TLAS на основе добавленных мешей (для трассировки лучей)
-        g_vkRenderer->rtBuildTopLevelAccelerationStructure();
-        g_vkRenderer->rtPrepareDescriptorSet();
-
         // Ar2r-Devil-Pinky (первая версия)
 //        auto Ar2r = g_vkRenderer->addMeshToScene(ar2rGeometry);
 //        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
@@ -180,9 +176,13 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
+        // Построение TLAS на основе добавленных мешей (для трассировки лучей)
+        g_vkRenderer->rtBuildTopLevelAccelerationStructure();
+        g_vkRenderer->rtPrepareDescriptorSet();
+
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.5f, -2.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.5f, -2.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.0f, -2.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.0f, -2.0f});
 
         /** MAIN LOOP **/
 
