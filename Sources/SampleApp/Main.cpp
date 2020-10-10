@@ -181,8 +181,8 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, -2.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, -2.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.5f, -2.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.5f, -2.0f});
 
         /** MAIN LOOP **/
 
@@ -225,6 +225,10 @@ int main(int argc, char* argv[])
             g_camera->translate(g_timer->getDelta());
             g_vkRenderer->getCameraPtr()->setPosition(g_camera->position, false);
             g_vkRenderer->getCameraPtr()->setOrientation(g_camera->orientation);
+
+//            static float x = -2.5f;
+//            x += g_timer->getDelta() * 0.0001f;
+//            light2->setPosition({x, 1.5f, -2.0f});
 
             /// Отрисовка и показ кадра
 

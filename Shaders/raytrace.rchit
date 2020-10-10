@@ -56,6 +56,8 @@ layout(binding = 3, set = 0, scalar) buffer Vertices { Vertex v[]; } _vertices[]
 
 layout(binding = 4, set = 0, std140) buffer ModelMatrices { mat4 m; } _matrices[];
 
+layout(binding = 5, set = 0, std140) uniform FrameCounterBuffer { uint _frameIndex; };
+
 layout(binding = 0, set = 1, std140) uniform UniformCamera {
     mat4 _view;
     mat4 _proj;
@@ -156,26 +158,61 @@ float coneAngle(vec3 pointPosition, vec3 lightPosition, float lightRadius)
     return acos(dot(toLight, toLightEdge)) * 2.0f;
 }
 
-// Генерация псевдо-случайного числа в пределах [0;1]
-float rand()
+// Генерация псевдо-случайного unsigned int значения из двух unsigned int значений,
+// используя 16 пар (Tiny Encryption Algorithm). Подробнее - Zafar, Olano, and Curtis,
+// "GPU Random Numbers via the Tiny Encryption Algorithm"
+uint tea(uint val0, uint val1)
 {
-    const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
-    return fract(sin(dot(inUV ,vec2(12.9898,78.233))) * 43758.5453);
+  uint v0 = val0;
+  uint v1 = val1;
+  uint s0 = 0;
+
+  for(uint n = 0; n < 16; n++)
+  {
+    s0 += 0x9e3779b9;
+    v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+    v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+  }
+
+  return v0;
+}
+
+// Генерация псевдо-случайного unsigned int значения в диапозоне [0, 2^24)
+uint lcg(inout uint prev)
+{
+  uint LCG_A = 1664525u;
+  uint LCG_C = 1013904223u;
+  prev       = (LCG_A * prev + LCG_C);
+  return prev & 0x00FFFFFF;
+}
+
+// Генерация случайного float в диапозоне [0, 1)
+float rnd(inout uint prev)
+{
+  return (float(lcg(prev)) / float(0x01000000));
 }
 
 // Получить случайный вектор от точки до случайной точки на диске сферы источника света
 vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lightRadius)
 {
+    // Инициализация случайного числа
+    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, _frameIndex);
+
     // Вектор от точки до источника света (нормированный)
     vec3 toLight = normalize(lightPosition - pointPosition);
 
+    // Рандомизированные значения для вектора смещения и радиуса
+    float rndX = rnd(seed) - 0.5f;
+    float rndY = rnd(seed) - 0.5f;
+    float rndZ = rnd(seed) - 0.5f;
+    float rndR = rnd(seed);
+
     // Случайный перпендикулярный вектор к вектору от точки до источника
-    vec3 randomOffset = vec3(2.0f * (rand() - 0.5f));
-    vec3 randomPperpL = normalize(cross(toLight, toLight + randomOffset));
+    vec3 randomBias = vec3(rndX,rndY,rndZ);
+    vec3 randomPperpL = normalize(cross(toLight, toLight + randomBias));
 
     // Случайная точка на диске сферы источника света
-    vec3 randomPointOnLightDisk = lightPosition + randomPperpL * lightRadius * rand();
+    vec3 randomPointOnLightDisk = lightPosition + randomPperpL * lightRadius * rndR;
 
     // Вектор до случайной точки на диске источника света
     return normalize(randomPointOnLightDisk - pointPosition);
@@ -189,7 +226,7 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
 
     // Вектор от точки до источника света (нормированный)
     vec3 toLight = normalize(pointToLight);
-    //vec3 toLightRandom = randomVectorToLightSphere(pointPosition,l.position,1.0f);
+    vec3 toLightRandom = randomVectorToLightSphere(pointPosition,l.position,0.3f);
 
     // Коэффициент затухания (использует расстояние до источника, а так же спец-коэффициенты)
     float dist = length(l.position - pointPosition);
@@ -212,7 +249,7 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
         1, 
         origin, 
         tmin, 
-        toLight, 
+        toLightRandom, 
         tmax, 
         1);
 

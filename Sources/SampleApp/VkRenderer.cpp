@@ -472,7 +472,10 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескрипторы storage-буферов хранящих вершины (массив дескрипторов)
                 {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
                 // Дескрипторы uniform-бферов хранящих матрицы трансфомацияя (массив дескрипторов)
-                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)}
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
+
+                // Дескриптор счетчика кадров
+                {vk::DescriptorType::eUniformBuffer, 1},
 
         };
 
@@ -649,6 +652,14 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                     4,
                     vk::DescriptorType::eStorageBuffer,
                     static_cast<uint32_t>(maxMeshes),
+                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                    nullptr
+                },
+                // Буфер счетчика кадров
+                {
+                    5,
+                    vk::DescriptorType::eUniformBuffer,
+                    1,
                     vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
                     nullptr
                 }
@@ -1224,7 +1235,9 @@ inputDataInOpenGlStyle_(true),
 useValidation_(true),
 rtTopLevelAccelerationStructureReady_(false),
 rtDescriptorSetReady_(false),
-maxMeshes_(maxMeshes)
+maxMeshes_(maxMeshes),
+frameCounter_(0),
+pFrameCounterBuffer_(nullptr)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
@@ -1354,6 +1367,15 @@ maxMeshes_(maxMeshes)
     unsigned char blackPixel[4] = {0,0,0,255};
     blackPixelTexture_ = this->createTextureBuffer(blackPixel,1,1,4,false,false);
     std::cout << "Default resources created." << std::endl;
+
+    // Буфер счетчика кадров
+    frameCounterBuffer_ = vk::tools::Buffer(
+            &device_,
+            sizeof(glm::uint32_t),
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+    pFrameCounterBuffer_ = frameCounterBuffer_.mapMemory();
+    std::cout << "Frame counter buffer created." << std::endl;
 }
 
 /**
@@ -1363,6 +1385,11 @@ VkRenderer::~VkRenderer()
 {
     // Остановка рендеринга
     this->setRenderingStatus(false);
+
+    // Удалить буфер счетчика кадров
+    frameCounterBuffer_.unmapMemory();
+    frameCounterBuffer_.destroyVulkanResources();
+    std::cout << "Frame counter buffer destroyed." << std::endl;
 
     // Очистка ресурсов по умолчанию
     blackPixelTexture_->destroyVulkanResources();
@@ -2003,6 +2030,15 @@ void VkRenderer::raytrace()
     presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
     presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
     (void)device_.getPresentQueue().presentKHR(presentInfoKhr);              // Осуществить показ
+
+    // О Б Н О В Л Е Н И Е  С Ч Е Т Ч И К А  К А Д Р О В
+
+    if(frameCounter_ < UINT_MAX) frameCounter_++;
+    else frameCounter_ = 0;
+
+    if(frameCounterBuffer_.isReady() && pFrameCounterBuffer_ != nullptr){
+        memcpy(pFrameCounterBuffer_,&frameCounter_,sizeof(glm::uint32_t));
+    }
 }
 
 /**
@@ -2087,7 +2123,7 @@ void VkRenderer::rtBuildTopLevelAccelerationStructure(const vk::BuildAcceleratio
             // TransformMatrixKHR хранит только 12 значений, соответствуя матрице to a 4x3
             // Поскольку последний ряд всегда (0,0,0,1), его можно не передавать.
             // Матрица row-major, и мы копируем первые 12 значений в matrixKhr из modelMatTranspose
-            memcpy(reinterpret_cast<void*>(&matrixKhr), &modelMatTranspose, sizeof(vk::TransformMatrixKHR)); /// void??
+            memcpy(reinterpret_cast<void*>(&matrixKhr), &modelMatTranspose, sizeof(vk::TransformMatrixKHR));
 
             // Заполнить структуру описывающую одиночный instance
             vk::AccelerationStructureInstanceKHR instanceKhr{};
@@ -2340,6 +2376,23 @@ void VkRenderer::rtPrepareDescriptorSet()
         writeUboBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
         writeUboBuffers.setPBufferInfo(uboBufferInfos.data());
         writes.push_back(writeUboBuffers);
+
+        // С ч е т ч и к  к а д р о в
+
+        vk::DescriptorBufferInfo frameCounterBufferInfo{
+                frameCounterBuffer_.getBuffer().get(),
+                0,
+                VK_WHOLE_SIZE
+        };
+
+        vk::WriteDescriptorSet writeFrameCounter{};
+        writeFrameCounter.setDstSet(rtDescriptorSet_.get());
+        writeFrameCounter.setDstBinding(5);
+        writeFrameCounter.setDstArrayElement(0);
+        writeFrameCounter.setDescriptorCount(1);
+        writeFrameCounter.setDescriptorType(vk::DescriptorType::eUniformBuffer);
+        writeFrameCounter.setPBufferInfo(&frameCounterBufferInfo);
+        writes.push_back(writeFrameCounter);
 
         // Связываем дескрипторы с ресурсами
         device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);

@@ -96,6 +96,13 @@ private:
     /// Ресурсы по умолчанию - текстуры
     vk::resources::TextureBufferPtr blackPixelTexture_;
 
+    /// Счетчик кадров
+    uint32_t frameCounter_;
+    /// Счетчик кадров - буфер
+    vk::tools::Buffer frameCounterBuffer_;
+    /// Счетчик кадров - указатель на память буфера
+    void* pFrameCounterBuffer_;
+
     /// Структура ускорения верхнего уровня для трассировки лучей
     vk::UniqueAccelerationStructureKHR rtTopLevelAccelerationStructureKhr_;
     ///Память для структуры ускорения верхнего уровня
