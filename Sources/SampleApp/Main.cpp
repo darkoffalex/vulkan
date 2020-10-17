@@ -158,7 +158,6 @@ int main(int argc, char* argv[])
         auto cube = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
         cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
         cube->setScale({0.5f,0.5f,0.5f}, false);
-        cube->setOrientation({0.0f,45.0f,0.0f}, false);
         cube->setPosition({0.0f,0.25f,0.0f});
 
         // Голова
@@ -181,8 +180,11 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, -2.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, -2.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.0f, -2.0f});
+        light1->setRadius(0.3f);
+
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.0f, -2.0f});
+        light2->setRadius(0.3f);
 
         /** MAIN LOOP **/
 

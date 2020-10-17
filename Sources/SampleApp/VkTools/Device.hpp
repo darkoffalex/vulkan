@@ -250,8 +250,12 @@ namespace vk
                         physicalDeviceFeatures.setGeometryShader(VK_TRUE);
                         physicalDeviceFeatures.setSamplerAnisotropy(VK_TRUE);
 
+                        vk::PhysicalDeviceRobustness2FeaturesEXT physicalDeviceRobustness2FeaturesExt{};
+                        physicalDeviceRobustness2FeaturesExt.setNullDescriptor(VK_TRUE);
+
                         vk::PhysicalDeviceFeatures2 deviceFeatures2{};
                         deviceFeatures2.setFeatures(physicalDeviceFeatures);
+                        deviceFeatures2.setPNext(&physicalDeviceRobustness2FeaturesExt);
 
                         vk::PhysicalDeviceRayTracingFeaturesKHR rayTracingFeaturesKhr{};
                         rayTracingFeaturesKhr.setRayTracing(VK_TRUE);
@@ -264,6 +268,7 @@ namespace vk
                         vulkan12Features.setDescriptorIndexing(VK_TRUE);
                         vulkan12Features.setBufferDeviceAddress(VK_TRUE);
                         vulkan12Features.setShaderStorageBufferArrayNonUniformIndexing(VK_TRUE);
+                        vulkan12Features.setScalarBlockLayout(VK_TRUE);
                         vulkan12Features.setPNext(&rayTracingFeaturesKhr);
 
                         // Информация о создаваемом устройстве

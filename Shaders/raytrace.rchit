@@ -68,8 +68,12 @@ layout(binding = 0, set = 2, std140) uniform UniformLightCount {
     uint _lightCount;
 };
 
-layout( binding = 1, set = 2, std140) uniform UniformLightArray {
+layout(binding = 1, set = 2, std140) uniform UniformLightArray {
     LightSource _lightSources[MAX_LIGHTS];
+};
+
+layout(binding = 0, set = 3, std140) uniform UniformFrameCounter {
+    uint _frameCounter;
 };
 
 /* Ввод - вывод */
@@ -140,8 +144,65 @@ vec3 calculateSpecularComponent(LightSource l, Material m, vec3 pointToLight, ve
     }
 }
 
-// Подсчет освещенности фрагмента точеченым источником
-vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal, vec3 pointToView, vec3 pointColor, float pointSpecularity)
+// Генерация псевдо-случайного unsigned int значения из двух unsigned int значений,
+// используя 16 пар (Tiny Encryption Algorithm). Подробнее - Zafar, Olano, and Curtis,
+// "GPU Random Numbers via the Tiny Encryption Algorithm"
+uint tea(uint val0, uint val1)
+{
+  uint v0 = val0;
+  uint v1 = val1;
+  uint s0 = 0;
+
+  for(uint n = 0; n < 16; n++)
+  {
+    s0 += 0x9e3779b9;
+    v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+    v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+  }
+
+  return v0;
+}
+
+// Генерация псевдо-случайного unsigned int значения в диапозоне [0, 2^24)
+uint lcg(inout uint prev)
+{
+  uint LCG_A = 1664525u;
+  uint LCG_C = 1013904223u;
+  prev       = (LCG_A * prev + LCG_C);
+  return prev & 0x00FFFFFF;
+}
+
+// Генерация случайного float в диапозоне [0, 1)
+float rnd(inout uint prev)
+{
+  return (float(lcg(prev)) / float(0x01000000));
+}
+
+// Получить случайный вектор от точки до случайной точки на диске сферы источника света
+vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lightRadius, inout uint seed)
+{
+    // Вектор от точки до источника света (нормированный)
+    vec3 toLight = normalize(lightPosition - pointPosition);
+
+    // Рандомизированные значения для вектора смещения и радиуса
+    float rndX = rnd(seed) - 0.5f;
+    float rndY = rnd(seed) - 0.5f;
+    float rndZ = rnd(seed) - 0.5f;
+    float rndR = rnd(seed);
+
+    // Случайный перпендикулярный вектор к вектору от точки до источника
+    vec3 randomBias = vec3(rndX,rndY,rndZ);
+    vec3 randomPperpL = normalize(cross(toLight, toLight + randomBias));
+
+    // Случайная точка на диске сферы источника света
+    vec3 randomPointOnLightDisk = lightPosition + randomPperpL * lightRadius * rndR;
+
+    // Вектор до случайной точки на диске источника света
+    return normalize(randomPointOnLightDisk - pointPosition);
+}
+
+// Подсчет освещенности фрагмента сферическим источником
+vec3 sphericalLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal, vec3 pointToView, vec3 pointColor, float pointSpecularity, uint shadowSamples, inout uint rndSeed)
 {
     // Вектор от точки до источника света
     vec3 pointToLight = l.position - pointPosition;
@@ -153,39 +214,57 @@ vec3 pointLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal,
     float dist = length(l.position - pointPosition);
     float attenuation = 1.0f / (1.0f + l.attenuationLinear * dist + l.attenuationQuadratic * (dist * dist));
 
-    vec3 origin  = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
-    float tmin   = 0.001f;
-    float tmax   = length(pointToLight);
-
-    // В тени по умолчанию
-    isShadowed = true;
-
-    // Запуск луча в сторону источника
-    traceRayEXT(
-        topLevelAS, 
-        gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 
-        0xFF, 
-        0, 
-        0, 
-        1, 
-        origin, 
-        tmin, 
-        toLight, 
-        tmax, 
-        1);
-
-    // Если в тени - усилить затухание
-    if(isShadowed) attenuation *= 0.1f;
-
     // Компоненты освещенности
     vec3 diffuse = calcDiffuseComponent(l, m, toLight, pointNormal, pointColor);
     vec3 specular = calculateSpecularComponent(l, m, toLight, pointNormal, pointToView, false, pointSpecularity);
     vec3 ambient = l.color * m.ambientColor;
 
+    // Множитель интенсивности освещенности
+    float lightIntensity = 1.0f;
+
+    // Если отбрасывает тень
+    if(shadowSamples > 0)
+    {
+        // Доля интенсивности приходящаяся на 1 луч теневой проверки
+        float lightIntPerSample = 1.0 / float(shadowSamples);
+
+        // Параметры луча (точка начала, минимальная и максимальные длины)
+        vec3 origin  = pointPosition;
+        float tmin   = 0.001f;
+        float tmax   = length(pointToLight);
+        
+        // Запустить лучи
+        for(uint i = 0; i < shadowSamples; i++)
+        {
+            // Случайное направление впределах конуса
+            vec3 toLightRandom = randomVectorToLightSphere(pointPosition, l.position, l.radius, rndSeed);
+
+            // В тени по умолчанию
+            isShadowed = true;
+
+            // Запуск луча в сторону источника
+            traceRayEXT(
+                topLevelAS, 
+                gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 
+                0xFF, 
+                0, 
+                0, 
+                1, 
+                origin, 
+                tmin, 
+                toLightRandom, 
+                tmax, 
+                1);
+
+            if(isShadowed) lightIntensity -= lightIntPerSample;
+        }
+    }
+
     // Вернуть суммарную интенсивность
-    return attenuation * (diffuse + specular + ambient);
+    return lightIntensity * attenuation * (diffuse + specular + ambient);
 }
 
+// Основная функция шейдера
 void main()
 {
     // ID текущего объекта
@@ -214,6 +293,9 @@ void main()
     interpolated.normal = normalize(normalMatrix * interpolated.normal);
     interpolated.position = (modelMatrix * vec4(interpolated.position,1.0f)).xyz;
 
+    // Инициализация случайного числа
+    uint rndSeed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, _frameCounter);
+
     // Вектор от точки в сторону камеры
     vec3 toView = normalize(-gl_WorldRayDirectionEXT);
 
@@ -224,28 +306,28 @@ void main()
     m.specularColor = vec3(1.0f);
     m.shininess = 16.0f;
 
+    // Цвет и бликовость поверхности по умолчанию
+    vec3 pointColor = vec3(1.0f);
+    float pointSpec = 1.0f;
+
     // Итоговый цвет
     vec3 result = vec3(0.0f);
 
     // Пройтись по всем источникам света
     for(uint i = 0; i < _lightCount; i++)
     {
-        switch(_lightSources[i].type)
-        {
-            case LIGHT_TYPE_POINT:
-            result += pointLight(_lightSources[i], m, interpolated.position, interpolated.normal, toView, vec3(1.0f), 1.0f);
-            break;
-
-            case LIGHT_TYPE_SPOT:
-            //TODO: реализация spot-light'а
-            break;
-
-            case LIGHT_TYPE_DIRECTIONAL:
-            //TODO: реализация directional-light'а
-            break;
-        }
+        result += sphericalLight(
+            _lightSources[i], 
+            m, 
+            interpolated.position, 
+            interpolated.normal, 
+            toView, 
+            pointColor, 
+            pointSpec, 
+            1, 
+            rndSeed);
     }
 
     // Вернуть цвет точки пересечения
-    hitValue = result;
+    hitValue = vec3(result);
 }
