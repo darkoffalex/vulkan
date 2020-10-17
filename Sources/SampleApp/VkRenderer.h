@@ -22,8 +22,10 @@ private:
     bool inputDataInOpenGlStyle_;
     /// Использовать validation-слои и report callback
     bool useValidation_;
-    /// Максимальное число мешей
+    /// Максимальное число мешей на сцене
     uint32_t maxMeshes_;
+    /// Счетчик кадров - используется для рандомизации внутри шейдера
+    uint32_t frameCounter_;
 
     /// Экземпляр Vulkan (smart pointer)
     vk::UniqueInstance vulkanInstance_;
@@ -53,6 +55,8 @@ private:
     vk::UniqueDescriptorPool descriptorPoolLightSources_;
     /// Объект дескрипторного пула для трассировки лучей
     vk::UniqueDescriptorPool descriptorPoolRayTracing_;
+    /// Объект дескрипторного пула для счетчика кадров
+    vk::UniqueDescriptorPool descriptorPoolFrameCounter_;
 
     /// Макет размещения дескрипторного набора для камеры (матрицы)
     vk::UniqueDescriptorSetLayout descriptorSetLayoutCamera_;
@@ -62,6 +66,8 @@ private:
     vk::UniqueDescriptorSetLayout descriptorSetLayoutLightSources_;
     /// Макет размещения дескрипторного набора для трассировки лучей
     vk::UniqueDescriptorSetLayout descriptorSetLayoutRayTracing_;
+    /// Макет размещения дескрипторного набора для счетчика кадров
+    vk::UniqueDescriptorSetLayout descriptorSetLayoutFrameCounter_;
 
     /// Макет размещения графического конвейера
     vk::UniquePipelineLayout pipelineLayout_;
@@ -96,13 +102,6 @@ private:
     /// Ресурсы по умолчанию - текстуры
     vk::resources::TextureBufferPtr blackPixelTexture_;
 
-    /// Счетчик кадров
-    uint32_t frameCounter_;
-    /// Счетчик кадров - буфер
-    vk::tools::Buffer frameCounterBuffer_;
-    /// Счетчик кадров - указатель на память буфера
-    void* pFrameCounterBuffer_;
-
     /// Структура ускорения верхнего уровня для трассировки лучей
     vk::UniqueAccelerationStructureKHR rtTopLevelAccelerationStructureKhr_;
     ///Память для структуры ускорения верхнего уровня
@@ -118,6 +117,13 @@ private:
     vk::UniqueDescriptorSet rtDescriptorSet_;
     /// Готов ли дескрипторный набор к использованию
     bool rtDescriptorSetReady_;
+
+    /// Дескрипторный набор для счетчика кадров
+    vk::UniqueDescriptorSet frameCounterDescriptorSet_;
+    /// UBO для счетчика кадров
+    vk::tools::Buffer frameCounterUbo_;
+    /// Размеченная область памяти UBO счетчик кадров
+    void* pFrameCounterUboData_ = nullptr;
 
 
     /**
@@ -418,4 +424,19 @@ public:
      * Деинициализация дескрипторного набора
      */
     void rtDeInitDescriptorSet();
+
+    /**
+     * Инициализировать набор дескрипторов для счетчика кадров
+     */
+    void initFrameCounter();
+
+    /**
+     * Обновление кадрового буфера
+     */
+    void updateFrameCounter();
+
+    /**
+     * Деинициализация набора дескрипторов для счетчика кадров
+     */
+    void deInitFrameCounter();
 };

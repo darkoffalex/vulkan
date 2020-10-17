@@ -472,10 +472,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Дескрипторы storage-буферов хранящих вершины (массив дескрипторов)
                 {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
                 // Дескрипторы uniform-бферов хранящих матрицы трансфомацияя (массив дескрипторов)
-                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
-
-                // Дескриптор счетчика кадров
-                {vk::DescriptorType::eUniformBuffer, 1},
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)}
 
         };
 
@@ -486,6 +483,23 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorPoolCreateInfo.maxSets = 1;
         descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolRayTracing_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    }
+
+    // Создать пул для набора используемого для счетчика кадров
+    {
+        // Размеры пула для наборов типа "набор для счетчика кадров"
+        std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
+                // Дескриптор номера текущего кадра
+                {vk::DescriptorType::eUniformBuffer, 1},
+        };
+
+        // Нам нужен один набор данного типа, он будет привязываться единожды за кадр
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+        descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+        descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
+        descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+        descriptorPoolFrameCounter_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
 
     // Р А З М Е Щ Е Н И Я  Н А Б О Р О В  Д Е С К Р И П Т О Р О В
@@ -654,14 +668,6 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                     static_cast<uint32_t>(maxMeshes),
                     vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
                     nullptr
-                },
-                // Буфер счетчика кадров
-                {
-                    5,
-                    vk::DescriptorType::eUniformBuffer,
-                    1,
-                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
-                    nullptr
                 }
         };
 
@@ -670,6 +676,27 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
         descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
         descriptorSetLayoutCreateInfo.pBindings = bindings.data();
         descriptorSetLayoutRayTracing_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    }
+
+    // Макет размещения набора используемого для счетчика кадров
+    {
+        // Описание привязок
+        std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+                // Буфер хранящий индекс текущего кадра
+                {
+                        0,
+                        vk::DescriptorType::eUniformBuffer,
+                        1,
+                        vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                        nullptr,
+                },
+        };
+
+        // Создать макет размещения дескрипторного набора
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+        descriptorSetLayoutCreateInfo.bindingCount = bindings.size();
+        descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+        descriptorSetLayoutFrameCounter_ = device_.getLogicalDevice()->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
     }
 }
 
@@ -688,6 +715,7 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolMeshes_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolLightSources_.get());
         device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolRayTracing_.get());
+        device_.getLogicalDevice()->resetDescriptorPool(descriptorPoolFrameCounter_.get());
     }
 	catch(std::exception&){}
 
@@ -696,20 +724,24 @@ void VkRenderer::deInitDescriptorPoolsAndLayouts() noexcept
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutLightSources_.get());
     device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutRayTracing_.get());
+    device_.getLogicalDevice()->destroyDescriptorSetLayout(descriptorSetLayoutFrameCounter_.get());
     descriptorSetLayoutCamera_.release();
     descriptorSetLayoutMeshes_.release();
     descriptorSetLayoutLightSources_.release();
     descriptorSetLayoutRayTracing_.release();
+    descriptorSetLayoutFrameCounter_.release();
 
     // Уничтожить пулы дескрипторов
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolCamera_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolMeshes_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolLightSources_.get());
     device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolRayTracing_.get());
+    device_.getLogicalDevice()->destroyDescriptorPool(descriptorPoolFrameCounter_.get());
     descriptorPoolCamera_.release();
     descriptorPoolMeshes_.release();
     descriptorPoolLightSources_.release();
     descriptorPoolRayTracing_.release();
+    descriptorPoolFrameCounter_.release();
 
     // Освободить объект дескрипторного набора для трассировки лучей
     // Сам дескрипторный набор был удален во время resetDescriptorPool соответствующего пула
@@ -974,7 +1006,7 @@ void VkRenderer::initPipeline(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
-    pipeline_ = vk::UniquePipeline(pipeline.value);
+    pipeline_ = vk::UniquePipeline(pipeline);
 }
 
 /**
@@ -1020,15 +1052,17 @@ void VkRenderer::initRtPipeline(
     std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = {
             descriptorSetLayoutRayTracing_.get(),
             descriptorSetLayoutCamera_.get(),
-            descriptorSetLayoutLightSources_.get()
+            descriptorSetLayoutLightSources_.get(),
+            descriptorSetLayoutFrameCounter_.get()
     };
 
     // Создать макет размещения конвейера
-    rtPipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique({
-            {},
-            static_cast<uint32_t>(descriptorSetLayouts.size()),
-            descriptorSetLayouts.data()
-    });
+    rtPipelineLayout_ = device_.getLogicalDevice()->createPipelineLayoutUnique(
+            {
+                {},
+                static_cast<uint32_t>(descriptorSetLayouts.size()),
+                descriptorSetLayouts.data()
+            });
 
     // Ш Е Й Д Е Р Ы ( П Р О Г Р А М И Р У Е М Ы Е  С Т А Д И И)
 
@@ -1236,8 +1270,7 @@ useValidation_(true),
 rtTopLevelAccelerationStructureReady_(false),
 rtDescriptorSetReady_(false),
 maxMeshes_(maxMeshes),
-frameCounter_(0),
-pFrameCounterBuffer_(nullptr)
+frameCounter_(0)
 {
     // Инициализация экземпляра Vulkan
     std::vector<const char*> instanceExtensionNames = {
@@ -1327,8 +1360,12 @@ pFrameCounterBuffer_(nullptr)
     std::cout << "Default texture sampler created." << std::endl;
 
     // Инициализация дескрипторных пулов и наборов
-    this->initDescriptorPoolsAndLayouts(maxMeshes);
+    this->initDescriptorPoolsAndLayouts(maxMeshes_);
     std::cout << "Descriptor pool and layouts initialized." << std::endl;
+
+    // Инициализация дескрипторного набора для счетчика кадров
+    this->initFrameCounter();
+    std::cout << "Frame counter initialized." << std::endl;
 
     // Создание камеры (UBO буферов и дескрипторных наборов)
     glm::float32 aspectRatio = static_cast<glm::float32>(frameBuffers_[0].getExtent().width) / static_cast<glm::float32>(frameBuffers_[0].getExtent().height);
@@ -1367,15 +1404,6 @@ pFrameCounterBuffer_(nullptr)
     unsigned char blackPixel[4] = {0,0,0,255};
     blackPixelTexture_ = this->createTextureBuffer(blackPixel,1,1,4,false,false);
     std::cout << "Default resources created." << std::endl;
-
-    // Буфер счетчика кадров
-    frameCounterBuffer_ = vk::tools::Buffer(
-            &device_,
-            sizeof(glm::uint32_t),
-            vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-    pFrameCounterBuffer_ = frameCounterBuffer_.mapMemory();
-    std::cout << "Frame counter buffer created." << std::endl;
 }
 
 /**
@@ -1385,11 +1413,6 @@ VkRenderer::~VkRenderer()
 {
     // Остановка рендеринга
     this->setRenderingStatus(false);
-
-    // Удалить буфер счетчика кадров
-    frameCounterBuffer_.unmapMemory();
-    frameCounterBuffer_.destroyVulkanResources();
-    std::cout << "Frame counter buffer destroyed." << std::endl;
 
     // Очистка ресурсов по умолчанию
     blackPixelTexture_->destroyVulkanResources();
@@ -1426,9 +1449,13 @@ VkRenderer::~VkRenderer()
     this->camera_.destroyVulkanResources();
     std::cout << "Camera destroyed." << std::endl;
 
+    // Де-инициализация кадрового счетчика
+    this->deInitFrameCounter();
+    std::cout << "Frame counter de-initialized." << std::endl;
+
     // Де-инициализация дескрипторов
     this->deInitDescriptorPoolsAndLayouts();
-    std::cout << "Descriptor pool and layouts de-initialized" << std::endl;
+    std::cout << "Descriptor pool and layouts de-initialized." << std::endl;
 
     // Уничтожение текстурного семплера по умолчанию
     device_.getLogicalDevice()->destroySampler(textureSamplerDefault_.get());
@@ -1856,6 +1883,12 @@ void VkRenderer::draw()
     presentInfoKhr.pSwapchains = &(swapChainKhr_.get());                     // Цепочка показа
     presentInfoKhr.pImageIndices = &availableImageIndex;                     // Индекс показываемого изображения
     (void)device_.getPresentQueue().presentKHR(presentInfoKhr);              // Осуществить показ
+
+    // О Б Н О В Л Е Н И Е  С Ч Е Т Ч И К А  К А Д Р О В
+
+    if(frameCounter_ < UINT_MAX) frameCounter_++;
+    else frameCounter_ = 0;
+    this->updateFrameCounter();
 }
 
 /**
@@ -1904,7 +1937,8 @@ void VkRenderer::raytrace()
                     vk::PipelineBindPoint::eRayTracingKHR,
                     rtPipelineLayout_.get(),
                     0,
-                    {rtDescriptorSet_.get(),camera_.getDescriptorSet(),lightSourceSet_.getDescriptorSet()},{});
+                    {rtDescriptorSet_.get(),camera_.getDescriptorSet(),lightSourceSet_.getDescriptorSet(),frameCounterDescriptorSet_.get()},{});
+
 
             // Области буфера таблицы SBT
             const vk::StridedBufferRegionKHR rayGenShaderBindingTable = {rtSbtTableBuffer_.getBuffer().get(), rayGenOffset, progSize, sbtSize};
@@ -2035,10 +2069,7 @@ void VkRenderer::raytrace()
 
     if(frameCounter_ < UINT_MAX) frameCounter_++;
     else frameCounter_ = 0;
-
-    if(frameCounterBuffer_.isReady() && pFrameCounterBuffer_ != nullptr){
-        memcpy(pFrameCounterBuffer_,&frameCounter_,sizeof(glm::uint32_t));
-    }
+    this->updateFrameCounter();
 }
 
 /**
@@ -2123,7 +2154,7 @@ void VkRenderer::rtBuildTopLevelAccelerationStructure(const vk::BuildAcceleratio
             // TransformMatrixKHR хранит только 12 значений, соответствуя матрице to a 4x3
             // Поскольку последний ряд всегда (0,0,0,1), его можно не передавать.
             // Матрица row-major, и мы копируем первые 12 значений в matrixKhr из modelMatTranspose
-            memcpy(reinterpret_cast<void*>(&matrixKhr), &modelMatTranspose, sizeof(vk::TransformMatrixKHR));
+            memcpy(reinterpret_cast<void*>(&matrixKhr), &modelMatTranspose, sizeof(vk::TransformMatrixKHR)); /// void??
 
             // Заполнить структуру описывающую одиночный instance
             vk::AccelerationStructureInstanceKHR instanceKhr{};
@@ -2306,7 +2337,6 @@ void VkRenderer::rtPrepareDescriptorSet()
 
         // Г е о м е т р и ч е с к и е  +  U B O  б у ф е р ы  м е ш е й
 
-        // Массив информации о буферах
         std::vector<vk::DescriptorBufferInfo> indexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> vertexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> uboBufferInfos;
@@ -2377,22 +2407,6 @@ void VkRenderer::rtPrepareDescriptorSet()
         writeUboBuffers.setPBufferInfo(uboBufferInfos.data());
         writes.push_back(writeUboBuffers);
 
-        // С ч е т ч и к  к а д р о в
-
-        vk::DescriptorBufferInfo frameCounterBufferInfo{
-                frameCounterBuffer_.getBuffer().get(),
-                0,
-                VK_WHOLE_SIZE
-        };
-
-        vk::WriteDescriptorSet writeFrameCounter{};
-        writeFrameCounter.setDstSet(rtDescriptorSet_.get());
-        writeFrameCounter.setDstBinding(5);
-        writeFrameCounter.setDstArrayElement(0);
-        writeFrameCounter.setDescriptorCount(1);
-        writeFrameCounter.setDescriptorType(vk::DescriptorType::eUniformBuffer);
-        writeFrameCounter.setPBufferInfo(&frameCounterBufferInfo);
-        writes.push_back(writeFrameCounter);
 
         // Связываем дескрипторы с ресурсами
         device_.getLogicalDevice()->updateDescriptorSets(writes.size(), writes.data(), 0, nullptr);
@@ -2413,4 +2427,83 @@ void VkRenderer::rtDeInitDescriptorSet()
         rtDescriptorSet_.release();
         rtDescriptorSetReady_ = false;
     }
+}
+
+/**
+ * Инициализировать набор дескрипторов для счетчика кадров
+ */
+void VkRenderer::initFrameCounter()
+{
+    // Выделить дескрипторный набор
+    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+    descriptorSetAllocateInfo.descriptorPool = descriptorPoolFrameCounter_.get();
+    descriptorSetAllocateInfo.pSetLayouts = &(descriptorSetLayoutFrameCounter_.get());
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    auto fcSets = this->device_.getLogicalDevice()->allocateDescriptorSets(descriptorSetAllocateInfo);
+    this->frameCounterDescriptorSet_ = vk::UniqueDescriptorSet(fcSets[0]);
+
+    // Создать буфер UBO для счетчика кадров
+    frameCounterUbo_ = vk::tools::Buffer(
+            &device_,
+            sizeof(glm::uint32_t),
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    // Разметить память и получить указатель
+    pFrameCounterUboData_ = frameCounterUbo_.mapMemory(0, VK_WHOLE_SIZE);
+
+    // Информация о буфере
+    vk::DescriptorBufferInfo frameCounterBufferInfo = {
+            frameCounterUbo_.
+            getBuffer().get(),
+            0,
+            VK_WHOLE_SIZE};
+
+    // Описываем связь дескриптора с буфером (описание "записи")
+    vk::WriteDescriptorSet writeDescriptorSet(
+            frameCounterDescriptorSet_.get(),
+            0,
+            0,
+            1,
+            vk::DescriptorType::eUniformBuffer,
+            nullptr,
+            &frameCounterBufferInfo,
+            nullptr
+    );
+
+    // Связываем дескрипторы с ресурсами
+    device_.getLogicalDevice()->updateDescriptorSets(1,&writeDescriptorSet,0, nullptr);
+}
+
+/**
+ * Обновление кадрового буфера
+ */
+void VkRenderer::updateFrameCounter()
+{
+    memcpy(pFrameCounterUboData_,&frameCounter_,sizeof(glm::uint32_t));
+
+    /*
+    std::vector<vk::MappedMemoryRange> ranges = {
+            {frameCounterUbo_.getMemory().get(),0,sizeof(glm::uint32_t)}
+    };
+    device_.getLogicalDevice()->flushMappedMemoryRanges(ranges);
+    */
+}
+
+/**
+ * Деинициализация набора дескрипторов для счетчика кадров
+ */
+void VkRenderer::deInitFrameCounter()
+{
+    // Вернуть дескрипторный набор в пул
+    device_.getLogicalDevice()->freeDescriptorSets(
+            descriptorPoolFrameCounter_.get(),
+            {frameCounterDescriptorSet_.get()});
+
+    // Освободить объект
+    frameCounterDescriptorSet_.release();
+
+    // Уничтожить буфер
+    frameCounterUbo_.unmapMemory();
+    frameCounterUbo_.destroyVulkanResources();
 }

@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
         auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
-        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
+//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
 
         // Скелет и анимации
 //        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
@@ -158,7 +158,6 @@ int main(int argc, char* argv[])
         auto cube = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
         cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
         cube->setScale({0.5f,0.5f,0.5f}, false);
-        cube->setOrientation({0.0f,45.0f,0.0f}, false);
         cube->setPosition({0.0f,0.25f,0.0f});
 
         // Голова
@@ -166,6 +165,10 @@ int main(int argc, char* argv[])
 //        head->setScale({0.35f,0.35f,0.35f}, false);
 //        head->setOrientation({0.0f,0.0f,0.0f}, false);
 //        head->setPosition({0.0f,0.75f,0.15f});
+
+        // Построение TLAS на основе добавленных мешей (для трассировки лучей)
+        g_vkRenderer->rtBuildTopLevelAccelerationStructure();
+        g_vkRenderer->rtPrepareDescriptorSet();
 
         // Ar2r-Devil-Pinky (первая версия)
 //        auto Ar2r = g_vkRenderer->addMeshToScene(ar2rGeometry);
@@ -176,13 +179,12 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
-        // Построение TLAS на основе добавленных мешей (для трассировки лучей)
-        g_vkRenderer->rtBuildTopLevelAccelerationStructure();
-        g_vkRenderer->rtPrepareDescriptorSet();
-
         // Свет
         auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.0f, -2.0f});
+        light1->setRadius(0.3f);
+
         auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.0f, -2.0f});
+        light2->setRadius(0.3f);
 
         /** MAIN LOOP **/
 
@@ -225,10 +227,6 @@ int main(int argc, char* argv[])
             g_camera->translate(g_timer->getDelta());
             g_vkRenderer->getCameraPtr()->setPosition(g_camera->position, false);
             g_vkRenderer->getCameraPtr()->setOrientation(g_camera->orientation);
-
-//            static float x = -2.5f;
-//            x += g_timer->getDelta() * 0.0001f;
-//            light2->setPosition({x, 1.5f, -2.0f});
 
             /// Отрисовка и показ кадра
 
