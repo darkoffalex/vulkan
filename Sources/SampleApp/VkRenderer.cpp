@@ -1006,7 +1006,7 @@ void VkRenderer::initPipeline(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
-    pipeline_ = vk::UniquePipeline(pipeline);
+    pipeline_ = vk::UniquePipeline(pipeline.value);
 }
 
 /**
