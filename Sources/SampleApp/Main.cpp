@@ -154,11 +154,31 @@ int main(int argc, char* argv[])
 //        wall->setPosition({0.0f,1.25f,-1.5f}, false);
 //        wall->setScale({10.0f,2.5f,1.0f});
 
-        // Куб
-        auto cube = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
-        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
-        cube->setScale({0.5f,0.5f,0.5f}, false);
-        cube->setPosition({0.0f,0.25f,0.0f});
+        // Кубы
+        auto cube0 = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
+        cube0->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
+        cube0->setScale({0.5f,0.5f,0.5f}, false);
+        cube0->setPosition({0.0f,0.5f,0.0f});
+
+        auto cube1 = g_vkRenderer->addMeshToScene(cubeGeometry);
+        cube1->setScale({0.5f,0.5f,0.5f}, false);
+        cube1->setPosition({2.0f,0.25f,-2.0f});
+        cube1->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 0.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
+
+        auto cube2 = g_vkRenderer->addMeshToScene(cubeGeometry);
+        cube2->setScale({0.5f,0.5f,0.5f}, false);
+        cube2->setPosition({-2.0f,0.25f,-2.0f});
+        cube2->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
+
+        auto cube3 = g_vkRenderer->addMeshToScene(cubeGeometry);
+        cube3->setScale({0.5f,0.5f,0.5f}, false);
+        cube3->setPosition({2.0f,0.25f,2.0f});
+        cube3->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 0.0f, 1.0f},{0.6f, 0.6f, 0.6f},16.0f});
+
+        auto cube4 = g_vkRenderer->addMeshToScene(cubeGeometry);
+        cube4->setScale({0.5f,0.5f,0.5f}, false);
+        cube4->setPosition({-2.0f,0.25f,2.0f});
+        cube4->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
 
         // Голова
 //        auto head = g_vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
@@ -180,10 +200,10 @@ int main(int argc, char* argv[])
 //        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 2.0f, -2.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-1.5f, 3.0f, -1.0f});
         light1->setRadius(0.3f);
 
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 2.0f, -2.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {1.5f, 3.0f, 1.0f});
         light2->setRadius(0.3f);
 
         /** MAIN LOOP **/

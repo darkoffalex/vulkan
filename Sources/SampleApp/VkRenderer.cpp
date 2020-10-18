@@ -471,7 +471,9 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
                 // Дескрипторы storage-буферов хранящих вершины (массив дескрипторов)
                 {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
-                // Дескрипторы uniform-бферов хранящих матрицы трансфомацияя (массив дескрипторов)
+                // Дескрипторы storage-бферов хранящих матрицы трансфомацияя (массив дескрипторов)
+                {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)},
+                // Дескрипторы storage-бферов хранящих параметры материалов объектов (массив дескрипторов)
                 {vk::DescriptorType::eStorageBuffer, static_cast<uint32_t>(maxMeshes)}
 
         };
@@ -664,6 +666,14 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes)
                 // Хранимый буфер матриц модели (массив дескрипторов)
                 {
                     4,
+                    vk::DescriptorType::eStorageBuffer,
+                    static_cast<uint32_t>(maxMeshes),
+                    vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
+                    nullptr
+                },
+                // Хранимый буфер материала меша
+                {
+                    5,
                     vk::DescriptorType::eStorageBuffer,
                     static_cast<uint32_t>(maxMeshes),
                     vk::ShaderStageFlagBits::eRaygenKHR|vk::ShaderStageFlagBits::eClosestHitKHR|vk::ShaderStageFlagBits::eAnyHitKHR,
@@ -2340,6 +2350,7 @@ void VkRenderer::rtPrepareDescriptorSet()
         std::vector<vk::DescriptorBufferInfo> indexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> vertexBufferInfos;
         std::vector<vk::DescriptorBufferInfo> uboBufferInfos;
+        std::vector<vk::DescriptorBufferInfo> materialBufferInfos;
 
         // Пустышка (нулевой дескриптор)
         vk::DescriptorBufferInfo dummyBufferInfo{
@@ -2370,6 +2381,11 @@ void VkRenderer::rtPrepareDescriptorSet()
                         sceneMesh->getModelMatrixUbo().getBuffer().get(),
                         0,
                         VK_WHOLE_SIZE);
+
+                materialBufferInfos.emplace_back(
+                        sceneMesh->getMaterialSettingsUbo().getBuffer().get(),
+                        0,
+                        VK_WHOLE_SIZE);
             }
             // В противном случае использовать пустышку (null-descriptor)
             else
@@ -2377,6 +2393,7 @@ void VkRenderer::rtPrepareDescriptorSet()
                 indexBufferInfos.push_back(dummyBufferInfo);
                 vertexBufferInfos.push_back(dummyBufferInfo);
                 uboBufferInfos.push_back(dummyBufferInfo);
+                materialBufferInfos.push_back(dummyBufferInfo);
             }
         }
 
@@ -2406,6 +2423,15 @@ void VkRenderer::rtPrepareDescriptorSet()
         writeUboBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
         writeUboBuffers.setPBufferInfo(uboBufferInfos.data());
         writes.push_back(writeUboBuffers);
+
+        vk::WriteDescriptorSet writeMaterialBuffers{};
+        writeMaterialBuffers.setDstSet(rtDescriptorSet_.get());
+        writeMaterialBuffers.setDstBinding(5);
+        writeMaterialBuffers.setDstArrayElement(0);
+        writeMaterialBuffers.setDescriptorCount(static_cast<uint32_t>(materialBufferInfos.size()));
+        writeMaterialBuffers.setDescriptorType(vk::DescriptorType::eStorageBuffer);
+        writeMaterialBuffers.setPBufferInfo(materialBufferInfos.data());
+        writes.push_back(writeMaterialBuffers);
 
 
         // Связываем дескрипторы с ресурсами

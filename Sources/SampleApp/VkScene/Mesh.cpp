@@ -150,7 +150,7 @@ namespace vk
             // Выделить буфер для параметров материала
             uboMaterial_ = vk::tools::Buffer(pDevice_,
                     MATERIAL_UBO_SIZE,
-                    vk::BufferUsageFlagBits::eUniformBuffer,
+                    vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eStorageBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
             // Выделить буфер для параметров отображения текстуры
@@ -561,6 +561,14 @@ namespace vk
          */
         const vk::tools::Buffer &Mesh::getModelMatrixUbo() {
             return uboModelMatrix_;
+        }
+
+        /**
+         * Получить UBO буфер параметров материала
+         * @return Ссылка на объект буфера
+         */
+        const vk::tools::Buffer &Mesh::getMaterialSettingsUbo() {
+            return uboMaterial_;
         }
     }
 }

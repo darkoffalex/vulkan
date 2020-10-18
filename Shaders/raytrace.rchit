@@ -56,6 +56,8 @@ layout(binding = 3, set = 0, scalar) buffer Vertices { Vertex v[]; } _vertices[]
 
 layout(binding = 4, set = 0, std140) buffer ModelMatrices { mat4 m; } _matrices[];
 
+layout(binding = 5, set = 0, std140) buffer Materials { Material m; } _materials[];
+
 layout(binding = 0, set = 1, std140) uniform UniformCamera {
     mat4 _view;
     mat4 _proj;
@@ -299,12 +301,8 @@ void main()
     // Вектор от точки в сторону камеры
     vec3 toView = normalize(-gl_WorldRayDirectionEXT);
 
-    // Тестовый материал
-    Material m;
-    m.ambientColor = vec3(0.0f);
-    m.diffuseColor = vec3(0.8f);
-    m.specularColor = vec3(1.0f);
-    m.shininess = 16.0f;
+    // Материал
+    Material m = _materials[objId].m;
 
     // Цвет и бликовость поверхности по умолчанию
     vec3 pointColor = vec3(1.0f);

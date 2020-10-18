@@ -265,6 +265,12 @@ namespace vk
              * @return Ссылка на объект буфера
              */
             const vk::tools::Buffer& getModelMatrixUbo();
+
+            /**
+             * Получить UBO буфер параметров материала
+             * @return Ссылка на объект буфера
+             */
+            const vk::tools::Buffer& getMaterialSettingsUbo();
         };
 
         /**
