@@ -42,6 +42,7 @@ namespace vk
             glm::vec3 diffuseColor = {0.8f, 0.8f, 0.8f};
             glm::vec3 specularColor = {0.6f, 0.6f, 0.6f};
             glm::float32 shininess = 16.0f;
+            glm::float32 reflectance = 0.0f;
         };
 
         struct MeshTextureMapping

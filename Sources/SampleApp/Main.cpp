@@ -83,11 +83,12 @@ int main(int argc, char* argv[])
 
         /** Рендерер - инициализация **/
 
-        // Загрузка кода шейдеров
+        // Загрузка кода шейдеров (для растеризации)
         auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.vert.spv"));
         auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.geom.spv"));
         auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
 
+        // Для трассировки лучей
         auto rgCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rgen.spv"));
     	auto rmCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace.rmiss.spv"));
     	auto rmsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("raytrace-shadow.rmiss.spv"));
@@ -95,26 +96,15 @@ int main(int argc, char* argv[])
 
         // Инициализация рендерера
         g_vkRenderer = new VkRenderer(g_hInstance, g_hwnd,
-                                      vsCode,
-                                      gsCode,
-                                      fsCode,
-                                      rgCode,
-                                      rmCode,
-                                      rmsCode,
-                                      rhCode);
+                                      vsCode, gsCode, fsCode,
+                                      rgCode, rmCode, rmsCode, rhCode);
 
         /** Рендерер - загрузка ресурсов **/
 
         // Геометрия
-//        auto triangleGeometry = vk::helpers::GenerateTriangleGeometry(g_vkRenderer, 1.0f);
         auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
         auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
-//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
-
-        // Скелет и анимации
-//        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
-//        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
 
         // Текстуры
         auto floorTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/diffuse.png", true);
@@ -136,68 +126,44 @@ int main(int argc, char* argv[])
 
         /** Рендерер - инициализация сцены **/
 
-        // Треугольник
-//        auto triangle = g_vkRenderer->addMeshToScene(triangleGeometry, {});
-//        triangle->setOrientation({0.0f, 0.0f, 0.0f}, false);
-//        triangle->setPosition({0.0f, 0.25f, 0.0f});
-
         // Пол
         auto floor = g_vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
         floor->setOrientation({-90.0f,0.0f,0.0f});
-
-        // Стена
-//        auto wall = g_vkRenderer->addMeshToScene(quadGeometry,{wallTextureColor,wallTextureNormal,wallTextureSpec});
-//        wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f},0.0f});
-//        wall->setPosition({0.0f,1.25f,-1.5f}, false);
-//        wall->setScale({10.0f,2.5f,1.0f});
+        floor->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.9f, 0.9f, 0.9f},{0.6f, 0.6f, 0.6f},16.0f, 0.3f});
 
         // Кубы
         auto cube0 = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
         cube0->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
-        cube0->setScale({0.5f,0.5f,0.5f}, false);
+        cube0->setScale({1.0f,1.0f,1.0f}, false);
         cube0->setPosition({0.0f,0.5f,0.0f});
+        cube0->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.9f, 0.9f, 0.9f},{0.6f, 0.6f, 0.6f},16.0f, 1.0f});
 
         auto cube1 = g_vkRenderer->addMeshToScene(cubeGeometry);
         cube1->setScale({0.5f,0.5f,0.5f}, false);
         cube1->setPosition({2.0f,0.25f,-2.0f});
-        cube1->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 0.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
+        cube1->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 0.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f, 0.5f});
 
         auto cube2 = g_vkRenderer->addMeshToScene(cubeGeometry);
         cube2->setScale({0.5f,0.5f,0.5f}, false);
         cube2->setPosition({-2.0f,0.25f,-2.0f});
-        cube2->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
+        cube2->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f, 0.5f});
 
         auto cube3 = g_vkRenderer->addMeshToScene(cubeGeometry);
         cube3->setScale({0.5f,0.5f,0.5f}, false);
         cube3->setPosition({2.0f,0.25f,2.0f});
-        cube3->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 0.0f, 1.0f},{0.6f, 0.6f, 0.6f},16.0f});
+        cube3->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.0f, 0.0f, 1.0f},{0.6f, 0.6f, 0.6f},16.0f, 0.5f});
 
         auto cube4 = g_vkRenderer->addMeshToScene(cubeGeometry);
         cube4->setScale({0.5f,0.5f,0.5f}, false);
         cube4->setPosition({-2.0f,0.25f,2.0f});
-        cube4->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f});
-
-        // Голова
-//        auto head = g_vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
-//        head->setScale({0.35f,0.35f,0.35f}, false);
-//        head->setOrientation({0.0f,0.0f,0.0f}, false);
-//        head->setPosition({0.0f,0.75f,0.15f});
+        cube4->setMaterialSettings({{0.05f, 0.05f, 0.05f},{1.0f, 1.0f, 0.0f},{0.6f, 0.6f, 0.6f},16.0f, 0.5f});
 
         // Построение TLAS на основе добавленных мешей (для трассировки лучей)
         g_vkRenderer->rtBuildTopLevelAccelerationStructure();
         g_vkRenderer->rtPrepareDescriptorSet();
-
-        // Ar2r-Devil-Pinky (первая версия)
-//        auto Ar2r = g_vkRenderer->addMeshToScene(ar2rGeometry);
-//        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
-//        Ar2r->setScale({2.0f, 2.0f, 2.0f});
-//        Ar2r->setSkeleton(std::move(skeleton));
-//        Ar2r->getSkeletonPtr()->setCurrentAnimation(animations[0]);
-//        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
-//        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
 
         // Свет
         auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-1.5f, 3.0f, -1.0f});

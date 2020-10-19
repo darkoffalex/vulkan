@@ -2,6 +2,23 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_EXT_ray_tracing : enable
 
+/*Константы*/
+
+#define MAX_RECURSION_DEPTH 4
+
+/*Вспомогательные типы*/
+
+// Полезная нагрузка луча
+struct RayPayload
+{
+    vec3 hitColor;
+    bool done;
+
+    vec3 newRayOrigin;
+    vec3 newRayDirection;
+    float newRayStrength;
+};
+
 /*Uniform*/
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
@@ -19,7 +36,7 @@ layout(binding = 0, set = 1, std140) uniform UniformCamera {
 /* Ввод - вывод */
 
 // Результат трассировки лучом сцены
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+layout(location = 0) rayPayloadEXT RayPayload rayData;
 
 /*Функции*/
 
@@ -61,12 +78,48 @@ void main()
     float tmin = 0.001;
 	float tmax = 10000.0;
 
-    // Значение по умолчанию
-    hitValue = vec3(0.0);
+    // Итоговое значение цвета
+    vec3 resultColor = vec3(0.0f);
+    // Сила текущего луча (при отражении луч может терять силу)
+    float currentRayStrngth = 1.0f;
+    // Глубина рекурсии
+    uint depth = 0;
 
-    // Трассировка сцены
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, rayOrigin, tmin, rayDirection, tmax, 0);
+    while(true)
+    {
+        // Трассировка сцены
+        traceRayEXT(
+            topLevelAS,            // Структура ускорения верхнего уровня
+            gl_RayFlagsOpaqueEXT,  // Флаги трассировки
+            0xff,                  // Флаги кулинга
+            0,                     // Смещение в таблице SBT (хит-группа)
+            0,                     // Шаг в таблице SBT 
+            0,                     // Индекс для miss шейедра
+            rayOrigin,             // Начало луча
+            tmin,                  // Минимальная дальность
+            rayDirection,          // Направлние луча
+            tmax,                  // Максимальная дальность
+            0);                    // Индекс полезной нагрузки на выходе (location = 0)
+
+        // Накапливаем результирующий цвет из лучей
+        resultColor += rayData.hitColor * currentRayStrngth;
+
+        // Глубина увеличена
+        depth++;
+
+        // Если луч что был запущен - финальный, лтбо превышен лимит глубины - остановка
+        if(rayData.done || depth >= MAX_RECURSION_DEPTH)
+            break;    
+
+        // Если это был не фмнальный луч (требудется отражение) - меняем начало, направление, силу луча
+        currentRayStrngth  *=   rayData.newRayStrength;
+        rayOrigin           =   rayData.newRayOrigin;
+        rayDirection        =   rayData.newRayDirection;
+        
+        // Если луч не ударится в зеркальную поверхность - это завершит цикл
+        rayData.done = true;
+    }
 
     // Запись в изображение
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.0));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(resultColor, 1.0));
 }

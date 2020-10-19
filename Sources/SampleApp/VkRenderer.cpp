@@ -1133,7 +1133,7 @@ void VkRenderer::initRtPipeline(
     rayTracingPipelineCreateInfoKhr.setPStages(shaderStages.data());
     rayTracingPipelineCreateInfoKhr.setGroupCount(rtShaderGroups_.size());
     rayTracingPipelineCreateInfoKhr.setPGroups(rtShaderGroups_.data());
-    rayTracingPipelineCreateInfoKhr.setMaxRecursionDepth(2);
+    rayTracingPipelineCreateInfoKhr.setMaxRecursionDepth(4);
     rayTracingPipelineCreateInfoKhr.setLayout(rtPipelineLayout_.get());
     auto pipeline = device_.getLogicalDevice()->createRayTracingPipelineKHR(nullptr,rayTracingPipelineCreateInfoKhr);
 

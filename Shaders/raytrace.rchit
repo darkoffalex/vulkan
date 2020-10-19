@@ -3,13 +3,25 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_scalar_block_layout : enable
 
-// Набор констант
+/*Константы*/
+
 #define LIGHT_TYPE_POINT 0        // Тип источника - точеченый
 #define LIGHT_TYPE_SPOT 1         // Тип источника - прожектор
 #define LIGHT_TYPE_DIRECTIONAL 2  // Тип источника - направленный
 #define MAX_LIGHTS 100            // Максимальное число источников
 
 /*Вспомогательные типы*/
+
+// Полезная нагрузка луча
+struct RayPayload
+{
+    vec3 hitColor;
+    bool done;
+    
+    vec3 newRayOrigin;
+    vec3 newRayDirection;
+    float newRayStrength;
+};
 
 // Вершина
 struct Vertex
@@ -44,6 +56,7 @@ struct Material
     vec3 diffuseColor;
     vec3 specularColor;
     float shininess;
+    float reflectance;
 };
 
 /*Uniform*/
@@ -81,7 +94,7 @@ layout(binding = 0, set = 3, std140) uniform UniformFrameCounter {
 /* Ввод - вывод */
 
 // Итоговое значение - на отправку
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+layout(location = 0) rayPayloadInEXT RayPayload rayData;
 
 // Засчитано ли пересечение с преградой - на вход
 layout(location = 1) rayPayloadEXT bool isShadowed;
@@ -305,27 +318,48 @@ void main()
     Material m = _materials[objId].m;
 
     // Цвет и бликовость поверхности по умолчанию
-    vec3 pointColor = vec3(1.0f);
+    vec3 pointColor = interpolated.color;
     float pointSpec = 1.0f;
 
     // Итоговый цвет
     vec3 result = vec3(0.0f);
 
-    // Пройтись по всем источникам света
-    for(uint i = 0; i < _lightCount; i++)
+    // Если есть что-то кроме отраженной компоненты
+    if(m.reflectance < 1.0f)
     {
-        result += sphericalLight(
-            _lightSources[i], 
-            m, 
-            interpolated.position, 
-            interpolated.normal, 
-            toView, 
-            pointColor, 
-            pointSpec, 
-            1, 
-            rndSeed);
+        // Пройтись по всем источникам света
+        for(uint i = 0; i < _lightCount; i++)
+        {
+            result += sphericalLight(
+                _lightSources[i], 
+                m, 
+                interpolated.position, 
+                interpolated.normal, 
+                toView, 
+                pointColor, 
+                pointSpec, 
+                1, 
+                rndSeed);
+        }
     }
 
-    // Вернуть цвет точки пересечения
-    hitValue = vec3(result);
+    // Если есть отраженная компонента
+    if(m.reflectance > 0.0f)
+    {
+        // Требуется новый луч
+        rayData.done = false;
+        // Цвет текущей поверхности отдается частично (остальная часть - отражение)
+        rayData.hitColor = result * (1.0f - m.reflectance);
+        // Сила нового луча зависит от силы отражения
+        rayData.newRayStrength = m.reflectance;
+        // Начало и направление нового луча
+        rayData.newRayOrigin = interpolated.position;
+        rayData.newRayDirection = reflect(gl_WorldRayDirectionEXT, interpolated.normal);
+    }
+    // Если отражения нет - считать трассировку завершенной, вернуть цвет
+    else
+    {
+        rayData.done = true;
+        rayData.hitColor = result;
+    }
 }

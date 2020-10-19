@@ -445,7 +445,8 @@ namespace vk
                 memcpy(pData + 0,&materialSettings_.ambientColor,16);
                 memcpy(pData + 16,&materialSettings_.diffuseColor,16);
                 memcpy(pData + 32, &materialSettings_.specularColor,16);
-                memcpy(pData + 48, &materialSettings_.shininess,4);
+                memcpy(pData + 44, &materialSettings_.shininess,4);
+                memcpy(pData + 48, &materialSettings_.reflectance,4);
             }
         }
 
