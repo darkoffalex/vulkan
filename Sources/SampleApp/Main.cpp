@@ -106,28 +106,11 @@ int main(int argc, char* argv[])
         auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
         auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
 
-        // Текстуры
-        auto floorTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/diffuse.png", true);
-        auto floorTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/normal.png", true);
-        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/spec.png", true);
-        auto floorTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/height.png", true);
-
-        auto wallTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/color.jpg", true);
-        auto wallTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/normal.jpg", true);
-        auto wallTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/spec.jpg", true);
-        auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/disp.png", true);
-
-        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate.png", true);
-        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate_spec.png", true);
-
-        auto headTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/diffuse.tga", true);
-        auto headTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/nm_tangent.tga", true);
-        auto headTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/spec.tga", true);
 
         /** Рендерер - инициализация сцены **/
 
         // Пол
-        auto floor = g_vkRenderer->addMeshToScene(quadGeometry,{floorTextureColor,floorTextureNormal,floorTextureSpec});
+        auto floor = g_vkRenderer->addMeshToScene(quadGeometry);
         floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
         floor->setPosition({0.0f,0.0f,0.0f}, false);
         floor->setScale({10.0f,10.0f,1.0f}, false);
@@ -135,7 +118,7 @@ int main(int argc, char* argv[])
         floor->setMaterialSettings({{0.05f, 0.05f, 0.05f},{0.9f, 0.9f, 0.9f},{0.6f, 0.6f, 0.6f},16.0f, 0.3f});
 
         // Кубы
-        auto cube0 = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
+        auto cube0 = g_vkRenderer->addMeshToScene(cubeGeometry);
         cube0->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
         cube0->setScale({1.0f,1.0f,1.0f}, false);
         cube0->setPosition({0.0f,0.5f,0.0f});

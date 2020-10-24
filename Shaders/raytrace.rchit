@@ -216,6 +216,33 @@ vec3 randomVectorToLightSphere(vec3 pointPosition, vec3 lightPosition, float lig
     return normalize(randomPointOnLightDisk - pointPosition);
 }
 
+// Получить случайный вектор от точки в пределах конуса направленного в сторону источника света
+vec3 randomVectorToLightSphere2(vec3 pointPosition, vec3 lightPosition, float lightRadius, inout uint seed)
+{
+    // Вектор от точки до источника света (нормированный)
+    vec3 toLight = normalize(lightPosition - pointPosition);
+    // Вектор перпендикулярный вектору от точки до источника
+    vec3 perpL = normalize(cross(toLight, toLight + vec3(0.01f,0.01f,0.01f)));
+    // 2-ой перпендикулярный вектор (3-ий вектор)
+    vec3 perpL2 = cross(toLight, perpL);
+
+    // Вектор к границе сферы источника
+    vec3 toLightEdge = normalize((lightPosition + perpL * lightRadius) - pointPosition);
+
+    // Угол конуса от точки, охватывающего сферу источника света
+    float coneAngle = acos(dot(toLight, toLightEdge)) * 2.0f;
+
+    // Угол для формирования вектора на плоскости нормальной к вектору в сторону источника
+    float fi = radians(360.0f) * rnd(seed);
+    // Угол отклонения вектора внутри конуса
+    float theta = (coneAngle / 2.0f) * ((rnd(seed) - 0.5f) * 2.0f);
+
+    // Случайный вектор по кругу на нормальной плоскости
+    vec3 toLightNormPlaneVec = (perpL * cos(fi)) + (perpL2 * sin(fi));
+    // Случайный вектор в сторону источника в предах угла конуса
+    return (toLight * cos(theta)) + (toLightNormPlaneVec * sin(theta));
+}
+
 // Подсчет освещенности фрагмента сферическим источником
 vec3 sphericalLight(LightSource l, Material m, vec3 pointPosition, vec3 pointNormal, vec3 pointToView, vec3 pointColor, float pointSpecularity, uint shadowSamples, inout uint rndSeed)
 {
