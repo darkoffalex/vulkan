@@ -47,6 +47,9 @@ void Controls(float camSpeed = 0.001f, float mouseSensitivity = 0.2f);
  */
 int main(int argc, char* argv[])
 {
+    (void) argc;
+    (void) argv;
+
     try
     {
         // Получение дескриптора исполняемого модуля программы
@@ -84,9 +87,9 @@ int main(int argc, char* argv[])
         /** Рендерер - инициализация **/
 
         // Загрузка кода шейдеров
-        auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.vert.spv"));
-        auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.geom.spv"));
-        auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-phong.frag.spv"));
+        auto vsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base.vert.spv"));
+        auto gsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base.geom.spv"));
+        auto fsCode = tools::LoadBytesFromFile(tools::ShaderDir().append("base-pbr.frag.spv"));
         auto vsCodePp = tools::LoadBytesFromFile(tools::ShaderDir().append("post-process.vert.spv"));
         auto fsCodePp = tools::LoadBytesFromFile(tools::ShaderDir().append("post-process.frag.spv"));
 
@@ -96,92 +99,48 @@ int main(int argc, char* argv[])
         /** Рендерер - загрузка ресурсов **/
 
         // Геометрия
-        auto quadGeometry = vk::helpers::GenerateQuadGeometry(g_vkRenderer, 1.0f);
-        auto cubeGeometry = vk::helpers::GenerateCubeGeometry(g_vkRenderer, 1.0f);
-        auto headGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer, "head.obj");
-//        auto ar2rGeometry = vk::helpers::LoadVulkanGeometryMesh(g_vkRenderer,"Ar2r-Devil-Pinky.dae", true);
-
-        // Скелет и анимации
-//        auto skeleton = vk::helpers::LoadVulkanMeshSkeleton("Ar2r-Devil-Pinky.dae");
-//        auto animations = vk::helpers::LoadVulkanMeshSkeletonAnimations("Ar2r-Devil-Pinky.dae");
-
-        // Текстуры
-        auto floorTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/diffuse.png", true);
-        auto floorTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/normal.png", true);
-        auto floorTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/spec.png", true);
-        auto floorTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Floor2/height.png", true);
-
-        auto wallTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/color.jpg", true);
-        auto wallTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/normal.jpg", true);
-        auto wallTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/spec.jpg", true);
-        auto wallTextureDisplace = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Wall1/disp.png", true);
-
-        auto cubeTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate.png", true);
-        auto cubeTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "crate_spec.png", true);
-
-        auto headTextureColor = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/diffuse.tga", true);
-        auto headTextureNormal = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/nm_tangent.tga", true);
-        auto headTextureSpec = vk::helpers::LoadVulkanTexture(g_vkRenderer, "Head/spec.tga", true);
+        auto sphereGeometry = vk::helpers::GenerateSphereGeometry(g_vkRenderer,32,1.0f);
 
         /** Рендерер - инициализация сцены **/
 
-        // Пол
-        auto floor = g_vkRenderer->addMeshToScene(quadGeometry, {floorTextureColor, floorTextureNormal, floorTextureSpec});
-        floor->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,10.0f}});
-        floor->setPosition({0.0f,0.0f,0.0f}, false);
-        floor->setScale({10.0f,10.0f,1.0f}, false);
-        floor->setOrientation({-90.0f,0.0f,0.0f});
+        // Сферы
+        glm::float32_t spacing = 2.5f;
+        glm::uint32_t colNum = 7;
+        glm::uint32_t rowNum = 7;
 
-        // Стена
-        auto wall = g_vkRenderer->addMeshToScene(quadGeometry, {wallTextureColor, wallTextureNormal, wallTextureSpec});
-        wall->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{10.0f,2.5f},0.0f});
-        wall->setPosition({0.0f,1.25f,-1.5f}, false);
-        wall->setScale({10.0f,2.5f,1.0f});
+        for(uint32_t row = 0; row < rowNum; row++)
+        {
+            for(uint32_t col = 0; col < colNum; col++)
+            {
+                glm::vec3 albedo = {0.5f,0.0f,0.0f};
+                glm::float32_t roughness = glm::clamp(static_cast<float>(col)/static_cast<float>(colNum),0.05f,1.0f);
+                glm::float32_t metallic = static_cast<float>(row)/static_cast<float>(rowNum);
 
-        // Куб
-        auto cube = g_vkRenderer->addMeshToScene(cubeGeometry, {cubeTextureColor, nullptr, cubeTextureSpec});
-        cube->setTextureMapping({{0.0f,0.0f},{0.0f,0.0f},{1.0f,1.0f},0.0f});
-        cube->setScale({0.5f,0.5f,0.5f}, false);
-        cube->setOrientation({0.0f,45.0f,0.0f}, false);
-        cube->setPosition({0.0f,0.25f,0.0f});
-
-        // Голова
-        auto head = g_vkRenderer->addMeshToScene(headGeometry, {headTextureColor, headTextureNormal, headTextureSpec});
-        head->setScale({0.35f,0.35f,0.35f}, false);
-        head->setOrientation({0.0f,0.0f,0.0f}, false);
-        head->setPosition({0.0f,0.75f,0.15f});
-
-        // Ar2r-Devil-Pinky (первая версия)
-//        auto Ar2r = g_vkRenderer->addMeshToScene(ar2rGeometry);
-//        Ar2r->setPosition({0.0f, 0.0f, 0.0f}, false);
-//        Ar2r->setScale({2.0f, 2.0f, 2.0f});
-//        Ar2r->setSkeleton(std::move(skeleton));
-//        Ar2r->getSkeletonPtr()->setCurrentAnimation(animations[0]);
-//        Ar2r->getSkeletonPtr()->setAnimationState(vk::scene::MeshSkeleton::AnimationState::ePlaying);
-//        Ar2r->getSkeletonPtr()->applyAnimationFrameBoneTransforms(0.0f);
-
-//        // Доступ к костям скелета Ar2r-Devil-Pinky
-//        auto torso = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[0];
-//        auto leg1 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[1];
-//        auto leg2 = Ar2r->getSkeletonPtr()->getRootBone()->getChildrenBones()[2];
-//        auto neck = torso->getChildrenBones()[0];
-//
-//        // Управление костями скелета
-//        torso->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(45.0f),{1.0f, 0.0f, 0.0f}));
-//        neck->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-20.0f),{1.0f, 0.0f, 0.0f}));
-//        leg1->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(30.0f),{1.0f, 0.0f, 0.0f}));
-//        leg2->setLocalTransform(glm::rotate(glm::mat4(1.0f),glm::radians(-30.0f),{1.0f, 0.0f, 0.0f}));
+                auto sphere = g_vkRenderer->addMeshToScene(sphereGeometry);
+                sphere->setPosition({
+                    (col * spacing) - ((static_cast<float>(colNum - 1) * spacing) / 2.0f),
+                    (row * spacing) - ((static_cast<float>(rowNum - 1) * spacing) / 2.0f),
+                    0.0f});
+                sphere->setMaterialSettings({
+                    albedo,
+                    roughness,
+                    metallic
+                });
+            }
+        }
 
         // Свет
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {2.5f, 1.5f, 0.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-2.5f, 1.5f, 0.0f});
+        auto light0 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
+        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
+        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
+        auto light3 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
 
         /** MAIN LOOP **/
 
         // Управляемая камера
         g_camera = new tools::Camera();
-        g_camera->position = {0.0f, 2.0f, 4.0f};
-        g_camera->orientation = {-30.0f, 0.0f, 0.0f};
+        g_camera->position = {0.0f, 0.0f, 25.0f};
+        //g_camera->orientation = {-30.0f, 0.0f, 0.0f};
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
         g_pTimer = new tools::Timer();

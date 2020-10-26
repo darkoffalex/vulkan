@@ -13,7 +13,7 @@ namespace vk
          * Размер UBO буфера материала меша
          * С учетом выравнивания std140
          */
-        const size_t MATERIAL_UBO_SIZE = 56;
+        const size_t MATERIAL_UBO_SIZE = 24;
 
         /**
          * Количество костей скелетной анимации
@@ -23,25 +23,26 @@ namespace vk
 
         // Типы текстур
         // Порядок индексов должен соответствовать порядку MeshTextureSet
-        const size_t TEXTURE_TYPE_COLOR = 0;
-        const size_t TEXTURE_TYPE_NORMAL = 1;
-        const size_t TEXTURE_TYPE_SPECULAR = 2;
-        const size_t TEXTURE_TYPE_DISPLACE = 3;
+        const size_t TEXTURE_TYPE_ALBEDO    = 0;
+        const size_t TEXTURE_TYPE_ROUGHNESS = 1;
+        const size_t TEXTURE_TYPE_METALLIC  = 2;
+        const size_t TEXTURE_TYPE_NORMAL    = 3;
+        const size_t TEXTURE_TYPE_DISPLACE  = 4;
 
         struct MeshTextureSet
         {
-            vk::resources::TextureBufferPtr color = nullptr;
+            vk::resources::TextureBufferPtr albedo = nullptr;
+            vk::resources::TextureBufferPtr roughness = nullptr;
+            vk::resources::TextureBufferPtr metallic = nullptr;
             vk::resources::TextureBufferPtr normal = nullptr;
-            vk::resources::TextureBufferPtr specular = nullptr;
             vk::resources::TextureBufferPtr displace = nullptr;
         };
 
         struct MeshMaterialSettings
         {
-            glm::vec3 ambientColor = {0.05f, 0.05f, 0.05f};
-            glm::vec3 diffuseColor = {0.8f, 0.8f, 0.8f};
-            glm::vec3 specularColor = {0.6f, 0.6f, 0.6f};
-            glm::float32 shininess = 16.0f;
+            glm::vec3 albedo = {1.0f, 1.0f, 1.0f};
+            glm::float32_t roughness = 1.0f;
+            glm::float32_t metallic = 0.0f;
         };
 
         struct MeshTextureMapping
@@ -68,7 +69,7 @@ namespace vk
             /// Параметры отображения текстуры меша
             vk::scene::MeshTextureMapping textureMapping_;
             /// Параметры использования текстур
-            glm::uint32 textureUsage_[4] = {0,0,0,0};
+            glm::uint32 textureUsage_[5] = {0,0,0,0,0};
             /// Параметры скелета
             UniqueMeshSkeleton skeleton_;
 
@@ -166,7 +167,7 @@ namespace vk
                     vk::resources::GeometryBufferPtr geometryBufferPtr,
                     const vk::resources::TextureBufferPtr& defaultTexturePtr,
                     vk::scene::MeshTextureSet textureSet = {},
-                    const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.6f, 0.6f, 0.6f},16.0f},
+                    const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f, 1.0f, 1.0f},1.0f,0.0f},
                     const vk::scene::MeshTextureMapping& textureMappingSettings = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
             /**

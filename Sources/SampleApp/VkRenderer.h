@@ -328,7 +328,7 @@ public:
      */
     vk::scene::MeshPtr addMeshToScene(const vk::resources::GeometryBufferPtr& geometryBuffer,
             const vk::scene::MeshTextureSet& textureSet = {},
-            const vk::scene::MeshMaterialSettings& materialSettings = {{0.05f, 0.05f, 0.05f},{0.8f, 0.8f, 0.8f},{0.6f, 0.6f, 0.6f},16.0f},
+            const vk::scene::MeshMaterialSettings& materialSettings = {{1.0f, 1.0f, 1.0f},1.0f,0.0f},
             const vk::scene::MeshTextureMapping& textureMapping = {{0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 1.0f}, 0.0f});
 
     /**

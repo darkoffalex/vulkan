@@ -273,10 +273,11 @@ namespace vk
             std::vector<vk::DescriptorImageInfo> descriptorImageInfos = {};
 
             // Превращаем набор текстурных указателей в массив (для более удобной работы)
-            std::vector<vk::resources::TextureBufferPtr> texturePointers(4);
-            texturePointers[TEXTURE_TYPE_COLOR] = textureSet_.color;
+            std::vector<vk::resources::TextureBufferPtr> texturePointers(5);
+            texturePointers[TEXTURE_TYPE_ALBEDO] = textureSet_.albedo;
+            texturePointers[TEXTURE_TYPE_ROUGHNESS] = textureSet_.roughness;
+            texturePointers[TEXTURE_TYPE_METALLIC] = textureSet_.metallic;
             texturePointers[TEXTURE_TYPE_NORMAL] = textureSet_.normal;
-            texturePointers[TEXTURE_TYPE_SPECULAR] = textureSet_.specular;
             texturePointers[TEXTURE_TYPE_DISPLACE] = textureSet_.displace;
 
             // Заполнение массива описаний изображений
@@ -442,10 +443,9 @@ namespace vk
                 auto pData = reinterpret_cast<unsigned char*>(pUboMaterialData_);
 
                 // Копирование в буфер (с учетом выравнивания std140)
-                memcpy(pData + 0,&materialSettings_.ambientColor,16);
-                memcpy(pData + 16,&materialSettings_.diffuseColor,16);
-                memcpy(pData + 32, &materialSettings_.specularColor,16);
-                memcpy(pData + 48, &materialSettings_.shininess,4);
+                memcpy(pData + 0,&materialSettings_.albedo,16);
+                memcpy(pData + 12,&materialSettings_.roughness,4);
+                memcpy(pData + 16, &materialSettings_.metallic,4);
             }
         }
 

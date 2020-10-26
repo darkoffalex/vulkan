@@ -18,10 +18,6 @@ void VkRenderer::initRenderPassPrimary(const vk::Format &colorAttachmentFormat, 
     if(!surface_.get()){
         throw vk::InitializationFailedError("Can't initialize render pass. Surface not ready");
     }
-    // Проверяем поддержку формата цветового вложения
-    if(!device_.isFormatSupported(colorAttachmentFormat,surface_)){
-        throw vk::FormatNotSupportedError("Can't initialize render pass. Color attachment format not supported");
-    }
     // Проверяем поддержку формата вложений глубины
     if(!device_.isDepthStencilSupportedForFormat(depthStencilAttachmentFormat)){
         throw vk::FormatNotSupportedError("Can't initialize render pass. Depth-stencil attachment format not supported");
@@ -525,7 +521,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes, size_t frameBuf
                 // Дескриптор для параметров материала
                 {vk::DescriptorType::eUniformBuffer,1},
                 // Дескриптор для текстуры/семплера
-                {vk::DescriptorType::eCombinedImageSampler, 4},
+                {vk::DescriptorType::eCombinedImageSampler, 5},
                 // Дескриптор для параметров использования текстур
                 {vk::DescriptorType::eUniformBuffer, 1},
                 // Дескриптор для буфера кол-ва костей скелетной анимации
@@ -636,7 +632,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes, size_t frameBuf
                 {
                         3,
                         vk::DescriptorType::eCombinedImageSampler,
-                        4,
+                        5,
                         vk::ShaderStageFlagBits::eFragment,
                         nullptr,
                 },
@@ -1086,7 +1082,7 @@ void VkRenderer::initPipelinePrimary(
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleGs);
 
     // Вернуть unique smart pointer
-    pipelinePrimary_ = vk::UniquePipeline(pipeline);
+    pipelinePrimary_ = vk::UniquePipeline(pipeline.value);
 }
 
 /**
@@ -1288,7 +1284,7 @@ void VkRenderer::initPipelinePostProcess(const std::vector<unsigned char> &verte
     device_.getLogicalDevice()->destroyShaderModule(shaderModuleFs);
 
     // Вернуть unique smart pointer
-    pipelinePostProcess_ = vk::UniquePipeline(pipeline);
+    pipelinePostProcess_ = vk::UniquePipeline(pipeline.value);
 }
 
 /**
@@ -1423,7 +1419,7 @@ useValidation_(true)
     std::cout << "Device initialized (" << device_.getPhysicalDevice().getProperties().deviceName << ")" << std::endl;
 
     // Инициализация прохода/проходов рендеринга
-    this->initRenderPassPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    this->initRenderPassPrimary(vk::Format::eR16G16B16A16Sfloat, vk::Format::eD32SfloatS8Uint);
     this->initRenderPassPostProcess(vk::Format::eB8G8R8A8Unorm);
     std::cout << "Render passes initialized." << std::endl;
 
@@ -1432,7 +1428,7 @@ useValidation_(true)
     std::cout << "Swap-chain created." << std::endl;
 
     // Создание основных кадровых буферов
-    this->initFrameBuffersPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    this->initFrameBuffersPrimary(vk::Format::eR16G16B16A16Sfloat, vk::Format::eD32SfloatS8Uint);
     std::cout << "Primary frame-buffers initialized (" << frameBuffersPrimary_.size() << ") [" << frameBuffersPrimary_[0].getExtent().width << " x " << frameBuffersPrimary_[0].getExtent().height << "]" << std::endl;
 
     // Создание кадровых буферов для пост-обработки
@@ -1644,7 +1640,7 @@ void VkRenderer::onSurfaceChanged()
     std::cout << "Swap-chain re-created." << std::endl;
 
     // Создание основных кадровых буферов
-    this->initFrameBuffersPrimary(vk::Format::eB8G8R8A8Unorm, vk::Format::eD32SfloatS8Uint);
+    this->initFrameBuffersPrimary(vk::Format::eR16G16B16A16Sfloat, vk::Format::eD32SfloatS8Uint);
     std::cout << "Primary frame-buffers initialized (" << frameBuffersPrimary_.size() << ") [" << frameBuffersPrimary_[0].getExtent().width << " x " << frameBuffersPrimary_[0].getExtent().height << "]" << std::endl;
 
     // Обновить дескрипторные наборы кадровых буферов (используемые при пост-процессинге)

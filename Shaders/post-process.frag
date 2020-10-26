@@ -74,5 +74,13 @@ vec3 bounds()
 // Основная функция фрагментного шейдера
 void main()
 {
-    outColor = vec4(blur(),1.0f);
+    // Итоговый цвет
+    vec3 result = texture(_frameBuffer, fs_in.uv).rgb;
+
+    // Тональная компрессия
+    vec3 mapped = result / (result + vec3(1.0f));
+
+    // Гамма коррекция
+    float gamma = 1.4f;
+    outColor = vec4(pow(mapped,vec3(1.0f/gamma)),1.0f);
 }
