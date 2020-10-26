@@ -161,7 +161,7 @@ namespace vk
 
             // Выделить буфер для параметров использования текстур (какие текстуры используются а какие нет)
             uboTextureUsage_ = vk::tools::Buffer(pDevice_,
-                    sizeof(glm::uvec4),
+                    TEXTURES_USAGE_UBO_SIZE,
                     vk::BufferUsageFlagBits::eUniformBuffer,
                     vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 
@@ -465,7 +465,15 @@ namespace vk
         void Mesh::updateTextureUsageUbo()
         {
             if(uboTextureUsage_.isReady()){
-                memcpy(pUboTextureUsageData_,textureUsage_, sizeof(glm::uvec4));
+                // Преобразование указателя (для возможности указывать побайтовое смещение)
+                auto pData = reinterpret_cast<unsigned char*>(pUboTextureUsageData_);
+
+                // Копирование в буфер (с учетом выравнивания std140)
+                memcpy(pData + 0, &(textureUsage_[0]), sizeof(glm::uint32));  // albedo (0)
+                memcpy(pData + 16, &(textureUsage_[1]), sizeof(glm::uint32)); // roughness (1)
+                memcpy(pData + 32, &(textureUsage_[2]), sizeof(glm::uint32)); // metallic (2)
+                memcpy(pData + 48, &(textureUsage_[3]), sizeof(glm::uint32)); // normal (3)
+                memcpy(pData + 64, &(textureUsage_[4]), sizeof(glm::uint32)); // displace (4)
             }
         }
 

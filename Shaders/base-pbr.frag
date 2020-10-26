@@ -6,7 +6,14 @@
 #define LIGHT_TYPE_SPOT 1         // Тип источника - прожектор
 #define LIGHT_TYPE_DIRECTIONAL 2  // Тип источника - направленный
 #define MAX_LIGHTS 100            // Максимальное число источников
+
 #define PI 3.14159265359
+
+#define TEXTURE_ALBEDO 0
+#define TEXTURE_ROUGHNESS 1
+#define TEXTURE_METALLIC 2
+#define TEXTURE_NORMAL 3
+#define TEXTURE_DISPLACE 4
 
 /*Схема входа-выхода*/
 
@@ -70,6 +77,12 @@ layout(set = 2, binding = 2, std140) uniform UniformModel {
     Material _materialSettings;
 };
 
+layout(set = 2, binding = 3) uniform sampler2D _textures[5];
+
+layout(set = 2, binding = 4, std140) uniform UniformTextureUsage {
+    uint _texturesUsed[5];
+};
+
 layout(set = 1, binding = 0, std140) uniform UniformLightCount {
     uint _lightCount;
 };
@@ -77,6 +90,9 @@ layout(set = 1, binding = 0, std140) uniform UniformLightCount {
 layout(set = 1, binding = 1, std140) uniform UniformLightArray {
     LightSource _lightSources[MAX_LIGHTS];
 };
+
+
+
 
 /*Функции*/
 
@@ -140,18 +156,94 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+// Получить нормаль из карты нормалей произведя необходимые преобразования
+vec3 normalMap(vec2 uv)
+{
+    vec3 normal = texture(_textures[TEXTURE_NORMAL],uv).rgb * 2.0 - 1.0;
+    return normalize(fs_in.tbnMatrix * normal);
+}
+
+// Получить значение из карты глубины
+float depthMap(vec2 uv, bool inverse)
+{
+    return inverse ? 1 - texture(_textures[TEXTURE_DISPLACE], uv).r : texture(_textures[TEXTURE_DISPLACE], uv).r;
+}
+
+// Сдвинуть UV координаты согласно карте глубин
+vec2 paralaxMappedUv(vec2 uv, vec3 toView, bool inverseMap)
+{
+    // Вектор в направлении камеры от фрагмента (в касательном пространстве)
+    vec3 toViewT = normalize(fs_in.tbnMatrixInverse * toView);
+
+    // Кол-во слоев глубины
+    const float minDepthLayers = 8;
+    const float maxDepthLayers = 16;
+
+    // Определяем оптимальное кол-во слоев деления глубины в зависимости от угла под которым смотрим на тангент-плоскость
+    // Для большего угла будет более корректно использовать большее дробление слоёв
+    float depthLayers = mix(maxDepthLayers,minDepthLayers,abs(dot(vec3(0.0, 0.0, 1.0), toViewT)));
+    // Размер слоя глубины (маскимальная глубина - 1, белый цвет)
+    float layerDepth = 1.0f / depthLayers;
+
+    // Вектор сдвига UV координат на каждом шаге (слое)
+    // Несмотря на то что по факту мы работаем с глубиной (ось Z), сами данные распологаются на плосоксти (XY).
+    // Компонента Z не задействована при выборке, но направление вектора взгляда определяет направление выборки на плоскости текстуры
+    vec2 p = toViewT.xy * 0.15f;
+    vec2 layerUvOffset = p / depthLayers;
+
+    // Начальные значения UV координат
+    vec2 currentUv = uv;
+    // Текущая вычисленная глубина
+    float currentDepthCalculated = 0.0f;
+    // Текущая глубина из карты глубины
+    float currentDepthFromMap = depthMap(currentUv,inverseMap);
+
+    // Покуда не превзошли глубину из карты
+    while(currentDepthCalculated < currentDepthFromMap)
+    {
+        // Смещаем текстурные координаты вдоль вектора взгляда
+        currentUv -= layerUvOffset;
+        // Смещяем глубину на 1 уровень
+        currentDepthCalculated += layerDepth;
+        // Обновляем значение текущей глубины из карты
+        currentDepthFromMap = depthMap(currentUv,inverseMap);
+    }
+
+    // Найти UV координаты предыдущего шага
+    vec2 previousUv = currentUv + layerUvOffset;
+    // Найти глубины предыдущего шага
+    float previousDepthCalculated = currentDepthCalculated - layerDepth;
+
+    // Разница между настоящим значением глубины в текущих координатах и вычисленным
+    float currentDeptDelta = currentDepthFromMap - currentDepthCalculated;
+    // Разница между настоящим значением глубины в предыдущих координатах и вычесленным для прошлого слоя
+    float beforeDepthDelta = depthMap(previousUv,inverseMap) - previousDepthCalculated;
+
+    // Интерполяция текстурных координат
+    float weight = currentDeptDelta / (currentDeptDelta - beforeDepthDelta);
+    vec2 finalUv = (previousUv * weight) + (currentUv * (1.0 - weight));
+
+    return finalUv;
+}
+
 // Основная функция фрагментного шейдера
 // Вычисление итогового цвета фрагмента (пикселя)
 void main()
 {
+    // Вектор в сторону камеры от фрагмента
+    vec3 toView = normalize(_camPosition - fs_in.position);
+
+    // UV координаты для текущего фрагмента
+    vec2 uv = _texturesUsed[TEXTURE_DISPLACE] > 0 ? paralaxMappedUv(fs_in.uv,toView,true) : fs_in.uv;
+
     // Структура описывающая текущий фрагмент
     Fragment f;
-    f.toView = normalize(_camPosition - fs_in.position);
+    f.toView = toView;
     f.position = fs_in.position;
-    f.normal = normalize(fs_in.normal);
-    f.albedo = _materialSettings.albedo;
-    f.roughness = _materialSettings.roughness;
-    f.metallic = _materialSettings.metallic;
+    f.normal = _texturesUsed[TEXTURE_NORMAL] > 0 ? normalMap(uv) : normalize(fs_in.normal);
+    f.albedo = _texturesUsed[TEXTURE_ALBEDO] > 0 ? texture(_textures[TEXTURE_ALBEDO],uv).rgb : _materialSettings.albedo;
+    f.roughness = _texturesUsed[TEXTURE_ROUGHNESS] > 0 ? texture(_textures[TEXTURE_ROUGHNESS],uv).r : _materialSettings.roughness;
+    f.metallic = _texturesUsed[TEXTURE_METALLIC] > 0 ? texture(_textures[TEXTURE_METALLIC],uv).r : _materialSettings.metallic;
 
     // Коэффициент F0 для Френеля
     // Чем металичнее материал тем более коэффициент уходит в альбедо
@@ -159,7 +251,7 @@ void main()
     F0 = mix(F0, f.albedo, f.metallic);
 
     // Сумарная освещенность точки (фрагмента)
-    vec3 Lo = vec3(0.0f);
+    vec3 Lo = vec3(0.0f,0.0f,0.0f);
 
     // Пройтись по всем источникам света
     for(uint i = 0; i < _lightCount; i++)
@@ -184,7 +276,7 @@ void main()
                 attenuation = 1.0f;
                 break;
         }
-        
+
         // Облученность (интенсивность освещенности) точки (фрагмента) конкретным источником
         vec3 radiance = _lightSources[i].color * attenuation;
 
@@ -193,7 +285,7 @@ void main()
         float D = distributionGGX(f.normal, h, f.roughness);
         vec3 F = fresnelSchlick(max(dot(h, f.toView), 0.0), F0);
 
-        // Подсчер BRDF (отраженный свет)
+        // Подсчет BRDF (отраженный свет)
         vec3 spec = G * D * F / 4.0f * max(dot(f.toView,f.normal),0.0f) * max(dot(toLight,f.normal),0.0f) + 0.001f;
 
         // Коэфициенты specular состовляющей и diffuse состоавляющей (одно исключает другое)

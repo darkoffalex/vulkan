@@ -187,7 +187,7 @@ vec3 directionalLight(Fragment f, LightSource l, Material m)
 // Получить нормаль из карты нормалей произведя необходимые преобразования
 vec3 getNormalFromMap(vec2 uv)
 {
-    vec3 normal = normalize(texture(_textures[TEXTURE_NORMAL],uv).rgb * 2.0 - 1.0);
+    vec3 normal = texture(_textures[TEXTURE_NORMAL],uv).rgb * 2.0 - 1.0;
     return fs_in.tbnMatrix * normal;
 }
 

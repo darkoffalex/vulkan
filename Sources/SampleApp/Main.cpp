@@ -101,45 +101,53 @@ int main(int argc, char* argv[])
         // Геометрия
         auto sphereGeometry = vk::helpers::GenerateSphereGeometry(g_vkRenderer,32,1.0f);
 
+        // Текстуры
+        auto albedoTex      = vk::helpers::LoadVulkanTexture(g_vkRenderer,"rusted_iron/albedo.png",true,true);
+        auto roughnessTex   = vk::helpers::LoadVulkanTexture(g_vkRenderer,"rusted_iron/roughness.png",true);
+        auto metallicTex    = vk::helpers::LoadVulkanTexture(g_vkRenderer,"rusted_iron/metallic.png",true);
+        auto normalTex      = vk::helpers::LoadVulkanTexture(g_vkRenderer,"rusted_iron/normal.png",true);
+
+
         /** Рендерер - инициализация сцены **/
 
         // Сферы
         glm::float32_t spacing = 2.5f;
-        glm::uint32_t colNum = 7;
-        glm::uint32_t rowNum = 7;
+        glm::uint32_t colNum = 2;
+        glm::uint32_t rowNum = 2;
 
         for(uint32_t row = 0; row < rowNum; row++)
         {
             for(uint32_t col = 0; col < colNum; col++)
             {
-                glm::vec3 albedo = {0.5f,0.0f,0.0f};
-                glm::float32_t roughness = glm::clamp(static_cast<float>(col)/static_cast<float>(colNum),0.05f,1.0f);
-                glm::float32_t metallic = static_cast<float>(row)/static_cast<float>(rowNum);
+//                glm::vec3 albedo = {0.5f,0.0f,0.0f};
+//                glm::float32_t roughness = glm::clamp(static_cast<float>(col)/static_cast<float>(colNum),0.05f,1.0f);
+//                glm::float32_t metallic = static_cast<float>(row)/static_cast<float>(rowNum);
 
-                auto sphere = g_vkRenderer->addMeshToScene(sphereGeometry);
+                auto sphere = g_vkRenderer->addMeshToScene(sphereGeometry,{albedoTex, roughnessTex, metallicTex, normalTex});
                 sphere->setPosition({
                     (col * spacing) - ((static_cast<float>(colNum - 1) * spacing) / 2.0f),
                     (row * spacing) - ((static_cast<float>(rowNum - 1) * spacing) / 2.0f),
                     0.0f});
-                sphere->setMaterialSettings({
-                    albedo,
-                    roughness,
-                    metallic
-                });
+//                sphere->setMaterialSettings({
+//                    albedo,
+//                    roughness,
+//                    metallic
+//                });
             }
         }
 
         // Свет
-        auto light0 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
-        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
-        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
-        auto light3 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
+        auto light0 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {0.0f, 0.0f, 10.0f},{150.0f,150.0f,150.0f});
+//        auto light0 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
+//        auto light1 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, 10.0f, 10.0f},{300.0f,300.0f,300.0f});
+//        auto light2 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {-10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
+//        auto light3 = g_vkRenderer->addLightToScene(vk::scene::LightSourceType::ePoint, {10.0f, -10.0f, 10.0f},{300.0f,300.0f,300.0f});
 
         /** MAIN LOOP **/
 
         // Управляемая камера
         g_camera = new tools::Camera();
-        g_camera->position = {0.0f, 0.0f, 25.0f};
+        g_camera->position = {0.0f, 0.0f, 10.0f};
         //g_camera->orientation = {-30.0f, 0.0f, 0.0f};
 
         // Таймер основного цикла (для выяснения временной дельты и FPS)
