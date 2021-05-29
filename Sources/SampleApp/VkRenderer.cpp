@@ -315,7 +315,7 @@ void VkRenderer::initSwapChain(const vk::SurfaceFormatKHR &surfaceFormat, uint32
     swapChainKhr_ = device_.getLogicalDevice()->createSwapchainKHRUnique(swapChainCreateInfo);
 
     // Уничтожить старый swap-chain если он был
-    if(!oldSwapChain){
+    if(oldSwapChain){
         device_.getLogicalDevice()->destroySwapchainKHR(oldSwapChain);
     }
 }
