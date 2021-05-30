@@ -570,7 +570,7 @@ void VkRenderer::initDescriptorPoolsAndLayouts(size_t maxMeshes, size_t frameBuf
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{};
         descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
         descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
-        descriptorPoolCreateInfo.maxSets = maxMeshes;
+        descriptorPoolCreateInfo.maxSets = static_cast<uint32_t>(frameBufferCount);
         descriptorPoolCreateInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
         descriptorPoolImagesToPostProcess_ = device_.getLogicalDevice()->createDescriptorPoolUnique(descriptorPoolCreateInfo);
     }
